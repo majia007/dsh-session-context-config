@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Session context config",
+    "description": "Choose the tools and system prompt a new session receives. Existing conversations are left untouched."
+  }
+}

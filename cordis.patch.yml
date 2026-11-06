@@ -1,0 +1,5 @@
+# 上下文档位：为新会话选择注入的工具与系统提示词。
+- insert:
+    - id: session-context-config
+      name: 'dsh-session-context-config'
+      config: {}
