@@ -10,7 +10,11 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 | 文件 | 职责 |
 |---|---|
-| `index.js` | Host 半个插件：解析档位、`applyTo()` 装配、`tool_search` 延迟工具、HTTP 快照/切换接口 |
+| `index.js` | Host 半个插件：插件面（`name`/`inject`/`apply`）、装配 `applyTo()`、`tool_search`、HTTP 快照/切换接口 |
+| `host/constants.js` | 状态字面量、组表、通道表、内置档位、token 估算系数 |
+| `host/state.js` | 状态文件路径、默认值、**读入归一化**（坏字段静默丢弃，面板与装配不必各自防御） |
+| `host/tools.js` | 档位解析（`effectiveState`）与延迟占位（`skeleton`/`placehold`） |
+| `baseline.js` | 基线层：行为契约/卡片回执/不可信下载三段提示词、环境事实探测（platform/shell/git）与 complete 合并 |
 | `client.js` | Client 半个插件：配置面板 + 新会话 chip（`conversation.hero.options`）+ 会话头部 chip（`conversation.session.header.actions`，紧跟「模式」标签）；样式以单块 CSS 常量注入 `document.head` |
 | `package.json` | bundle 清单；`dsh.client` 段声明客户端注入（sidebar、layout），`exports` 决定宿主能取到哪些子路径 |
 | `cordis.patch.yml` | 装载入口：只 insert 一行 `session-context-config` |
@@ -23,15 +27,26 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 ```bash
 # 静态检查（两个都能直接查语法）
-node --check client.js && node --check index.js
+node --check client.js && node --check index.js && node --check baseline.js
 
 # 逻辑/DOM 冒烟：happy-dom 里装一遍 bundle，喂假快照渲染两个 chip 并点击
 node scripts/smoke.mjs
+
+# 基线层：文本快照、complete 合并、真实 git 探测与缓存
+node --test scripts/baseline.test.mjs
+
+# Host 纯函数：解析优先级、占位剥参、状态归一化（此前完全没有覆盖）
+node --test scripts/host.test.mjs
+
+# 不可信下载规则：构造含 json.py 的下载目录，实测 python -I 不会导入它（无 python 时跳过）
+node --test scripts/untrusted-files.test.mjs
 ```
 
 `scripts/smoke.mjs` 借用 DSH 源码仓库 `node_modules/.pnpm` 里的 react/react-dom/happy-dom，环境变量 `DSH_SRC` 指向该仓库根目录（必填，未设置时脚本直接报错退出）。它断言：触发器是 seat 结构、菜单行带 `aria-checked`、只有选中行有勾、会话头部菜单含状态块与确认块。
 
 **装到 profile**：`plugin_manager` 的 `install_bundle` 指向本目录。profile 里装成 `link:`，所以改文件即时生效、不需要重装。**但这套桌面安装没有 `dsh-client-hmr`**（`app.asar` 的 `@deepseek-ai` 下查不到这个包），页面不会自动重载——改完要在应用里刷新一次（`Ctrl+R`）才看得到新界面。同版本重复安装会返回 `already-installed`，要更新得先 `remove_bundle` 再 `install_bundle`（或先改 `package.json` 的 version）。安装结果以返回里的 `application: applied` 为准。
+
+**Host 侧热重载（不重启 app）**：`plugin_manager` 对运行中的行执行 disable → enable；target 必须是 exact entryId `include:session-context-config`（用行 id 本身会得 `unknown-plugin`），返回 `application: applied` 且 `list_plugins` 里 fiberPhase 回 `active` 即新 Host 已加载。**Windows pnpm junction 坑**：link: 安装后 profile node_modules 里的 junction 目标可能被拼坏（`profileDir\D:\...`），bundle 解析报错；修法与验证脚本先例在 `../dsh-model-efforts/install-to-dsh.ps1`。不要手动往 profile 的 node_modules 拷文件，也不要改 profile 的 `package.json` / `cordis.patch.yml`。
 
 **看真实效果**：DSH 桌面端当前没有开放调试端口（Web 端口要进程内 token），接不上 CDP。做法是截桌面窗口的图核对——**不要用系统级鼠标/键盘自动化**去点用户界面：会打断用户操作、留下文字选中，而且验证价值不如一次截图。
 
@@ -41,7 +56,7 @@ node scripts/smoke.mjs
 - **命名**：包名 `dsh-` + kebab-case，`cordis.patch.yml` 的行 id 是包名去掉 `dsh-` 前缀；`profile`（部署档案 `$DSH_PROFILE`）、`preset`（模型/agent 预设）、`mode`（会话头部的「模式」）都是宿主已占的词，不要拿来当词根。
 - **代码注释规范**：类/函数级注释写「职责 + 为什么这么设计」；行内只写这一处代码读不出的单点约束和取舍；不写逐行翻译、不写「从哪拆来的/以前怎样」这类过程记录。注释过时比没有更糟——读到与代码矛盾的注释当场以代码为准修或删。行内注释同样用中文。
 - 单点约束写进注释，跨文件规则写进本文档并互留锚点，同一约束不双份维护。
-- 本目录目前**不是 git 仓库**，不要假定能 `git commit`；若以后初始化，提交时机是「阶段成果自验通过」时，而不是改完就提。
+- 本目录已是 git 仓库（origin 指向 GitHub）；提交时机是「阶段成果自验通过」时，而不是改完就提。不要自行 push。
 
 ## 核心机制要点
 
@@ -51,6 +66,11 @@ node scripts/smoke.mjs
 - 切换档位会重建整个工具表与前缀缓存；面向用户的确认话术已写在菜单里，改动这段行为时同步它。
 
 ## 关键技术边界与坑
+
+> ⚠️ **client.js 必须保持单文件，Host 侧才可拆模块**
+> 症状/代价：想给 `client.js` 加相对 `import` 或拆成多个文件时，浏览器端根本不加载它们（页面白跑、控制台报模块缺失）。
+> 根因：浏览器只服务 `dsh.client` 声明的**入口**（`/plugins/<pkg>/client.js`），手写 bundle 没有相对模块的加载面（`require.async` 的包内 chunk 只对构建产物有意义）。
+> 正解：客户端逻辑留在 `client.js` 单文件里，用段落注释分区；纯函数、常量、装配这些可测的部分放 Host 侧（`host/*.js`），两边同名规则各持一份、改一侧必改另一侧。
 
 > ⚠️ **DSH 的 CSS Module 类名带哈希，不能当选择器/样式契约**
 > 症状：照源码写的 `.heroOptions{...}` 完全不生效，编译产物里类名是 `an3WzG_heroOptions`。
@@ -62,10 +82,17 @@ node scripts/smoke.mjs
 > 根因：宿主把该槽包在 `.heroOptions` 里并给了 `margin-left:auto`。
 > 正解：用槽位锚点选中「装着该槽的那一层」再覆盖——`client.js` 里的 `div:has(> [data-slot="conversation.hero.options"]){margin-left:0}`。注意锚点自身是 `display:contents`，对它设 margin 无效。
 
-> ⚠️ **Client bundle 的 `require` 只有 react / react-dom**
-> 症状：想直接 `require('@deepseek-ai/dsh-client-ui-primitives')` 拿 `Menu`、图标、`Tooltip`，运行时报找不到模块。
-> 根因：`require` 来自浏览器模块表，只有基线运行时；`ui-primitives` 没有 `dsh.client` 行，不是可解析的 client module，也没有 `./client` 导出。
-> 正解：宿主组件样式「照着写」而不是 import；需要浮层就自己用 portal + `--dsw-*` token 复刻。详见 `docs/dsh-web-ui.md`。
+> **宿主 `ui-primitives` 是平台种子词，client bundle 的 `require` 直接可用**（2026-11-08 实证，修正旧条目「require 只有 react / react-dom」的错误断言）
+> 实证：tag `dsh-v0.2.2-rc.1` 的 `packages/client/web/src/platform.ts` 里 `PLATFORM_MODULES`（11 项）含 `@deepseek-ai/dsh-client-ui-primitives`；require 解析第一跳是种子表（`packages/client/modules/src/client/system.ts` 的 `makeRequire`），与插件自己的 `dsh.client.inject` 无关，手写 bundle 同样命中；重构前的旧内核 `web/src/seed.ts` 也一直含这行。`Menu`/`MenuSurface`/`Checkbox`/`SegmentedControl`/`Input`/`Toast`/图标都在包导出面（`ui-primitives/src/index.ts`）。
+> 真正 require 不到的是表外 specifier：宿主包自己的依赖（如 `clsx`）与包内子路径——require 这些才会报 `missed the module table`。
+> 本项目组件仍保持自绘（历史设计选择，不是拿不到）：几何已对齐并有 smoke/截图验证，不为对齐翻新；新写组件可直接 import primitives。
+
+- **模块表三层与 `dsh.client` 四字段**：require 面 = 平台种子表（上文 11 项，人人相同）→ graph 行（声明 `dsh.client` + `exports["./client"]` 的包；`<pkg>` 与 `<pkg>/client` 同键）→ 包内局部 chunk。要稳定 require 另一个包，把它列进 `dsh.client.external`（Host 据此拓扑排序让依赖 factory 先到；自指与环报错）；`inject` 是双重角色（所列包的 cordis client 插件组合进你的 entry + factory 先到）；`platform` 只认 `'web'`；本项目 `dsh.client` 用了 `immediately: true`（模块系统启动期预取脚本注册 factory）。完整实证版在仓库根 `../AGENTS.md`「Client bundle 模块表与 require 面」。
+
+> ⚠️ **未 inject 的服务不能用属性访问**
+> 症状：配置页打不开，接口返回 `cannot get property "connection" without inject`。
+> 根因：`Reflect.get(ctx, 'connection')` 与 `ctx.connection` 一样会触发 Cordis 的注入检查，而 `connection` 是可选的、不在 `inject` 名单里。
+> 正解：可选服务一律走 `ctx.get(name)`（缺失返回 `undefined`），方法先判存在。验证：`Invoke-WebRequest http://127.0.0.1:<port>/session-context-config/api/state` 应得到 **401**（栅栏拒绝），而不是 400 的注入错误。
 
 - **webServer 路由不自带鉴权**：宿主 webServer 对直接 `register` 的路由不做任何认证/Origin 检查，每个 handler 必须先过 `ctx.connection` 的 `requestRejection`（官方 open-in-app 同款）；宿主无 connection 服务才回退回环 Host 校验。POST 另要求 `application/json`，掐掉 text/plain 简单请求的跨站提交。
 - **弹层定位必须先量后放**：内容高度渲染后才知道，`useLayoutEffect` 里量完再 setState，且**同值必须 bail**（返回上一个 state），否则每轮渲染都 set 新对象 → 死循环。
@@ -84,7 +111,6 @@ node scripts/smoke.mjs
 ## 已知待优化
 
 - UI 文案硬编码中文，没走 Client locale 服务；`locale/*.json` 只有包级标题。
-- 配置面板的预览弹窗仍是自绘 `.cp-pop`，没跟新的菜单样式统一。
 
 ## 文档目录
 

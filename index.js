@@ -14,11 +14,32 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import {
+  BASELINE_DEFAULTS,
+  baselineSections,
+  composeCompletePrompt,
+  ENVIRONMENT_CONTEXT_NAME,
+  ENVIRONMENT_CONTEXT_ORDER,
+  environmentFactsText,
+  normalizeBaseline,
+  probeEnvironment,
+} from './baseline.js'
+
+import {
+  CHANNELS,
+  DEFER,
+  GROUPS,
+  OFF,
+  ON,
+  TOKEN_PER_CHAR,
+  VERSION,
+} from './host/constants.js'
+import { defaultState, legacyStatePath, messageOf, normalizeState, statePath } from './host/state.js'
+import { effectiveState, groupOf, placehold, serverOf, summaryFor } from './host/tools.js'
 
 export const name = 'session-context-config'
 export const inject = ['agents', 'tools', 'systemPrompt']
 
-const VERSION = 2
 const PACKAGE_NAME = 'dsh-session-context-config'
 const ROUTE_STATE = '/session-context-config/api/state'
 const ROUTE_SESSION = '/session-context-config/api/session'
@@ -26,295 +47,6 @@ const ROUTE_PREVIEW = '/session-context-config/api/preview'
 const ROUTE_ASSEMBLE = '/session-context-config/api/assemble'
 const PERSONA_SECTION = 'deployment:persona-prefix'
 const PERSONA_ORDER_NAME = 'DEPLOYMENT_PERSONA_PREFIX'
-
-const ON = 'on'
-const DEFER = 'defer'
-const OFF = 'off'
-const FORCE = 'force'
-
-/** 组是 UI 的分组，同时也是第一级开关。 */
-const GROUPS = [
-  { id: 'files', title: '文件', test: (n) => /^(read|write|edit|apply_patch|read_image)$/.test(n) },
-  { id: 'search', title: '搜索', test: (n) => /^(glob|grep|session_search|session_event_)/.test(n) },
-  { id: 'terminal', title: '终端与任务', test: (n) => /^(pwsh|bash|job_|terminal_)/.test(n) },
-  { id: 'interaction', title: '交互', test: (n) => /^(ask_user_question|todo_write|present)$/.test(n) },
-  { id: 'skill', title: '技能与网络', test: (n) => /^(skill|web_fetch|web_search)$/.test(n) },
-  { id: 'delegation', title: '协作', test: (n) => /^(subagent|send_message|list_agents|interrupt_agent|list_subagent_models|wait_agent|spawn_teammate|team_task)/.test(n) },
-  { id: 'workflow', title: '编排与计划', test: (n) => /^(workflow|exit_plan_mode|plan_mode|propose_action|ralph)$/.test(n) },
-  { id: 'goal', title: '目标', test: (n) => /^(create_goal|get_goal|update_goal)$/.test(n) },
-  { id: 'schedule', title: '调度', test: (n) => /^schedule_/.test(n) },
-  { id: 'mcp', title: 'MCP', test: (n) => n.startsWith('mcp_connector_') || n.startsWith('mcp__') },
-  { id: 'platform', title: '平台', test: (n) => /^(plugin_manager|load_workspace_dependencies|cordis_|working_directory|lsp)/.test(n) },
-  { id: 'other', title: '其他', test: () => true },
-]
-
-/** 通道拦截：把这两类"档位模型之外"的注入消息从发给模型的请求里滤掉。 */
-const CHANNELS = [
-  { id: 'workspaceInstructions', source: 'agent-instructions' },
-  { id: 'timeContext', source: 'time-context' },
-]
-const CHANNEL_IDS = new Set(CHANNELS.map((channel) => channel.id))
-
-const MINIMAL_PROMPT =
-  '你是一个精简的编码代理。只做用户明确要求的事：先读后改，改动最小，不要扩展范围。\n' +
-  '回复用中文，先说结论，不重复用户已知的信息。遇到不确定的取舍就问一句。'
-
-const DEFAULT_PROFILES = [
-  {
-    id: 'full',
-    name: '完整',
-    description: '与模式一致，不过滤、不延迟。',
-    prompt: { mode: 'inherit', text: '' },
-    runtimeContext: true,
-    channels: {},
-    groups: {},
-    servers: {},
-    tools: {},
-    summaries: {},
-  },
-  {
-    id: 'lean',
-    name: '精简',
-    description: '隐藏连接器治理、平台、调度、目标；MCP 其余延迟。',
-    prompt: { mode: 'inherit', text: '' },
-    runtimeContext: true,
-    channels: {},
-    groups: { mcp: DEFER, platform: OFF, schedule: OFF, goal: OFF },
-    servers: {},
-    tools: {},
-    summaries: {},
-  },
-  {
-    id: 'minimal',
-    name: '极简',
-    description: '只留读写、搜索、终端、待办与提问，提示词换成一段短文。',
-    prompt: { mode: 'complete', text: MINIMAL_PROMPT },
-    runtimeContext: false,
-    channels: {},
-    groups: {
-      mcp: OFF,
-      interaction: ON,
-      delegation: OFF,
-      workflow: OFF,
-      goal: OFF,
-      schedule: OFF,
-      platform: OFF,
-      skill: ON,
-    },
-    servers: {},
-    tools: { todo_write: ON, ask_user_question: ON },
-    summaries: {},
-  },
-]
-
-const TOKEN_PER_CHAR = 0.28
-
-function homeDirectory() {
-  return process.env.DSH_HOME || join(homedir(), '.dsh')
-}
-
-function statePath() {
-  return join(homeDirectory(), 'session-context-config.json')
-}
-
-/** 改名前的状态文件，只在迁移时读一次。 */
-function legacyStatePath() {
-  return join(homeDirectory(), 'context-profile.json')
-}
-
-function messageOf(error) {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function defaultState() {
-  return {
-    version: VERSION,
-    lastUsedId: 'none',
-    profiles: JSON.parse(JSON.stringify(DEFAULT_PROFILES)),
-    sessions: {},
-  }
-}
-
-/* ── 状态归一化 ─────────────────────────────────────────────── */
-
-const GROUP_STATES = new Set([ON, DEFER, OFF, FORCE])
-const TOOL_STATES = new Set([ON, DEFER, OFF])
-
-function normalizeGroupStates(input) {
-  const out = {}
-  if (!input || typeof input !== 'object') return out
-  for (const [key, value] of Object.entries(input)) {
-    if (typeof key !== 'string' || !GROUP_STATES.has(value)) continue
-    if (value !== ON) out[key] = value
-  }
-  return out
-}
-
-function normalizeChannels(input) {
-  const out = {}
-  if (!input || typeof input !== 'object') return out
-  for (const [key, value] of Object.entries(input)) {
-    if (CHANNEL_IDS.has(key) && value === OFF) out[key] = OFF
-  }
-  return out
-}
-
-function normalizeToolStates(input, states) {
-  const out = {}
-  if (!input || typeof input !== 'object') return out
-  for (const [key, value] of Object.entries(input)) {
-    if (typeof key !== 'string' || !states.has(value) || value === ON) continue
-    out[key] = value
-  }
-  return out
-}
-
-function normalizeSummaries(input) {
-  const out = {}
-  if (!input || typeof input !== 'object') return out
-  for (const [key, value] of Object.entries(input)) {
-    if (typeof key !== 'string' || typeof value !== 'string' || !value.trim()) continue
-    out[key] = value.trim().slice(0, 200)
-  }
-  return out
-}
-
-function normalizeProfile(raw, index) {
-  const id = typeof raw?.id === 'string' && /^[a-z0-9][a-z0-9-]{0,40}$/.test(raw.id)
-    ? raw.id
-    : `profile-${index + 1}`
-  return {
-    id,
-    name: typeof raw?.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 60) : id,
-    description: typeof raw?.description === 'string' ? raw.description.slice(0, 200) : '',
-    prompt: {
-      mode: ['inherit', 'replace', 'complete'].includes(raw?.prompt?.mode) ? raw.prompt.mode : 'inherit',
-      text: typeof raw?.prompt?.text === 'string' ? raw.prompt.text.slice(0, 20000) : '',
-    },
-    runtimeContext: raw?.runtimeContext !== false,
-    channels: normalizeChannels(raw?.channels),
-    groups: normalizeGroupStates(raw?.groups),
-    servers: normalizeGroupStates(raw?.servers),
-    tools: normalizeToolStates(raw?.tools, TOOL_STATES),
-    summaries: normalizeSummaries(raw?.summaries),
-  }
-}
-
-function normalizeState(raw) {
-  const base = defaultState()
-  if (!raw || raw.version !== VERSION) return base
-  const profiles = Array.isArray(raw.profiles) && raw.profiles.length > 0
-    ? raw.profiles.map(normalizeProfile)
-    : base.profiles
-  const seen = new Set()
-  const unique = profiles.filter((profile) => {
-    if (seen.has(profile.id)) return false
-    seen.add(profile.id)
-    return true
-  })
-  const sessions = {}
-  if (raw.sessions && typeof raw.sessions === 'object') {
-    for (const [key, value] of Object.entries(raw.sessions)) {
-      if (typeof key !== 'string' || !key) continue
-      if (value === 'none' || unique.some((profile) => profile.id === value)) sessions[key] = value
-    }
-  }
-  const lastUsedId = raw.lastUsedId === 'none' || unique.some((p) => p.id === raw.lastUsedId)
-    ? raw.lastUsedId
-    : 'none'
-  return { version: VERSION, lastUsedId, profiles: unique, sessions }
-}
-
-/* ── 解析 ──────────────────────────────────────────────────── */
-
-function groupOf(toolName) {
-  for (const group of GROUPS) if (group.test(toolName)) return group.id
-  return 'other'
-}
-
-function serverOf(toolName) {
-  if (toolName.startsWith('mcp_connector_')) return 'mcp_connector'
-  const match = /^mcp__([a-zA-Z0-9_-]+)__/.exec(toolName)
-  return match ? match[1] : null
-}
-
-/**
- * 父级只提供默认值；隐藏与强制开启是终态，会压过子项。
- * 自上而下判定：组终态 → server 终态 → 工具终态 → 任一层的“延迟” → 注入。
- */
-function effectiveState(profile, toolName) {
-  const group = groupOf(toolName)
-  const server = serverOf(toolName)
-  const groupState = profile.groups[group] ?? ON
-  const serverState = server ? profile.servers[server] ?? ON : ON
-  const toolState = profile.tools[toolName] ?? ON
-  if (groupState === FORCE) return ON
-  if (groupState === OFF) return OFF
-  if (serverState === FORCE) return ON
-  if (serverState === OFF) return OFF
-  if (toolState === OFF) return OFF
-  if (toolState === DEFER) return DEFER
-  if (groupState === DEFER || serverState === DEFER) return DEFER
-  return ON
-}
-
-/* ── 占位 ──────────────────────────────────────────────────── */
-
-const KEEP_SCHEMA_KEYS = new Set([
-  'type', 'properties', 'required', 'items', 'enum', 'const',
-  'anyOf', 'oneOf', 'allOf', 'not', 'additionalProperties',
-  'minimum', 'maximum', 'minLength', 'maxLength', 'minItems', 'maxItems', 'pattern',
-])
-
-/** 只留必需参数的结构，可选参数交给 tool_search。 */
-function skeleton(schema) {
-  if (Array.isArray(schema)) return schema.map(skeleton)
-  if (!schema || typeof schema !== 'object') return schema
-  const out = {}
-  const required = new Set(Array.isArray(schema.required) ? schema.required : [])
-  for (const [key, value] of Object.entries(schema)) {
-    if (key === 'additionalProperties' || key === 'title' || key === 'examples' || key === 'default') continue
-    if (key === 'properties' && value && typeof value === 'object') {
-      out.properties = {}
-      for (const [name, child] of Object.entries(value)) {
-        if (!required.has(name)) continue
-        out.properties[name] = skeleton(child)
-      }
-      continue
-    }
-    out[key] = skeleton(value)
-  }
-  if (out.properties && Object.keys(out.properties).length === 0) delete out.properties
-  if (Array.isArray(out.enum) && out.enum.length > 8) delete out.enum
-  return out
-}
-
-function firstSentence(text) {
-  const clean = String(text ?? '').replace(/\s+/g, ' ').trim()
-  if (!clean) return ''
-  const cut = clean.split(/(?<=[。．！？.!?])\s*/)[0] ?? clean
-  return cut.length <= 60 ? cut : `${cut.slice(0, 58)}…`
-}
-
-/** 摘要优先级：组手写 > server 手写 > 原描述首句 > 工具名。 */
-function summaryFor(profile, toolName, description) {
-  const group = groupOf(toolName)
-  const server = serverOf(toolName)
-  return (
-    profile.summaries[server ?? ''] ??
-    profile.summaries[group] ??
-    firstSentence(description) ??
-    toolName
-  ) || toolName
-}
-
-function placehold(schema, summary) {
-  return {
-    name: schema.name,
-    description: `【延迟】${summary}（完整参数用 tool_search）`,
-    parameters: skeleton(schema.parameters ?? { type: 'object', properties: {} }),
-  }
-}
 
 /* ── 插件 ──────────────────────────────────────────────────── */
 
@@ -327,6 +59,7 @@ export function apply(ctx) {
   let catalogCache = null
   let toolSearchDispose = null
   let applying = 0
+  const envApplied = new Map()
 
   function note(source, error) {
     diagnostics.unshift({ at: new Date().toISOString(), source, message: messageOf(error) })
@@ -451,6 +184,50 @@ export function apply(ctx) {
     }
   }
 
+  /* 基线层 */
+
+  /**
+   * 环境事实按 agent 注册成运行时上下文，并且**所有 agent 都装**——子代理同样需要
+   * platform/shell/git，否则它在 Windows 上会按 POSIX 习惯写命令。
+   *
+   * 探测在注册时同步做一次并固定：这段文本每次变化都会让宿主追加一条新的快照
+   * 消息，等于每次 git 变化都重写请求前缀。会话内不再复测是有意取舍。
+   */
+  function applyEnvironment(agent) {
+    const sessionId = sessionIdOf(agent)
+    if (!sessionId || envApplied.has(sessionId)) return
+    if (!agent?.ctx?.systemPrompt?.context) return
+    try {
+      const session = sessionOf(agent)
+      const cwd = typeof session?.header?.cwd === 'string' ? session.header.cwd : undefined
+      const names = new Set(visibleSchemas(agent).map((schema) => schema.name))
+      const shellTool = names.has('pwsh') ? 'pwsh' : names.has('bash') ? 'bash' : null
+      const facts = probeEnvironment({ cwd, shellTool })
+      const text = environmentFactsText(facts)
+      const dispose = agent.ctx.systemPrompt.context({
+        name: ENVIRONMENT_CONTEXT_NAME,
+        order: ENVIRONMENT_CONTEXT_ORDER,
+        interpolate: false,
+        text: () => (state.baseline.environmentFacts ? text : ''),
+      })
+      envApplied.set(sessionId, { dispose, facts })
+    } catch (error) {
+      note('environment', error)
+    }
+  }
+
+  function releaseEnvironment(agent) {
+    const sessionId = sessionIdOf(agent)
+    const entry = sessionId ? envApplied.get(sessionId) : null
+    if (!entry) return
+    envApplied.delete(sessionId)
+    try {
+      entry.dispose()
+    } catch (error) {
+      note('environment dispose', error)
+    }
+  }
+
   /* 应用 */
 
   function planFor(profile, definitions, extraNames, previousOriginals) {
@@ -531,7 +308,11 @@ export function apply(ctx) {
           const section = {
             name: PERSONA_SECTION,
             order: agentCtx.systemPrompt.getSectionOrder(PERSONA_ORDER_NAME),
-            text: profile.prompt.text,
+            // complete 段会成为唯一的 prompt 段，全局基线段在那时全部失效；
+            // 只有在这里并进去，才能保证「任何新会话都含行为契约」。
+            text: profile.prompt.mode === 'complete'
+              ? composeCompletePrompt(profile.prompt.text, state.baseline)
+              : profile.prompt.text,
             interpolate: false,
           }
           if (profile.prompt.mode === 'complete') section.complete = true
@@ -810,6 +591,7 @@ export function apply(ctx) {
       profiles: state.profiles,
       lastUsedId: state.lastUsedId,
       sessions: state.sessions,
+      baseline: state.baseline,
       presets: catalog.presets,
       defaultPreset: catalog.defaultPreset,
       tools: catalog.tools,
@@ -899,7 +681,15 @@ export function apply(ctx) {
    * 拿不到才退回 loopbackOnly。
    */
   function guard(request, response) {
-    const fence = Reflect.get(ctx, 'connection')
+    // connection 不在 inject 名单里，不能按属性取：Cordis 对未声明服务的属性访问会直接抛
+    // `cannot get property "connection" without inject`；ctx.get 在缺失时返回 undefined。
+    let fence
+    try {
+      fence = ctx.get('connection')
+    } catch (error) {
+      note('connection', error)
+      fence = undefined
+    }
     if (typeof fence?.requestRejection === 'function') {
       const rejection = fence.requestRejection(request)
       if (rejection !== undefined) {
@@ -1031,6 +821,15 @@ export function apply(ctx) {
       if (!agent) return sendJson(response, 404, { ok: false, error: 'no live agent' })
       const assembly = await ctx.systemPrompt.assemble({ agent, scope: agent })
       const tools = assembly.tools ?? []
+      // 段/上下文的名单与体量：面板与验收都靠它确认基线段真的进了装配，而不是只写在状态里。
+      const sections = (assembly.sections ?? []).map((section) => ({
+        name: section.name,
+        chars: String(section.text ?? '').length,
+      }))
+      const contexts = (assembly.contexts ?? []).map((context) => ({
+        name: context.name,
+        chars: String(context.text ?? '').length,
+      }))
       const deferred = planOf(agent)?.plan?.deferred ?? new Map()
       const sample = tools
         .filter((tool) => deferred.has(tool.name))
@@ -1053,6 +852,8 @@ export function apply(ctx) {
         count: tools.length,
         deferred: deferred.size,
         totals: { original: originalChars, placeholder: placeholderChars },
+        sections,
+        contexts,
         sample,
       })
     } catch (error) {
@@ -1063,6 +864,17 @@ export function apply(ctx) {
   /* 生命周期 */
 
   load()
+
+  // 基线三段是全局段：与档位无关，每个 agent 的装配都会带上；开关关闭时段文本为空，
+  // 装配层会丢弃空段。用函数读 state，所以面板改开关不需要重新注册。
+  const baselineSectionDisposers = []
+  for (const section of baselineSections(() => state.baseline)) {
+    try {
+      baselineSectionDisposers.push(ctx.systemPrompt.section(section))
+    } catch (error) {
+      note('baseline section', error)
+    }
+  }
 
   // webServer 是宿主补挂的服务：插件启动时它可能还没就绪，必须用 inject 等它出现。
   ctx.inject(['webServer'], (sctx) => {
@@ -1097,6 +909,7 @@ export function apply(ctx) {
 
   ctx.on('agent/created', ({ agent }) => {
     try {
+      applyEnvironment(agent)
       if (!isRootAgent(agent)) return
       const sessionId = sessionIdOf(agent)
       if (!sessionId) return
@@ -1115,6 +928,7 @@ export function apply(ctx) {
   })
 
   ctx.on('agent/disposed', ({ agent }) => {
+    releaseEnvironment(agent)
     release(agent)
   })
 
@@ -1184,6 +998,7 @@ export function apply(ctx) {
   // 插件重载后，已有会话的 restriction 会随旧 ctx 一起撤销，这里补一次。
   for (const agent of ctx.agents.list()) {
     try {
+      applyEnvironment(agent)
       if (!isRootAgent(agent)) continue
       const sessionId = sessionIdOf(agent)
       const recorded = sessionId ? state.sessions[sessionId] : undefined
@@ -1194,6 +1009,21 @@ export function apply(ctx) {
   }
 
   ctx.effect(() => () => {
+    for (const dispose of baselineSectionDisposers) {
+      try {
+        dispose()
+      } catch (error) {
+        note('baseline section dispose', error)
+      }
+    }
+    for (const entry of envApplied.values()) {
+      try {
+        entry.dispose()
+      } catch (error) {
+        note('environment dispose', error)
+      }
+    }
+    envApplied.clear()
     if (writeTimer) {
       clearTimeout(writeTimer)
       writeTimer = null

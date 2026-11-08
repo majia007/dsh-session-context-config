@@ -27,69 +27,102 @@ window.__ModuleLoader__.load({
       [DEFER, '延迟', 'warn'],
       [OFF, '隐藏', 'mute'],
     ]
+    // 第三列是复选行下方的说明；通道说明只解释「拦什么」，记录保留由行尾统一提示。
     const CHANNELS = [
-      ['workspaceInstructions', '拦截工作区指令'],
-      ['timeContext', '拦截时间采样'],
+      ['workspaceInstructions', '拦截工作区指令', '不把 AGENTS.md 等工作区指令发给模型。'],
+      ['timeContext', '拦截时间采样', '不把「Time sampled …」时间采样发给模型。'],
+    ]
+    const PROMPT_MODES = [
+      ['inherit', '沿用'],
+      ['replace', '替换人设段'],
+      ['complete', '极简（仅这段）'],
     ]
 
     const CSS = `
 .cp-root{height:100%;min-height:0;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}
 .cp-head{flex:none;display:flex;align-items:flex-start;gap:12px;padding:18px 22px 14px;border-bottom:1px solid var(--dsw-alias-border-l1)}
-.cp-headIcon{flex:none;width:34px;height:34px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);display:flex;align-items:center;justify-content:center}
+.cp-headIcon{flex:none;width:34px;height:34px;border-radius:var(--dsw-radius-sm,8px);background:var(--dsw-alias-bg-layer-2);display:flex;align-items:center;justify-content:center}
 .cp-headText{flex:1;min-width:0}
 .cp-title{margin:0;font-size:16px;font-weight:600;line-height:24px}
 .cp-sub{margin:3px 0 0;font-size:12px;color:var(--dsw-alias-label-secondary)}
-.cp-iconBtn{flex:none;width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.cp-iconBtn{flex:none;width:30px;height:30px;border:0;border-radius:var(--dsw-radius-sm,8px);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center}
 .cp-iconBtn:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
 .cp-scroll{flex:1;min-height:0;overflow:auto;padding:16px 22px 26px;display:flex;flex-direction:column;gap:14px}
-.cp-card{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);border-radius:12px;padding:14px 16px}
+.cp-card{border:.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);border-radius:var(--dsw-radius-lg,16px);padding:14px 16px}
 .cp-cardTitle{margin:0 0 10px;font-size:13px;font-weight:600}
 .cp-chipRow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.cp-chip{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:999px;padding:5px 13px;font:inherit;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.cp-chip{border:.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:999px;corner-shape:round;padding:5px 13px;font:inherit;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .cp-chip:hover{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2)}
 .cp-chip[data-on="1"]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-2);font-weight:600}
 .cp-link{border:0;background:none;color:var(--dsw-alias-brand-primary);font:inherit;font-size:12px;cursor:pointer;padding:4px 2px}
 .cp-link:hover{text-decoration:underline}
 .cp-link[disabled]{color:var(--dsw-alias-state-idle-primary);cursor:default;text-decoration:none}
 .cp-field{display:flex;flex-direction:column;gap:6px;margin-top:10px}
-.cp-input,.cp-textarea,.cp-search{box-sizing:border-box;width:100%;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;outline:none}
-.cp-input:focus,.cp-textarea:focus,.cp-search:focus{border-color:var(--dsw-alias-brand-primary)}
-.cp-textarea{min-height:96px;resize:vertical;line-height:19px}
-.cp-seg{display:inline-flex;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;overflow:hidden;background:var(--dsw-alias-bg-base);flex:none}
-.cp-seg button{border:0;background:none;font:inherit;font-size:11px;line-height:22px;padding:0 9px;cursor:pointer;color:var(--dsw-alias-label-secondary);white-space:nowrap}
-.cp-seg button+button{border-left:1px solid var(--dsw-alias-border-l1)}
-.cp-seg button:hover{background:var(--dsw-alias-bg-layer-2)}
-.cp-seg button[data-on="1"]{background:var(--dsw-alias-brand-primary);color:#fff;font-weight:600}
-.cp-seg button[data-on="1"][data-tone="warn"]{background:#c98a1f}
-.cp-seg button[data-on="1"][data-tone="mute"]{background:#6b7280}
-.cp-seg button[data-on="1"][data-tone="ok"]{background:var(--dsw-alias-state-success-primary)}
-.cp-seg.sm button{font-size:10.5px;padding:0 7px}
-.cp-eff{font-size:11px;border-radius:999px;padding:1px 8px;white-space:nowrap;border:1px solid transparent}
-.cp-eff[data-s="on"]{color:var(--dsw-alias-state-success-primary);background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-l1)}
-.cp-eff[data-s="defer"]{color:#a8720f;background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-l1)}
-.cp-eff[data-s="off"]{color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-l1)}
-.cp-groupHead{display:flex;align-items:center;gap:8px;padding:8px 2px}
-.cp-groupName{font-size:12.5px;font-weight:600}
+.cp-input,.cp-textarea,.cp-search{box-sizing:border-box;width:100%;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:22px;outline:none}
+.cp-input,.cp-search{height:32px;padding:0 8px}
+.cp-textarea{padding:8px 10px;min-height:96px;resize:vertical}
+.cp-input:focus,.cp-textarea:focus,.cp-search:focus{border-color:var(--dsw-alias-state-business-primary)}
+/* 分段选择：复刻 DSH SegmentedControl（ui-primitives）。浅色轨道 + 浮起的白色
+   选中片，选中态不反色成品牌色；状态色调只染文字，颜色全部走 token。 */
+.cp-choice{display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;flex:none;padding:4px;border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));--dsw-elevation-stroke-color:var(--dsw-alias-border-l1)}
+.cp-choiceOpt{position:relative;display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 12px;border-radius:var(--dsw-radius-sm,8px);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;font-weight:500;white-space:nowrap;cursor:pointer;transition:background-color .12s ease,color .12s ease}
+.cp-choiceOpt[data-on="1"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-soft,0 1px 2px rgba(16,24,40,.08))}
+.cp-choiceOpt[data-tone="ok"][data-on="1"]{color:var(--dsw-alias-state-success-primary)}
+.cp-choiceOpt[data-tone="warn"][data-on="1"]{color:var(--dsw-alias-state-warn-primary)}
+.cp-choiceOpt[data-tone="mute"][data-on="1"]{color:var(--dsw-alias-label-secondary)}
+.cp-choiceInput{position:absolute;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
+.cp-choiceOpt:has(.cp-choiceInput:focus-visible){outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
+.cp-choice.sm{padding:2px}
+.cp-choice.sm .cp-choiceOpt{height:24px;min-width:40px;padding:0 8px;font-size:12px;line-height:18px}
+@media (hover:hover){.cp-choiceOpt:hover{color:var(--dsw-alias-label-primary)}}
+@media (prefers-reduced-motion:reduce){.cp-choiceOpt{transition:none}}
+.cp-groupHead{display:flex;align-items:center;gap:8px;padding:0 0 8px;margin-bottom:2px;border-bottom:.5px solid var(--dsw-alias-border-l2)}
+.cp-groupName{font-size:13px;font-weight:600}
 .cp-count{font-size:11px;color:var(--dsw-alias-label-secondary)}
 .cp-push{margin-left:auto}
-.cp-serverRow{display:flex;align-items:center;gap:8px;padding:5px 8px;margin:4px 0 4px 12px;border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
-.cp-serverRow .srv{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px}
-.cp-tool{display:flex;align-items:center;gap:8px;padding:4px 2px 4px 26px;border-radius:7px}
-.cp-tool:hover{background:var(--dsw-alias-bg-layer-2)}
-.cp-tool .nm{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
-.cp-tool .zh{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px}
-.cp-tool .cost{font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
+.cp-serverRow{display:flex;align-items:center;gap:8px;padding:4px 8px;margin:8px -8px 2px;border-radius:var(--dsw-radius-sm,8px);background:var(--dsw-alias-bg-layer-2)}
+.cp-serverRow .srv{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:18px}
+/* 工具行：五列定宽。名字列与描述列左缘在所有行对齐，token 与状态控件贴右；
+   长描述交给省略号，不再按字符数硬切。「生效」列只在被组/server 改写时出现，
+   仍保留固定宽度，右缘不会跳。 */
+.cp-tool{display:grid;grid-template-columns:minmax(120px,148px) minmax(0,1fr) 46px 42px auto;align-items:center;gap:10px;padding:5px 8px;margin:0 -8px;border-radius:var(--dsw-radius-sm,8px)}
+.cp-tool:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
+.cp-tool .nm{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-tool .zh{min-width:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp-tool .cost{font-size:11px;line-height:18px;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-secondary));font-variant-numeric:tabular-nums;text-align:right}
+.cp-shift{flex:none;width:42px;font-size:11px;line-height:18px;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+.cp-shift[data-s="on"]{color:var(--dsw-alias-state-success-primary)}
+.cp-shift[data-s="defer"]{color:var(--dsw-alias-state-warn-primary)}
+.cp-shift[data-s="off"]{color:var(--dsw-alias-label-tertiary)}
+.cp-clear{display:inline-flex;align-items:center;border:0;background:none;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));font:inherit;font-size:12px;line-height:18px;padding:4px 6px;margin:2px 0 0 -6px;border-radius:var(--dsw-radius-xs,4px);cursor:pointer}
+.cp-clear:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));color:var(--dsw-alias-label-primary)}
 .cp-foot{flex:none;display:flex;align-items:center;gap:10px;padding:12px 22px;border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1)}
 .cp-footNote{flex:1;min-width:0;font-size:12px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cp-btn{font:inherit;font-size:12px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
-.cp-btn:hover{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2)}
-.cp-btn[data-kind="primary"]{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:#fff;font-weight:600}
-.cp-btn[disabled]{opacity:.45;cursor:default}
+.cp-btn{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border:0;border-radius:var(--dsw-radius-md,12px);box-shadow:inset 0 0 0 .5px var(--dsw-alias-border-l3);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:22px;cursor:pointer}
+.cp-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.cp-btn[data-kind="primary"]{box-shadow:none;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}
+.cp-btn[data-kind="primary"]:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}
+.cp-btn[disabled]{opacity:.4;cursor:not-allowed}
 .cp-empty{padding:16px 2px;font-size:12px;color:var(--dsw-alias-label-secondary)}
 .cp-error{font-size:12px;color:var(--dsw-alias-state-error-primary);word-break:break-word}
 .cp-sep{height:1px;background:var(--dsw-alias-border-l1);margin:10px 0}
-.cp-pop{position:fixed;z-index:2000;min-width:300px;max-width:380px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-overlay);box-shadow:0 16px 40px rgba(16,24,40,.18);overflow:hidden}
-.cp-popHead{padding:9px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);font-size:12px;color:var(--dsw-alias-label-secondary);display:flex;justify-content:space-between;gap:12px}
+/* 复选行：label 包住 input，点整行文字即可切换；勾选框几何抄 DSH Checkbox
+   （16px 原生框 + accent-color）。负外边距让勾选框与卡片内容左缘对齐，悬停面
+   仍外扩到卡片内边距里。 */
+.cp-checks{display:flex;flex-direction:column;gap:2px;margin:4px -8px 0}
+.cp-check{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:var(--dsw-radius-sm,8px);cursor:pointer}
+.cp-check:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}
+.cp-check input{flex:none;width:16px;height:16px;margin:2px 0 0;accent-color:var(--dsw-alias-brand-primary);cursor:inherit}
+.cp-check input:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
+.cp-checkBody{display:flex;flex-direction:column;gap:1px;min-width:0}
+.cp-checkLabel{font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary)}
+.cp-checkDesc{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary))}
+.cp-hint{margin:4px 0 0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary))}
+.cp-checks + .cp-hint{margin-left:24px}
+.cp-divider{height:.5px;background:var(--dsw-alias-border-l2,var(--dsw-alias-border-l1));margin:14px 0 10px}
+.cp-subhead{margin:0 0 2px;font-size:12px;line-height:18px;font-weight:500;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary))}
+.cp-pop{position:fixed;z-index:2000;box-sizing:border-box;min-width:min(300px,calc(100vw - 24px));max-width:min(460px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;border:0;border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-specific-menu,var(--dsw-alias-bg-overlay));-webkit-backdrop-filter:var(--dsw-menu-backdrop-filter);backdrop-filter:var(--dsw-menu-backdrop-filter);box-shadow:var(--dsw-elevation-prominent,0 16px 40px rgba(16,24,40,.18));--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
+.cp-popHead{padding:9px 12px;border-bottom:.5px solid var(--dsw-alias-border-l2);font-size:12px;color:var(--dsw-alias-label-secondary);display:flex;justify-content:space-between;gap:12px}
 /* 触发按钮：与 DSH 自带的「工作区 / 模式」chip 同几何 —— 28 高、8px 内边距、
    radius-sm、13/20 字、之间 4px。悬停与展开用宿主同一层 hover fill。 */
 .cp-seat{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:min(100%,240px);min-height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm,8px);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;line-height:20px;font-weight:500;white-space:nowrap;cursor:pointer}
@@ -127,10 +160,10 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
 .cp-status{padding:10px 12px}
 /* 工具清单：可视高度固定（约 12 行），工具再多也在里面滚，菜单不再跟着长高。 */
 .cp-tools{max-height:224px;overflow-y:auto;overscroll-behavior:contain;padding-right:2px;margin-top:2px}
-.cp-statusRow{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:2px 0}
-.cp-sw{width:7px;height:7px;border-radius:50%;flex:none}
+.cp-statusRow{display:flex;align-items:center;gap:8px;font-size:11px;padding:2px 0}
+.cp-sw{width:7px;height:7px;border-radius:50%;corner-shape:round;flex:none}
 .cp-sw[data-s="on"]{background:var(--dsw-alias-state-success-primary)}
-.cp-sw[data-s="defer"]{background:#c98a1f}
+.cp-sw[data-s="defer"]{background:var(--dsw-alias-state-warn-primary)}
 .cp-sw[data-s="off"]{background:var(--dsw-alias-state-error-primary)}
 .cp-statusRow .nm{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px}
 .cp-statusRow .st{margin-left:auto;color:var(--dsw-alias-label-secondary)}
@@ -259,37 +292,47 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
 
     /* ── 基础组件 ───────────────────────────────────────── */
 
-    function Seg({ value, options, onChange, small, disabled }) {
+    /**
+     * 分段选择：原生 radio 藏在 label 里，点整段即选中，键盘方向键沿用原生
+     * radiogroup 行为。外观照 DSH SegmentedControl：浅色轨道 + 浮起的白色选中片。
+     */
+    function Choice({ value, options, onChange, name, label, small }) {
       return h(
         'div',
-        { className: `cp-seg${small ? ' sm' : ''}` },
-        ...options.map(([id, label, tone]) =>
+        { className: `cp-choice${small ? ' sm' : ''}`, role: 'radiogroup', 'aria-label': label },
+        ...options.map(([id, text, tone]) =>
           h(
-            'button',
-            {
-              key: id,
-              type: 'button',
-              disabled,
-              'data-on': value === id ? '1' : '0',
-              'data-tone': tone || undefined,
-              onClick: (event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                if (!disabled) onChange(id)
-              },
-            },
-            label,
+            'label',
+            { key: id, className: 'cp-choiceOpt', 'data-on': value === id ? '1' : '0', 'data-tone': tone || undefined },
+            h('input', {
+              className: 'cp-choiceInput',
+              type: 'radio',
+              name,
+              checked: value === id,
+              onChange: () => onChange(id),
+            }),
+            h('span', null, text),
           ),
         ),
       )
     }
 
-    const STATE_LABEL = { on: '注入', defer: '延迟', off: '隐藏', force: '强制开启' }
-
-    function Eff({ state }) {
-      if (!state) return null
-      return h('span', { className: 'cp-eff', 'data-s': state }, STATE_LABEL[state] ?? state)
+    /** 复选行：label 包住 input，点文字就能切换，键盘/读屏语义来自原生控件。 */
+    function CheckRow({ checked, onChange, label, desc }) {
+      return h(
+        'label',
+        { className: 'cp-check' },
+        h('input', { type: 'checkbox', checked, onChange: (event) => onChange(event.target.checked) }),
+        h(
+          'span',
+          { className: 'cp-checkBody' },
+          h('span', { className: 'cp-checkLabel' }, label),
+          desc ? h('span', { className: 'cp-checkDesc' }, desc) : null,
+        ),
+      )
     }
+
+    const STATE_LABEL = { on: '注入', defer: '延迟', off: '隐藏', force: '强制开启' }
 
     function Glyph({ size = 18, className }) {
       return h(
@@ -456,7 +499,11 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
 
       useEffect(() => {
         if (!snapshot || draft) return
-        setDraft(JSON.parse(JSON.stringify({ profiles: snapshot.profiles, lastUsedId: snapshot.lastUsedId })))
+        setDraft(JSON.parse(JSON.stringify({
+          profiles: snapshot.profiles,
+          lastUsedId: snapshot.lastUsedId,
+          baseline: snapshot.baseline ?? {},
+        })))
         setSelectedId(snapshot.profiles[0]?.id ?? null)
       }, [snapshot, draft])
 
@@ -478,8 +525,18 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
 
       const dirty = useMemo(() => {
         if (!snapshot || !draft) return false
-        return JSON.stringify(draft) !== JSON.stringify({ profiles: snapshot.profiles, lastUsedId: snapshot.lastUsedId })
+        return JSON.stringify(draft) !== JSON.stringify({
+          profiles: snapshot.profiles,
+          lastUsedId: snapshot.lastUsedId,
+          baseline: snapshot.baseline ?? {},
+        })
       }, [snapshot, draft])
+
+      /** 基线是插件级开关（与档位无关），所以改的是 draft.baseline 而不是某个档位。 */
+      const patchBaseline = useCallback((key, value) => {
+        setDraft((current) => (current ? { ...current, baseline: { ...current.baseline, [key]: value } } : current))
+        setStatus(null)
+      }, [])
 
       const patch = useCallback(
         (mutate) => {
@@ -568,7 +625,11 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
         try {
           const result = await request(API_STATE, { method: 'POST', body: JSON.stringify(draft) })
           store.snapshot = result.snapshot
-          setDraft(JSON.parse(JSON.stringify({ profiles: result.snapshot.profiles, lastUsedId: result.snapshot.lastUsedId })))
+          setDraft(JSON.parse(JSON.stringify({
+            profiles: result.snapshot.profiles,
+            lastUsedId: result.snapshot.lastUsedId,
+            baseline: result.snapshot.baseline ?? {},
+          })))
           setStatus('已保存')
           emit()
         } catch (cause) {
@@ -613,11 +674,12 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
         const groupDeferred =
           groupState === DEFER ||
           (groupState !== OFF && groupState !== FORCE && list.some((tool) => effective(profile, tool) === DEFER))
+        const customized = list.some((tool) => (profile.tools?.[tool.name] ?? ON) !== ON)
         const summaryInput = (key, hint) =>
           summaryKey === key
             ? h(
                 'div',
-                { className: 'cp-field', style: { margin: '2px 0 8px 12px' } },
+                { className: 'cp-field', style: { margin: '4px 0 8px' } },
                 h('input', {
                   className: 'cp-input',
                   value: profile.summaries?.[key] ?? '',
@@ -649,40 +711,58 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
                   '摘要',
                 )
               : null,
-            h(Seg, { value: groupState, options: GROUP_STATES, onChange: (next) => setGroupState(group.id, next) }),
+            h(Choice, {
+              value: groupState,
+              options: GROUP_STATES,
+              onChange: (next) => setGroupState(group.id, next),
+              name: `scc-group-${group.id}`,
+              label: `${group.title}组状态`,
+            }),
           ),
           summaryInput(group.id, '目录摘要（默认取首个工具描述的首句）'),
           group.id === 'mcp'
             ? servers.map((serverId) => {
                 const serverTools = list.filter((tool) => tool.server === serverId)
                 const serverState = profile.servers?.[serverId] ?? ON
+                const serverEffective = effective(profile, { name: '', group: group.id, server: serverId })
                 return h(
                   'div',
                   { key: serverId },
                   h(
                     'div',
                     { className: 'cp-serverRow' },
-                    h('span', { className: 'srv' }, serverId),
+                    h('span', { className: 'srv', title: serverId }, serverId),
                     h('span', { className: 'cp-count' }, serverTools.length > 0 ? `${serverTools.length} 个` : '未上线'),
                     h('span', { className: 'cp-push' }),
-                    h(Eff, { state: effective(profile, { name: '', group: group.id, server: serverId }) }),
                     h(
                       'button',
                       { className: 'cp-link', type: 'button', title: '目录摘要', onClick: () => setSummaryKey(summaryKey === serverId ? null : serverId) },
                       '摘要',
                     ),
-                    h(Seg, { small: true, value: serverState, options: GROUP_STATES, onChange: (next) => setServerState(serverId, next) }),
+                    h(
+                      'span',
+                      { className: 'cp-shift', 'data-s': serverEffective, title: serverEffective !== serverState ? `生效：${STATE_LABEL[serverEffective]}` : undefined },
+                      serverEffective !== serverState ? `→${serverEffective === ON ? '开启' : STATE_LABEL[serverEffective]}` : '',
+                    ),
+                    h(Choice, {
+                      small: true,
+                      value: serverState,
+                      options: GROUP_STATES,
+                      onChange: (next) => setServerState(serverId, next),
+                      name: `scc-server-${serverId}`,
+                      label: `${serverId} 状态`,
+                    }),
                   ),
                   summaryInput(serverId, `目录摘要（server ${serverId}）`),
                   ...serverTools.map((tool) => toolRow(tool, profile, setToolState)),
                 )
               })
             : list.map((tool) => toolRow(tool, profile, setToolState)),
-          group.id === 'mcp'
+          group.id === 'mcp' || !customized
             ? null
             : h(
                 'button',
-                { className: 'cp-link', type: 'button', onClick: () => clearGroupTools(group.id), style: { marginTop: 4 } },
+                { className: 'cp-clear', type: 'button', onClick: () => clearGroupTools(group.id) },
                 '清除本组工具级设置',
               ),
         )
@@ -772,58 +852,16 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
             'section',
             { className: 'cp-card' },
             h('h2', { className: 'cp-cardTitle' }, '系统提示词'),
-            h(
-              'div',
-              { className: 'cp-chipRow' },
-              ...[
-                ['inherit', '沿用'],
-                ['replace', '替换人格段'],
-                ['complete', '极简（仅这段）'],
-              ].map(([mode, name]) =>
-                h(
-                  'button',
-                  { key: mode, className: 'cp-chip', 'data-on': profile.prompt.mode === mode ? '1' : '0', onClick: () => patch((target) => { target.prompt.mode = mode }) },
-                  name,
-                ),
-              ),
-              h('span', { className: 'cp-push' }),
-              h('input', {
-                type: 'checkbox',
-                checked: profile.runtimeContext !== false,
-                onChange: (event) => {
-                  const value = event.target.checked
-                  patch((target) => {
-                    target.runtimeContext = value
-                  })
-                },
-              }),
-              h('span', { className: 'cp-mini' }, '注入运行时上下文'),
-            ),
-            h(
-              'div',
-              { className: 'cp-chipRow', style: { marginTop: 6 } },
-              ...CHANNELS.map(([key, label]) =>
-                h(
-                  React.Fragment,
-                  { key },
-                  h('input', {
-                    type: 'checkbox',
-                    checked: profile.channels?.[key] === OFF,
-                    title: '拦截只影响发给模型的请求；消息仍写入会话记录',
-                    onChange: (event) => {
-                      const blocked = event.target.checked
-                      patch((target) => {
-                        target.channels = target.channels ?? {}
-                        if (blocked) target.channels[key] = OFF
-                        else delete target.channels[key]
-                      })
-                    },
-                  }),
-                  h('span', { className: 'cp-mini' }, label),
-                ),
-              ),
-              h('span', { className: 'cp-mini' }, '（只滤请求，会话记录保留）'),
-            ),
+            h(Choice, {
+              value: profile.prompt.mode,
+              options: PROMPT_MODES,
+              onChange: (mode) =>
+                patch((target) => {
+                  target.prompt.mode = mode
+                }),
+              name: 'scc-prompt-mode',
+              label: '系统提示词来源',
+            }),
             profile.prompt.mode === 'inherit'
               ? null
               : h('div', { className: 'cp-field' }, h('textarea', {
@@ -838,6 +876,81 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
                     })
                   },
                 })),
+            h('div', { className: 'cp-divider' }),
+            h('div', { className: 'cp-subhead' }, '上下文注入'),
+            h(
+              'div',
+              { className: 'cp-checks' },
+              h(CheckRow, {
+                checked: profile.runtimeContext !== false,
+                onChange: (value) =>
+                  patch((target) => {
+                    target.runtimeContext = value
+                  }),
+                label: '注入运行时上下文',
+                desc: '控制快照里的可选段（文件策略、批准策略等）；当前工作目录始终保留。',
+              }),
+              ...CHANNELS.map(([key, label, desc]) =>
+                h(CheckRow, {
+                  key,
+                  checked: profile.channels?.[key] === OFF,
+                  onChange: (blocked) =>
+                    patch((target) => {
+                      target.channels = target.channels ?? {}
+                      if (blocked) target.channels[key] = OFF
+                      else delete target.channels[key]
+                    }),
+                  label,
+                  desc,
+                }),
+              ),
+            ),
+            h('p', { className: 'cp-hint' }, '拦截只影响发给模型的请求；消息仍写入会话记录，在轨迹里仍可见。'),
+          ),
+
+          h(
+            'section',
+            { className: 'cp-card' },
+            h('h2', { className: 'cp-cardTitle' }, '基线（所有新会话）'),
+            h(
+              'p',
+              { className: 'cp-hint' },
+              '与档位无关：新会话总会收到这些内容，关闭后从下一场新会话起生效。',
+            ),
+            h(
+              'div',
+              { className: 'cp-checks' },
+              h(CheckRow, {
+                checked: draft?.baseline?.contract !== false,
+                onChange: (value) => patchBaseline('contract', value),
+                label: '行为契约',
+                desc: '不可逆动作先确认、如实汇报、信息足够就行动、跟随周边风格等 6 条。',
+              }),
+              h(CheckRow, {
+                checked: draft?.baseline?.cardReceipt !== false,
+                onChange: (value) => patchBaseline('cardReceipt', value),
+                label: '卡片回执',
+                desc: 'UI 已渲染卡片时只回一句确认，不复述字段；失败仍给细节。',
+              }),
+              h(CheckRow, {
+                checked: draft?.baseline?.untrustedFiles !== false,
+                onChange: (value) => patchBaseline('untrustedFiles', value),
+                label: '不可信下载',
+                desc: '隔离目录、路径传参、python -I 三条读取规则。',
+              }),
+              h(CheckRow, {
+                checked: draft?.baseline?.environmentFacts !== false,
+                onChange: (value) => patchBaseline('environmentFacts', value),
+                label: '环境事实',
+                desc: 'platform / shell / git 状态，每会话探测一次。',
+              }),
+              h(CheckRow, {
+                checked: draft?.baseline?.inCompletePrompt !== false,
+                onChange: (value) => patchBaseline('inCompletePrompt', value),
+                label: 'complete 档位也保留基线',
+                desc: 'complete 会独占 developer 消息，勾选表示把基线并进那段文本。',
+              }),
+            ),
           ),
 
           ...groupRows,
@@ -864,15 +977,31 @@ div:has(> [data-slot="conversation.hero.options"]){margin-left:0}
     function toolRow(tool, profile, setToolState) {
       const state = effective(profile, tool)
       const raw = profile.tools?.[tool.name] ?? ON
+      // 生效状态被组/server 改写时，只在固定宽度的小列里标出「→延迟」这类结果；
+      // 未改写时留空，避免每行重复一个与选中段相同的徽标。
       return h(
         'div',
         { className: 'cp-tool', key: tool.name },
-        h('span', { className: 'nm' }, tool.name),
-        tool.server ? null : h('span', { className: 'zh' }, tool.description?.slice(0, 44) ?? ''),
-        h('span', { className: 'cp-push' }),
+        h('span', { className: 'nm', title: tool.name }, tool.name),
+        h('span', { className: 'zh' }, tool.server ? '' : tool.description ?? ''),
         h('span', { className: 'cost' }, `≈${formatTokens(tool.tokens)}`),
-        h('span', { className: 'cp-eff', 'data-s': state, title: `记录：${STATE_LABEL[raw]}` }, STATE_LABEL[state]),
-        h(Seg, { small: true, value: raw, options: TOOL_STATES, onChange: (next) => setToolState(tool.name, next) }),
+        h(
+          'span',
+          {
+            className: 'cp-shift',
+            'data-s': state,
+            title: state !== raw ? `生效：${STATE_LABEL[state]}（工具级记录：${STATE_LABEL[raw]}）` : undefined,
+          },
+          state !== raw ? `→${state === ON ? '开启' : STATE_LABEL[state]}` : '',
+        ),
+        h(Choice, {
+          small: true,
+          value: raw,
+          options: TOOL_STATES,
+          onChange: (next) => setToolState(tool.name, next),
+          name: `scc-tool-${tool.name}`,
+          label: `${tool.name} 状态`,
+        }),
       )
     }
 

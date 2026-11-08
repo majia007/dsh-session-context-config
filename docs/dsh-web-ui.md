@@ -5,7 +5,7 @@
 ## 0. 先记住三条
 
 1. **类名不可当契约**：DSH 的组件样式走 CSS Modules，产物类名带哈希（例如 `.heroOptions` 编译后是 `an3WzG_heroOptions`，逐版本变化）。能稳定用的只有 **设计 token（`--dsw-*`）** 和 **槽位锚点 `[data-slot="<slot key>"]`**。
-2. **宿主组件不能 import**：Client bundle 的 `require` 只有 react / react-dom（见第 7 节）。`ui-primitives` 的 `Menu`、图标、`Tooltip` 都拿不到，只能照着它的 CSS 数值与结构重写。
+2. **宿主 `ui-primitives` 可以 import**（2026-11-08 实证修正，旧版此处断言有误）：它是平台种子词——`packages/client/web/src/platform.ts` 的 `PLATFORM_MODULES` 含该行，`require` 第一跳命中种子表——任何 client bundle（含本项目手写 `client.js`）都能拿到 `Menu`、图标、`Tooltip`、`Checkbox`、`SegmentedControl` 等。本项目组件仍是自绘（历史设计、已验证），不是拿不到；真正拿不到的是表外 specifier（见第 7 节）。
 3. **本文数值是抄写值**：真正的源头是 DSH 源码（第 6 节源码地图）。宿主升级后如果观感不对，先回源码复核，再同步本文与 `client.js` 的 `CSS` 块。
 
 ## 1. 设计 token（可直接用在我们的 CSS 里）
@@ -80,6 +80,21 @@
 - 卡片内边距 4px 时，内嵌的状态块要用 `padding:4px 8px` 才能和行的左右边对齐。
 - 清单类区域（工具状态那种可能上百条的列表）用**固定可视高度 + 内部滚动**，不要截断成「另外 N 个」：区域高度稳定，菜单不会再随数据长高。本项目对应 `.cp-tools`。
 
+### 2.4 复选行与分段选择（配置页里的原生控件）
+
+`Checkbox` / `SegmentedControl` 可以从 `ui-primitives` import（第 0 节）；本项目照着 `ui-primitives` 的几何自绘，是历史设计选择：
+
+- **复选行**：`<label>` 包住 `input[type=checkbox]` + 文字，点整行文字即可切换。勾选框 16×16、`accent-color: var(--dsw-alias-brand-primary)`、与文字 `gap: 8px`；DSH 原版 gap 是 6px，本项目 13px 字号用 8px。出处 `ui-primitives/src/Checkbox.tsx` + `Checkbox.module.css`。对应 `.cp-check` / `.cp-checkBody`。
+- **分段选择**：轨道 `padding: 4px`、`border-radius: var(--dsw-radius-md)`、底色 `--dsw-alias-interactive-bg-hover`；选中片高 28px、底色 `--dsw-alias-bg-layer-1`、`box-shadow: var(--dsw-elevation-soft)`（表面把 `--dsw-elevation-stroke-color` 重绑到 `border-l1`）、圆角 `--dsw-radius-sm`；未选中文字 `label-secondary`，选中 `label-primary`。出处 `ui-primitives/src/SegmentedControl.tsx` + `SegmentedControl.module.css`。对应 `.cp-choice`；`.cp-choice.sm` 把轨道内边距降到 2px、段高 24px，仅用于工具行。
+- **选中态不是实心品牌色**：DSH 的分段选中片是「抬起的浅色面」，靠阴影和轨道底色分离；状态色调（强制开启/延迟/隐藏）只染选中段文字，取 `state-success/warn/*` token。不要把选中段做成黑底白字。
+- 键盘行为：DSH 原版是 tablist + roving tabindex；本项目用原生 radio（`name` 分组、隐藏 input、label 全行可点）复刻外观，方向键与读屏语义交给浏览器，不另写 roving tabindex。
+
+### 2.5 圆角与「全圆」的 superellipse 退出
+
+`ui-theme/src/styles/corner-shape.css` 在 `@supports (corner-shape: superellipse(1.5))` 里给 `*`（含 `::before/::after`）设了 `corner-shape: superellipse(1.5)`。所以任何**不封顶**的圆角——`border-radius: 50%`、`999px`、或远大于盒子高度的 pill 半径——都必须在**同一条规则里**配 `corner-shape: round`，否则胶囊两端被切方、圆点变成超椭圆。宿主有全量 spec（`ui-theme/tests/corner-shape-styles.client.spec.ts`）只扫 `packages/`，插件不在覆盖内，只能自查。本插件对应 `.cp-chip`（999px）与 `.cp-sw`（50%）。
+
+**实心状态色块上的文字不要写 `#fff`**：前景色随主题翻转，用 `--dsw-alias-bg-layer-3` 或 `--dsw-alias-label-primary-foreground`（宿主先例 `ui-agent-preset/.../AgentPresetSection.module.css`）。
+
 ## 3. 槽位接入
 
 ### 3.1 新会话 hero 行的 DOM 形状
@@ -131,7 +146,13 @@ div:has(> [data-slot="conversation.hero.options"]) { margin-left: 0 }
 | `.cp-seat` / `.cp-seatIcon` / `.cp-seatLabel` / `.cp-seatCount` / `.cp-seatChevron` | `.workspace` / `.seat` | 计数器是本项目加的，用 12px `label-caption` |
 | `.cp-seat[data-compact="1"]` | `.label`（会话头部「模式」标签） | 22px 高、12/22、`label-tertiary`、图标 14px；仅会话头部使用 |
 | `.cp-menu` | `MenuSurface` + `Menu.module.css` 的 `.list` | 材质、圆角、4px 内边距、阴影缝合变量 |
+| `.cp-pop` / `.cp-popHead` | `MenuSurface`（同上） | 预览浮层：半径、材质、阴影与菜单一致（无描边、`--dsw-specific-menu` + backdrop、`--dsw-elevation-prominent`），只有位置由 JS 量算 |
 | `.cp-menuHead` / `.cp-menuNote` | `.label`（分组标题） | 右侧说明是本项目加的 |
+| `.cp-choice` / `.cp-choiceOpt` | `SegmentedControl` | 轨道 + 抬起的选中片；用原生 radio 取代 tablist，外观一致、键盘交给浏览器 |
+| `.cp-check` / `.cp-checkBody` | `Checkbox` | label 包 input，点文字即切换；标题 13/20 + 说明 12/18 |
+| `.cp-groupHead` / `.cp-divider` / `.cp-subhead` | 无直接对应 | 分组标题、设置分组与 0.5px `border-l2` 分隔线 |
+| `.cp-btn` | `ui-primitives` 的 Button | md 档：36px 高、14px 字、radius-md、`0 14px`；主按钮 `--dsw-alias-button-primary-fill` + 前景色（不是品牌色 + `#fff`） |
+| `.cp-tool` / `.cp-shift` / `.cp-clear` | 无直接对应 | 工具清单的定宽列：名字/描述/token/生效/状态；`.cp-shift` 仅在生效值被组或 server 改写时显示 `→延迟` 这类结果 |
 | `.cp-row` / `.cp-rowMain` / `.cp-rowName` / `.cp-rowDesc` / `.cp-rowCount` / `.cp-rowCheck` | `.item` / `.itemIcon` / `.itemLabel` / `.check` | 两行条目 + 行尾计数 + 勾 |
 | `.cp-menuSep` | `.separator` | 0.5px + `border-l2` |
 | `.cp-status` / `.cp-statusRow` / `.cp-tools` | 无直接对应 | 会话头部的工具状态清单，沿用本项目自己的紧凑排版；`.cp-tools` 是固定可视高度 + 内部滚动的清单区（全量渲染，不截断成「另外 N 个」） |
@@ -140,10 +161,10 @@ div:has(> [data-slot="conversation.hero.options"]) { margin-left: 0 }
 
 ```bash
 node --check client.js
-node scripts/smoke.mjs        # happy-dom 里渲染两个 chip 并点击，断言结构与选中态
+node scripts/smoke.mjs        # happy-dom 里渲染配置面板与两个 chip 并点击，断言结构与语义
 ```
 
-冒烟脚本覆盖不到像素，只断言结构与语义（seat 结构、`aria-checked`、勾只在选中行、头部菜单含状态块与确认块）。真相看截图：截 DSH 桌面窗口，对照 2.1/2.2 的几何自己比。**不要用系统级鼠标自动化去点**（见 AGENTS.md）。
+冒烟脚本覆盖不到像素，只断言结构与语义（seat 结构、`aria-checked`、勾只在选中行、配置面板的复选行/分段选择语义与 label 可点、头部菜单含状态块与确认块）。真相看截图：截 DSH 桌面窗口，对照 2.1/2.2/2.4 的几何自己比。**不要用系统级鼠标自动化去点**（见 AGENTS.md）。
 
 查宿主源码时最省事的几条命令（`DSH_SRC` 换成你的源码路径）：
 
@@ -164,6 +185,8 @@ rg -n "menu-surface-fill|radius-sm" packages/client/ui-theme/src/styles
 | `packages/client/ui-conversation/src/client/skeleton/ContextMeter.tsx` | 「点按钮开浮层」的完整宿主范例：portal + 外部点击关闭 + Escape |
 | `packages/client/ui-agent-preset/src/client/AgentPresetSeat.tsx` + `.module.css` | 模式 chip 与 `Menu` 的用法、菜单项两行文案 |
 | `packages/client/ui-primitives/src/Menu.module.css` / `MenuSurface.module.css` / `MenuRow.tsx` | 菜单卡片、行、勾、标题行、分隔线的全部几何 |
+| `packages/client/ui-primitives/src/Checkbox.tsx` / `Checkbox.module.css` | 复选行：16px 原生勾选框、`accent-color`、label 包 input |
+| `packages/client/ui-primitives/src/SegmentedControl.tsx` / `SegmentedControl.module.css` | 分段选择：轨道、28px 段、抬起选中片、键盘 walk |
 | `packages/client/ui-theme/src/styles/base.css` | 圆角与字体栈 |
 | `packages/client/ui-theme/src/styles/design-platform.css` | 颜色 token、菜单填充（浅 70% / 深 64%） |
 | `packages/client/ui-theme/src/styles/gradient-shadow-text.css` | elevation 三档与 `backdrop-filter` |
@@ -177,6 +200,6 @@ rg -n "menu-surface-fill|radius-sm" packages/client/ui-theme/src/styles
 | 东西 | 为什么不行 |
 |---|---|
 | CSS Module 哈希类名（`.an3WzG_heroOptions`） | 每次构建都变 |
-| `@deepseek-ai/dsh-client-ui-primitives` 的 `Menu` / 图标 / `Tooltip` | 包没有 `dsh.client` 声明、没有 `./client` 导出，不是可解析的 client module；`require` 会抛找不到模块 |
-| `@deepseek-ai/dsh-client-ui-conversation` 等宿主包的内部组件 | 同上，且内部路径不属于公开契约 |
+| `clsx` 等宿主包自己的依赖、包内子路径 specifier | 不在 `PLATFORM_MODULES` 种子表（`platform.ts`，2026-11-08 核对为 11 项）；`ui-primitives` 本体**在表内**，`require` 直接可用 |
+| `ui-conversation` 等宿主 UI 包的内部 React 组件（HeroShell 等） | 包有 `dsh.client` 声明、可作 graph row require，但 `./client` 导出面是 cordis 插件与服务契约（`apply`/`inject`/`ConversationController` 等），不导出内部组件；内部路径不属于公开契约 |
 | 宿主的 anchor-positioning 定位代码 | 依赖较新的 Chromium 特性与宿主自己的 `position-try` 变量；我们用的是 JS 量尺寸方案 |

@@ -1,9 +1,10 @@
 /**
  * Client bundle 冒烟：把 client.js 装进 `window.__ModuleLoader__` 桩，
- * 用假的 /session-context-config/api 数据在 happy-dom 里渲染两个 chip，并模拟点击。
+ * 用假的 /session-context-config/api 数据在 happy-dom 里渲染配置面板与两个 chip，
+ * 并模拟点击。
  *
- * 只断言结构与语义（seat 结构、aria-checked、勾只在选中行、头部菜单含状态块
- * 与确认块），不做像素比对——外观核对看真实窗口截图。
+ * 只断言结构与语义（seat 结构、aria-checked、勾只在选中行、分段选择/复选行的原生
+ * 语义、头部菜单含状态块与确认块），不做像素比对——外观核对看真实窗口截图。
  *
  * 依赖 DSH 源码仓库的 pnpm store：react / react-dom / happy-dom 都从那里借，
  * 免得本项目多一份 node_modules。仓库路径用环境变量 DSH_SRC 指定：
@@ -90,6 +91,7 @@ const snapshot = {
   profiles: [profile('standard', '完整', '标准档位，处理代码和资料'), profile('lean', '精简', '只留必要工具')],
   lastUsedId: 'standard',
   sessions: { s1: 'standard' },
+  baseline: { contract: true, cardReceipt: true, untrustedFiles: true, environmentFacts: true, inCompletePrompt: true },
   presets: [{ id: 'standard', name: '标准模式', tools }],
   defaultPreset: 'standard',
   tools,
@@ -185,6 +187,38 @@ check('行数 = 不处理 + 两个档位', heroRows.length === 3, String(heroRow
 check('只有选中行带勾', heroRows.filter((row) => row.querySelector('svg.cp-rowCheck') !== null).length === 1)
 check('选中行 aria-checked 正确', heroRows.find((row) => row.querySelector('.cp-rowName')?.textContent === '完整')?.getAttribute('aria-checked') === 'true')
 check('未选中行也留了勾位（计数不跳）', heroRows.find((row) => row.querySelector('.cp-rowName')?.textContent === '精简')?.querySelector('.cp-rowCheck') !== null)
+
+console.log('\n[panel] 配置面板')
+const panel = await mount('main')
+const promptCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-cardTitle')?.textContent === '系统提示词')
+const promptChoice = promptCard?.querySelector('.cp-choice')
+const promptOpts = [...(promptChoice?.querySelectorAll('.cp-choiceOpt') ?? [])]
+check('提示词来源是分段选择', promptChoice?.getAttribute('role') === 'radiogroup')
+check('三个档位都是带原生 radio 的可点 label', promptOpts.length === 3 && promptOpts.every((opt) => opt.tagName === 'LABEL' && opt.querySelector('input[type="radio"]') !== null))
+const checkRows = [...(promptCard?.querySelectorAll('.cp-check') ?? [])]
+check('系统提示词卡里三个布尔项统一为复选行', checkRows.length === 3, String(checkRows.length))
+check('复选行把 checkbox 放在文字前（左对齐格式）', checkRows.every((row) => row.firstElementChild?.matches('input[type="checkbox"]') === true))
+const runtimeBox = checkRows[0]?.querySelector('input[type="checkbox"]')
+check('运行时上下文默认勾选', runtimeBox?.checked === true)
+await click(checkRows[0]?.querySelector('.cp-checkLabel'))
+check('点 label 文字即可切换复选', runtimeBox?.checked === false)
+check('通道行各带自己的说明', checkRows[1]?.querySelector('.cp-checkDesc')?.textContent?.includes('AGENTS.md') === true)
+const toolRowEl = panel.querySelector('.cp-tool')
+const stateRadios = [...(toolRowEl?.querySelectorAll('.cp-choiceInput') ?? [])]
+check('工具状态是三元原生 radio 组', stateRadios.length === 3 && new Set(stateRadios.map((input) => input.name)).size === 1)
+check('工具行固定为名字/描述/生效/成本/状态五列', toolRowEl?.children.length === 5, String(toolRowEl?.children.length))
+check('生效列在未改写时留空但保留位置', toolRowEl?.querySelector('.cp-shift')?.textContent === '')
+check('组状态复用同一分段选择', panel.querySelector('.cp-groupHead .cp-choice') !== null)
+await click(promptOpts[2])
+check('选「极简」后出现提示词输入框', panel.querySelector('.cp-textarea') !== null)
+
+const baselineCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-cardTitle')?.textContent === '基线（所有新会话）')
+const baselineRows = [...(baselineCard?.querySelectorAll('.cp-check') ?? [])]
+check('基线卡存在且有 5 个开关', baselineRows.length === 5, String(baselineRows.length))
+check('基线开关默认全勾选', baselineRows.every((row) => row.querySelector('input[type="checkbox"]')?.checked === true))
+check('基线卡说明与档位无关', baselineCard?.textContent?.includes('与档位无关') === true)
+await click(baselineRows[0]?.querySelector('.cp-checkLabel'))
+check('关掉行为契约后按钮进入未保存态', panel.querySelector('.cp-footNote')?.textContent?.includes('未保存') === true)
 
 console.log('\n[session header] 会话头部 chip')
 const header = await mount('conversation.session.header.actions')
