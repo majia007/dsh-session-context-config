@@ -45,18 +45,22 @@ export function effectiveState(profile: ContextProfile, toolName: string): strin
   return ON
 }
 
-/** 只留必需参数的结构,可选参数交给 tool_search。 */
+/**
+ * 参数骨架:去掉说明/示例/默认值/标题,但**保留每个参数的名称与类型**。
+ *
+ * 早先只留 required 参数,省 token 更多,但会让模型/执行层看不到可选参数的类型:
+ * 布尔/数字被当成字符串传(实测 `plugin_manager` 的 `enabled: false` 报
+ * "must be a boolean")。参数类型是调用契约的一部分,不能省;能省的是描述文本。
+ */
 export function skeleton(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(skeleton)
   if (!schema || typeof schema !== 'object') return schema
   const out: Record<string, unknown> = {}
-  const required = new Set(Array.isArray((schema as Record<string, unknown>).required) ? (schema as Record<string, unknown>).required as unknown[] : [])
   for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
-    if (key === 'additionalProperties' || key === 'title' || key === 'examples' || key === 'default') continue
+    if (key === 'additionalProperties' || key === 'title' || key === 'examples' || key === 'default' || key === 'description') continue
     if (key === 'properties' && value && typeof value === 'object') {
       out.properties = {}
       for (const [name, child] of Object.entries(value as Record<string, unknown>)) {
-        if (!required.has(name)) continue
         ;(out.properties as Record<string, unknown>)[name] = skeleton(child)
       }
       continue

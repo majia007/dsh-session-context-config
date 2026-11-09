@@ -6,7 +6,7 @@
  *
  * - 隐藏:`agent.ctx.tools.restrict({ deny })`,不发 schema、也调不到。
  * - 延迟:不删除工具,只在系统提示装配时把它的 description 换成一句功能摘要、
- *   parameters 剥成骨架;完整定义由 `tool_search` 以工具结果的形式追加进历史。
+ *   parameters 只剥说明文本、保留每个参数的类型;完整定义由 `tool_search` 以工具结果的形式追加进历史。
  *   tools 数组在整个会话里保持不变,因此前缀缓存不会被加载动作打断。
  *
  * 只作用于根会话;已开始的会话只有在用户确认切换档位时才会重算。

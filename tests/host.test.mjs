@@ -56,19 +56,24 @@ test('解析优先级：终态压过子项，延迟是可被隐藏覆盖的软�
   assert.equal(effectiveState(profile(), 'read'), 'on')
 })
 
-test('延迟占位：只留必需参数，可选参数交回 tool_search', () => {
+test('延迟占位：保留每个参数的名称与类型，只剥说明与默认值', () => {
   const schema = {
     type: 'object',
     required: ['path'],
     properties: {
-      path: { type: 'string', title: 'Path' },
-      mode: { type: 'string', enum: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] },
+      path: { type: 'string', title: 'Path', description: '要读的文件' },
+      limit: { type: 'number', description: '最多多少行' },
+      enabled: { type: 'boolean', default: true },
     },
   }
   const kept = skeleton(schema)
-  assert.deepEqual(Object.keys(kept.properties), ['path'])
+  assert.deepEqual(Object.keys(kept.properties).sort(), ['enabled', 'limit', 'path'])
   assert.equal(kept.properties.path.title, undefined)
-  assert.equal(kept.required[0], 'path')
+  assert.equal(kept.properties.path.description, undefined)
+  assert.equal(kept.properties.limit.type, 'number')
+  assert.equal(kept.properties.enabled.type, 'boolean')
+  assert.equal(kept.properties.enabled.default, undefined)
+  assert.deepEqual(kept.required, ['path'])
 })
 
 test('摘要优先级：server 手写 > 组手写 > 描述首句 > 工具名', () => {
@@ -79,14 +84,15 @@ test('摘要优先级：server 手写 > 组手写 > 描述首句 > 工具名', (
   assert.equal(summaryFor(profile(), 'read', ''), 'read')
 })
 
-test('占位定义带延迟标记，且参数已剥成骨架', () => {
+test('占位定义带延迟标记，参数保留类型', () => {
   const placeholder = placehold(
     { name: 'read', parameters: { type: 'object', required: ['path'], properties: { path: { type: 'string' }, limit: { type: 'number' } } } },
     '读取文件',
   )
   assert.equal(placeholder.name, 'read')
   assert.match(placeholder.description, /^【延迟】/)
-  assert.deepEqual(Object.keys(placeholder.parameters.properties), ['path'])
+  assert.deepEqual(Object.keys(placeholder.parameters.properties).sort(), ['limit', 'path'])
+  assert.equal(placeholder.parameters.properties.limit.type, 'number')
 })
 
 test('状态归一化：版本不符整份作废，重复 id 去掉，坏引用回落', () => {
