@@ -42,7 +42,7 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 ## 构建、安装与验证
 
-构建形态（TS + tsdown）：`pnpm build` 产出 `lib/index.js`（Host 单文件）、`lib/client.js`（浏览器 factory bundle，CSS Modules 编译进产物）、`lib/types/**`；`lib/` 提交入库。
+构建形态（TS + tsdown）：`pnpm build` 产出 `lib/index.js`（Host 单文件）、`lib/client.js`（浏览器 factory bundle，CSS Modules 编译进产物）、`lib/types/**`；`lib/` **禁止入 git**（`.gitignore` 已忽略，需要时 `pnpm build`；测试/smoke 加载的就是它，克隆/清理后先 build）。
 
 ```bash
 pnpm install && pnpm build
