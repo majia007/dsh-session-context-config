@@ -67,6 +67,14 @@ node scripts/harness.mjs
 
 **看真实效果**：桌面端默认不开放调试端口；以 `--remote-debugging-port=9202` 启动后可用 `use-chrome` 技能直连（CDP 端口 9202，`node cdp.mjs eval/screenshot --port=9202`），比系统级鼠标/键盘自动化可靠。不带调试参数时退回截桌面窗口的图核对；**不要用系统级鼠标/键盘自动化**去点用户界面：会打断用户操作、留下文字选中，而且验证价值不如一次截图。
 
+**发版流程（修 bug / 加功能后必走）**：
+
+1. 本地验证：`pnpm build` → `pnpm test` → `node scripts/smoke.mjs` → `node scripts/harness.mjs`，全绿再谈发布。
+2. 升版本号：改 `package.json` 的 `version`（semver；修 bug 升 patch，加功能升 minor），并 `pnpm build` 让 `lib/` 与版本一致。
+3. **不自行 push、不自行发版**：改动提交到本地后，先问用户「是否推送、是否发版」；用户确认后才 `git push`，再 `npm publish`。
+4. 发布：在包目录执行 `npm publish`（`prepack` / `prepare` 会重建产物；`files` 已含 `lib/index.js`、`lib/client.js`、`lib/types`、`cordis.patch.yml`、`locale`、`icon`）。账号开了 2FA 时会报 `EOTP`，用 `npm publish --otp=<6 位验证码>` 重试。
+5. 核对：`npm view @jia-tools/dsh-session-context-config version` 应返回新版本；再 `remove_bundle` → `install_bundle` 让 profile 里的 link 安装重新解析。
+
 ## 约定
 
 - 全文中文；代码标识符用英文。
