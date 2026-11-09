@@ -1,0 +1,479 @@
+/*
+ * 配置面板样式(CSS Modules,编译后类名带 cp- 前缀,见 build/preset.mjs)。
+ * 声明与旧版内联 CSS 逐条一致,本轮不改任何值。
+ * 状态块(status/statusRow)在 menu.module.css 有一份同名规则(chips/菜单复用同一材质)。
+ */
+
+.root {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.headIcon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: var(--dsw-alias-bg-layer-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.sub {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.iconBtn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconBtn:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 22px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card {
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  border-radius: var(--dsw-radius-lg, 16px);
+  padding: 14px 16px;
+}
+
+.cardTitle {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.chip {
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  border-radius: 999px;
+  corner-shape: round;
+  padding: 5px 13px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip:hover {
+  border-color: var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.chip[data-on="1"] {
+  border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-bg-layer-2);
+  font-weight: 600;
+}
+
+.link {
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-brand-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.link[disabled] {
+  color: var(--dsw-alias-state-idle-primary);
+  cursor: default;
+  text-decoration: none;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.input,
+.textarea,
+.search {
+  box-sizing: border-box;
+  width: 100%;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md, 12px);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  outline: none;
+}
+
+.input,
+.search {
+  height: 32px;
+  padding: 0 8px;
+}
+
+.textarea {
+  padding: 8px 10px;
+  min-height: 96px;
+  resize: vertical;
+}
+
+.input:focus,
+.textarea:focus,
+.search:focus {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+  margin-bottom: 2px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.groupName {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.count {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.push {
+  margin-left: auto;
+}
+
+.serverRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  margin: 8px -8px 2px;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.serverRow .srv {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* 工具行:五列定宽。名字列与描述列左缘在所有行对齐,token 与状态控件贴右;
+   长描述交给省略号,不再按字符数硬切。「生效」列只在被组/server 改写时出现,
+   仍保留固定宽度,右缘不会跳。 */
+.tool {
+  display: grid;
+  grid-template-columns: minmax(120px, 148px) minmax(0, 1fr) 46px 42px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  border-radius: var(--dsw-radius-sm, 8px);
+}
+
+.tool:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+}
+
+.tool .nm {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool .zh {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool .cost {
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.shift {
+  flex: none;
+  width: 42px;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.shift[data-s="on"] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.shift[data-s="defer"] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.shift[data-s="off"] {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.clear {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 4px 6px;
+  margin: 2px 0 0 -6px;
+  border-radius: var(--dsw-radius-xs, 4px);
+  cursor: pointer;
+}
+
+.clear:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  color: var(--dsw-alias-label-primary);
+}
+
+.foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.footNote {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--dsw-radius-md, 12px);
+  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l3);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.btn[data-kind="primary"] {
+  box-shadow: none;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.btn[data-kind="primary"]:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.empty {
+  padding: 16px 2px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.error {
+  font-size: 12px;
+  color: var(--dsw-alias-state-error-primary);
+  word-break: break-word;
+}
+
+.sep {
+  height: 1px;
+  background: var(--dsw-alias-border-l1);
+  margin: 10px 0;
+}
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px -8px 0;
+}
+
+.hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+}
+
+.checks + .hint {
+  margin-left: 24px;
+}
+
+.divider {
+  height: 0.5px;
+  background: var(--dsw-alias-border-l2, var(--dsw-alias-border-l1));
+  margin: 14px 0 10px;
+}
+
+.subhead {
+  margin: 0 0 2px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+}
+
+.mini {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 居中预览浮层与状态块(与 menu.module.css 的同名规则同一材质,PreviewDialog 复用)。 */
+.pop {
+  position: fixed;
+  z-index: 2000;
+  box-sizing: border-box;
+  min-width: min(300px, calc(100vw - 24px));
+  max-width: min(460px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  border: 0;
+  border-radius: var(--dsw-radius-lg, 16px);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-overlay));
+  -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  box-shadow: var(--dsw-elevation-prominent, 0 16px 40px rgba(16, 24, 40, 0.18));
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.popHead {
+  padding: 9px 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.status {
+  padding: 10px 12px;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.statusRow .nm {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.statusRow .st {
+  margin-left: auto;
+  color: var(--dsw-alias-label-secondary);
+}

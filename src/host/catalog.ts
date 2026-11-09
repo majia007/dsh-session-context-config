@@ -1,0 +1,101 @@
+import { GROUPS, TOKEN_PER_CHAR } from './constants.ts'
+import { groupOf, serverOf } from './tools.ts'
+import type { HostContext } from '../types.ts'
+
+export interface CatalogTool {
+  name: string
+  description: string
+  group: string
+  server: string | null
+  chars: number
+  tokens: number
+  modes: string[]
+}
+
+export interface Catalog {
+  presets: Array<{ id: string; name: string; tools: CatalogTool[] }>
+  defaultPreset: string
+  tools: CatalogTool[]
+  groups: Array<{ id: string; title: string }>
+}
+
+/** 目录构建:枚举 agent preset 组合的工具表,15 秒缓存。 */
+export function createCatalog(ctx: HostContext, note: (source: string, error: unknown) => void) {
+  let catalogCache: { at: number; value: Catalog } | null = null
+
+  function toolEntry(schema: { name?: unknown; description?: unknown; parameters?: unknown }): CatalogTool {
+    const parameters = schema.parameters ? JSON.stringify(schema.parameters) : ''
+    const chars = String(schema.name ?? '').length + String(schema.description ?? '').length + parameters.length
+    return {
+      name: schema.name as string,
+      description: String(schema.description ?? '').slice(0, 240),
+      group: groupOf(String(schema.name ?? '')),
+      server: serverOf(String(schema.name ?? '')),
+      chars,
+      tokens: Math.max(1, Math.round(chars * TOKEN_PER_CHAR)),
+      modes: [],
+    }
+  }
+
+  async function buildCatalog(): Promise<Catalog> {
+    const now = Date.now()
+    if (catalogCache && now - catalogCache.at < 15000) return catalogCache.value
+    const presets: Catalog['presets'] = []
+    let defaultPreset = 'standard'
+    const registry = ctx.get('agentPresets') as {
+      list?: () => Promise<Array<{ id: string; name?: string }>>
+      acquireScope?: (id: string) => Promise<{ key: unknown; dispose?: () => Promise<void> }>
+    } | undefined
+    try {
+      const registryConfig = ctx.get('agentPresetRegistry') as { config?: { default?: string } } | undefined
+      if (registryConfig?.config?.default) defaultPreset = registryConfig.config.default
+    } catch {
+      /* 老宿主没有这个服务 */
+    }
+    try {
+      const list = registry?.list ? await registry.list() : []
+      for (const preset of list) {
+        let tools: CatalogTool[] = []
+        try {
+          const acquire = registry?.acquireScope
+          if (!acquire) throw new Error('agentPresets.acquireScope 不可用')
+          const lease = await acquire(preset.id)
+          try {
+            tools = (ctx.tools.schemas(lease.key) as Array<{ name?: unknown; description?: unknown; parameters?: unknown }>).map(toolEntry)
+          } finally {
+            await lease.dispose?.()
+          }
+        } catch (error) {
+          note(`catalog:${preset.id}`, error)
+        }
+        tools.sort((a, b) => a.name.localeCompare(b.name))
+        presets.push({ id: preset.id, name: preset.name || preset.id, tools })
+      }
+    } catch (error) {
+      note('catalog', error)
+    }
+    const union = new Map<string, CatalogTool>()
+    for (const preset of presets) {
+      for (const tool of preset.tools) {
+        if (!union.has(tool.name)) union.set(tool.name, { ...tool, modes: [] })
+        union.get(tool.name)!.modes.push(preset.id)
+      }
+    }
+    if (!presets.some((preset) => preset.id === defaultPreset)) defaultPreset = presets[0]?.id ?? ''
+    const value: Catalog = {
+      presets,
+      defaultPreset,
+      tools: [...union.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      groups: GROUPS.map(({ id, title }) => ({ id, title })),
+    }
+    catalogCache = { at: now, value }
+    return value
+  }
+
+  /** 状态变更后让下一次快照重建目录(工具表可能变)。 */
+  function invalidate(): void {
+    catalogCache = null
+  }
+
+  return { buildCatalog, invalidate }
+}

@@ -12,17 +12,23 @@
     "url": "https://github.com/majia007/dsh-session-context-config/issues"
   },
   "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
   "exports": {
-    ".": "./index.js",
-    "./client": "./client.js",
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
   "files": [
-    "index.js",
-    "baseline.js",
-    "host/",
-    "client.js",
+    "lib/index.js",
+    "lib/client.js",
+    "lib/client.js.map",
+    "lib/types",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
@@ -40,5 +46,22 @@
         "@deepseek-ai/dsh-client-ui-layout"
       ]
     }
+  },
+  "scripts": {
+    "build": "node build/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-force-exit \"tests/**/*.test.mjs\"",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.1",
+    "happy-dom": "^20.11.6",
+    "lightningcss": "^1.33.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsdown": "~0.22.2",
+    "typescript": "^6.0.3"
   }
 }

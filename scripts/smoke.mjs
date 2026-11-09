@@ -1,57 +1,32 @@
 /**
- * Client bundle 冒烟：把 client.js 装进 `window.__ModuleLoader__` 桩，
+ * Client bundle 冒烟：把 lib/client.js 装进 `window.__ModuleLoader__` 桩，
  * 用假的 /session-context-config/api 数据在 happy-dom 里渲染配置面板与两个 chip，
  * 并模拟点击。
  *
  * 只断言结构与语义（seat 结构、aria-checked、勾只在选中行、分段选择/复选行的原生
  * 语义、头部菜单含状态块与确认块），不做像素比对——外观核对看真实窗口截图。
  *
- * 依赖 DSH 源码仓库的 pnpm store：react / react-dom / happy-dom 都从那里借，
- * 免得本项目多一份 node_modules。仓库路径用环境变量 DSH_SRC 指定：
- *
- *   node scripts/smoke.mjs
- *   DSH_SRC=D:\somewhere\deepseek-harness node scripts/smoke.mjs
+ * 依赖来自本项目 devDependencies（react/react-dom/happy-dom）；跑之前先 pnpm build。
+ * 断言与旧版逐字一致，仅三处随结构迁移：bundle 路径 client.js → lib/client.js、
+ * 依赖从 DSH_SRC 的 pnpm store 借改为本地 node_modules、mount 时把注册面的
+ * inject face 合并进 props（组件不再收 ctx，sessionId 由 face 提供）。
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const bundle = resolve(here, '..', 'client.js')
-const repo = process.env.DSH_SRC
-if (!repo) {
-  console.error('缺少环境变量 DSH_SRC：请指向 DSH 源码仓库根目录（借用其 node_modules/.pnpm 里的依赖）。')
-  process.exit(2)
-}
-const store = join(repo, 'node_modules', '.pnpm')
-
-if (!existsSync(store)) {
-  console.error(`找不到 pnpm store：${store}\n请用 DSH_SRC 指向 DSH 源码仓库根目录。`)
-  process.exit(2)
-}
-
-/** 在 pnpm store 里按「包名@版本前缀」找实际目录，返回包的安装路径。 */
-function findPackage(prefixes, subpath) {
-  const candidates = readdirSync(store)
-    .filter((entry) => prefixes.some((prefix) => entry.startsWith(prefix)))
-    .sort((a, b) => b.localeCompare(a, 'en', { numeric: true }))
-  for (const entry of candidates) {
-    const path = join(store, entry, 'node_modules', subpath)
-    if (existsSync(join(path, 'package.json'))) return path
-  }
-  throw new Error(`pnpm store 里找不到 ${prefixes.join(' / ')}（${store}）`)
-}
+const bundle = resolve(here, '..', 'lib', 'client.js')
 
 const require = createRequire(import.meta.url)
-const React = require(join(findPackage(['react@18'], 'react'), 'index.js'))
-const ReactDOM = require(join(findPackage(['react-dom@18'], 'react-dom'), 'index.js'))
-const ReactDOMClient = require(join(findPackage(['react-dom@18'], 'react-dom'), 'client.js'))
-const ReactDOMTestUtils = require(join(findPackage(['react-dom@18'], 'react-dom'), 'test-utils.js'))
+const React = require('react')
+const ReactDOM = require('react-dom')
+const ReactDOMClient = require('react-dom/client')
+const ReactDOMTestUtils = require('react-dom/test-utils')
 const act = React.act ?? ReactDOMTestUtils.act
-const happyDom = join(findPackage(['happy-dom@'], 'happy-dom'), 'lib', 'index.js')
 
-const { Window } = await import(pathToFileURL(happyDom).href)
+const { Window } = await import('happy-dom')
 const win = new Window({ url: 'http://localhost/', width: 1280, height: 800 })
 for (const key of [
   'window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'SVGElement', 'Text',
@@ -130,6 +105,7 @@ const plugin = factory((name) => {
 })
 
 const renders = new Map()
+const faces = new Map()
 plugin.apply({
   effect(callback) { return callback() },
   inject(_names, callback) { try { return callback({}) } catch { return () => {} } },
@@ -137,7 +113,7 @@ plugin.apply({
   sessions: { current: () => ({ id: 's1' }) },
   slots: {
     inject(_name, callback) { callback() },
-    register(options, render) { renders.set(options.name, render); return () => {} },
+    register(options, render) { renders.set(options.name, render); faces.set(options.name, options.inject?.() ?? {}); return () => {} },
     registerFactory() { return () => {} },
   },
 })
@@ -160,7 +136,7 @@ const mount = async (name) => {
   const element = win.document.createElement('div')
   win.document.body.appendChild(element)
   const root = ReactDOMClient.createRoot(element)
-  act(() => { root.render(React.createElement(renders.get(name), { ctx: undefined })) })
+  act(() => { root.render(React.createElement(renders.get(name), faces.get(name))) })
   await flush()
   return element
 }
@@ -168,7 +144,6 @@ const menus = () => [...win.document.querySelectorAll('.cp-menu')]
 const lastMenu = () => menus()[menus().length - 1]
 
 console.log(`bundle: ${bundle}`)
-console.log(`store : ${store}`)
 
 console.log('\n[hero] 新会话行 chip')
 const hero = await mount('conversation.hero.options')

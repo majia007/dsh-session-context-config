@@ -1,0 +1,435 @@
+/*
+ * 菜单/浮层/席位样式(CSS Modules,编译后类名带 cp- 前缀,见 build/preset.mjs)。
+ * 素材照 DSH 菜单的材质与行几何写(MenuItem / MenuSurface);值与旧版内联 CSS 逐条一致。
+ * 状态块与 mini 说明在 panel.module.css 有一份同名规则(PreviewDialog 复用同一材质)。
+ */
+
+.choice {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  flex: none;
+  padding: 4px;
+  border-radius: var(--dsw-radius-md, 12px);
+  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+}
+
+/* 分段选择:复刻 DSH SegmentedControl(ui-primitives)。浅色轨道 + 浮起的白色
+   选中片,选中态不反色成品牌色;状态色调只染文字,颜色全部走 token。 */
+.choiceOpt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--dsw-radius-sm, 8px);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.choiceOpt[data-on="1"] {
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-elevation-soft, 0 1px 2px rgba(16, 24, 40, 0.08));
+}
+
+.choiceOpt[data-tone="ok"][data-on="1"] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.choiceOpt[data-tone="warn"][data-on="1"] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.choiceOpt[data-tone="mute"][data-on="1"] {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.choiceInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choiceOpt:has(.choiceInput:focus-visible) {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.choiceSm {
+  padding: 2px;
+}
+
+.choiceSm .choiceOpt {
+  height: 24px;
+  min-width: 40px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+@media (hover: hover) {
+  .choiceOpt:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .choiceOpt {
+    transition: none;
+  }
+}
+
+/* 复选行:label 包住 input,点整行文字即可切换;勾选框几何抄 DSH Checkbox
+   (16px 原生框 + accent-color)。 */
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--dsw-radius-sm, 8px);
+  cursor: pointer;
+}
+
+.check:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+}
+
+.check input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--dsw-alias-brand-primary);
+  cursor: inherit;
+}
+
+.check input:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.checkBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.checkLabel {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.checkDesc {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+}
+
+/* 下拉卡片:照 DSH 菜单的材质与行几何写(MenuItem / MenuSurface)。 */
+.menu {
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
+  min-width: min(248px, calc(100vw - 24px));
+  max-width: min(360px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--dsw-radius-lg, 16px);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-overlay));
+  -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  box-shadow: var(--dsw-elevation-prominent, 0 16px 40px rgba(16, 24, 40, 0.18));
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.menuHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  white-space: nowrap;
+}
+
+.menuNote {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-md, 12px);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover,
+.row:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  outline: none;
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowName {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.rowDesc {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+  white-space: normal;
+}
+
+.rowCount {
+  flex: none;
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+  font-variant-numeric: tabular-nums;
+}
+
+.rowCheck {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.menuSep {
+  height: 0.5px;
+  margin: 3px 8px;
+  background: var(--dsw-alias-border-l2, var(--dsw-alias-border-l1));
+}
+
+/* 菜单里的状态块与行左右对齐(卡片自带 4px 内边距)。 */
+.menu .status {
+  padding: 4px 8px 6px;
+}
+
+.status {
+  padding: 10px 12px;
+}
+
+/* 工具清单:可视高度固定(约 12 行),工具再多也在里面滚,菜单不再跟着长高。 */
+.tools {
+  max-height: 224px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+  margin-top: 2px;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.sw {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  corner-shape: round;
+  flex: none;
+}
+
+.sw[data-s="on"] {
+  background: var(--dsw-alias-state-success-primary);
+}
+
+.sw[data-s="defer"] {
+  background: var(--dsw-alias-state-warn-primary);
+}
+
+.sw[data-s="off"] {
+  background: var(--dsw-alias-state-error-primary);
+}
+
+.statusRow .nm {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.statusRow .st {
+  margin-left: auto;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.mini {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 确认块按钮:与 panel.module.css 的同名规则同值(SessionChip 的确认块复用)。 */
+.btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--dsw-radius-md, 12px);
+  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l3);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.btn[data-kind="primary"] {
+  box-shadow: none;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.btn[data-kind="primary"]:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 触发按钮:与 DSH 自带的「工作区 / 模式」chip 同几何 —— 28 高、8px 内边距、
+   radius-sm、13/20 字、之间 4px。悬停与展开用宿主同一层 hover fill。 */
+.seat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: min(100%, 240px);
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.seat[aria-expanded="true"],
+.seat:not(:disabled):hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+}
+
+.seat:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-quaternary, var(--dsw-alias-label-secondary));
+}
+
+.seatIcon {
+  flex: none;
+  color: var(--dsw-alias-label-primary);
+}
+
+.seatLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seatCount {
+  flex: none;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+  font-variant-numeric: tabular-nums;
+}
+
+.seatChevron {
+  flex: none;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+}
+
+/* 会话头部:与宿主的「模式」静态标签同字号同色。值逐条抄自
+   ui-agent-preset 的 AgentPresetLabel.module.css(它的类名是 CSS Module 哈希,
+   跨插件拿不到)。它引用的 --dsw-alias-fill-tsp-secondary 在 UI 源码里没有定义,
+   实际等于透明底——照抄,别自己补一个填充色。 */
+.seat[data-compact="1"] {
+  min-height: 22px;
+  height: 22px;
+  gap: 4px;
+  padding: 0 4px 0 2px;
+  border-radius: var(--dsw-radius-xs, 4px);
+  background: var(--dsw-alias-fill-tsp-secondary);
+  font-size: 12px;
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.seat[data-compact="1"][aria-expanded="true"],
+.seat[data-compact="1"]:not(:disabled):hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+}
+
+.seat[data-compact="1"] .seatCount {
+  line-height: 22px;
+}
+
+/* 新会话行把插件选项推到行尾(宿主 .heroOptions 带 margin-left:auto)。
+   槽位的 data-slot 锚点是宿主的稳定寻址面(display:contents,不参与布局),
+   用它选中“装着 conversation.hero.options 的那一层”,只挪本插件这一列。 */
+div:has(> [data-slot="conversation.hero.options"]) {
+  margin-left: 0;
+}

@@ -10,12 +10,29 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 | 文件 | 职责 |
 |---|---|
-| `index.js` | Host 半个插件：插件面（`name`/`inject`/`apply`）、装配 `applyTo()`、`tool_search`、HTTP 快照/切换接口 |
-| `host/constants.js` | 状态字面量、组表、通道表、内置档位、token 估算系数 |
-| `host/state.js` | 状态文件路径、默认值、**读入归一化**（坏字段静默丢弃，面板与装配不必各自防御） |
-| `host/tools.js` | 档位解析（`effectiveState`）与延迟占位（`skeleton`/`placehold`） |
-| `baseline.js` | 基线层：行为契约/卡片回执/不可信下载三段提示词、环境事实探测（platform/shell/git）与 complete 合并 |
-| `client.js` | Client 半个插件：配置面板 + 新会话 chip（`conversation.hero.options`）+ 会话头部 chip（`conversation.session.header.actions`，紧跟「模式」标签）；样式以单块 CSS 常量注入 `document.head` |
+| `src/index.ts` | Host 半边插件面：name/inject/apply + 装配（基线段注册、webServer 路由、agent/created·disposed、tools/change、通道拦截 pre-step、重装载补、teardown） |
+| `src/types.ts` | 宿主服务面最小结构声明（镜像 checkout 形状，未验证字段不写） |
+| `src/baseline.ts` | 基线层：行为契约/卡片回执/不可信下载三段提示词、环境事实探测（platform/shell/git）与 complete 合并 |
+| `src/host/constants.ts` | 状态字面量、组表、通道表、内置档位、token 估算系数 |
+| `src/host/state.ts` | 状态文件路径、默认值、**读入归一化**（坏字段静默丢弃，面板与装配不必各自防御） |
+| `src/host/tools.ts` | 档位解析（`effectiveState`）与延迟占位（`skeleton`/`placehold`）——**与 `src/client/state/resolve.ts` 同规则双份** |
+| `src/host/state-store.ts` | 状态存取：加载/旧文件名迁移/防抖落盘 |
+| `src/host/sessions.ts` | 会话与 agent 小工具集：身份解析、blank/根判定、schema/定义读取 |
+| `src/host/profiles.ts` | 档位应用运行时：planFor/applyTo/release、tool_search 注册与查询面 |
+| `src/host/environment.ts` | 环境事实的 per-agent 注册与释放（探测一次固定） |
+| `src/host/catalog.ts` | agent preset 目录枚举（15s 缓存） |
+| `src/host/routes.ts` | 四条 HTTP 路由（state/session/preview/assemble，connection 栅栏 + loopback 回退）与快照/预览 |
+| `src/client/index.ts` | 浏览器入口：只导出 inject/apply |
+| `src/client/apply.ts` | 唯一跨域装配点：四个槽位注册；hero/session 槽位以 inject face 提供 `sessionId`（组件不收 ctx） |
+| `src/client/contract/` | 域间共享类型（只有 type） |
+| `src/client/state/` | 数据层（store/订阅 hooks）与档位解析（与 Host 同规则） |
+| `src/client/menu/` | 浮层与席位原语（Popover/Seat/MenuRow/图标/分段选择/复选行）+ `menu.module.css` |
+| `src/client/panel/` | 配置面板（ConfigPanel/cards/group-cards/PreviewDialog/options）+ `panel.module.css` |
+| `src/client/chips/` | 新会话 chip（`conversation.hero.options`）+ 会话头部 chip（`conversation.session.header.actions`，紧跟「模式」标签）+ 共用 picker |
+| `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-ask-choice/AGENTS.md`） |
+| `tests/` | 直读 src 的单元测试：host 纯函数、基线层快照、不可信下载规则可执行性 |
+| `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 lib/client.js，喂假快照渲染面板与两个 chip 并点击 |
+| `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 lib/client.js，验 id/槽位注册/样式注入/inject face |
 | `package.json` | bundle 清单；`dsh.client` 段声明客户端注入（sidebar、layout），`exports` 决定宿主能取到哪些子路径 |
 | `cordis.patch.yml` | 装载入口：只 insert 一行 `session-context-config` |
 | `locale/*.json` | 仅包级 title/description；**界面文案是硬编码中文，没走 locale 服务**（见「已知待优化」） |
@@ -23,26 +40,24 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 ## 构建、安装与验证
 
-没有构建步骤：`index.js` 是可被宿主直接 import 的 ESM，`client.js` 是 `window.__ModuleLoader__.load({ id, factory })` 形式的浏览器脚本，两者都手写、直接运行。
+构建形态（TS + tsdown）：`pnpm build` 产出 `lib/index.js`（Host 单文件）、`lib/client.js`（浏览器 factory bundle，CSS Modules 编译进产物）、`lib/types/**`；`lib/` 提交入库。
 
 ```bash
-# 静态检查（两个都能直接查语法）
-node --check client.js && node --check index.js && node --check baseline.js
+pnpm install && pnpm build
+node --check lib/index.js && node --check lib/client.js
+pnpm exec tsc --noEmit
 
-# 逻辑/DOM 冒烟：happy-dom 里装一遍 bundle，喂假快照渲染两个 chip 并点击
+# 单元测试（直读 src）：host 纯函数、基线层快照与 git 探测、不可信下载规则
+pnpm test
+
+# 逻辑/DOM 冒烟：happy-dom 里装一遍 lib/client.js，喂假快照渲染面板与两个 chip 并点击
 node scripts/smoke.mjs
 
-# 基线层：文本快照、complete 合并、真实 git 探测与缓存
-node --test scripts/baseline.test.mjs
-
-# Host 纯函数：解析优先级、占位剥参、状态归一化（此前完全没有覆盖）
-node --test scripts/host.test.mjs
-
-# 不可信下载规则：构造含 json.py 的下载目录，实测 python -I 不会导入它（无 python 时跳过）
-node --test scripts/untrusted-files.test.mjs
+# 离线激活脚手架（B0 预检）
+node scripts/harness.mjs
 ```
 
-`scripts/smoke.mjs` 借用 DSH 源码仓库 `node_modules/.pnpm` 里的 react/react-dom/happy-dom，环境变量 `DSH_SRC` 指向该仓库根目录（必填，未设置时脚本直接报错退出）。它断言：触发器是 seat 结构、菜单行带 `aria-checked`、只有选中行有勾、会话头部菜单含状态块与确认块。
+`scripts/smoke.mjs` 的依赖（react/react-dom/happy-dom）来自本项目 devDependencies；它断言：触发器是 seat 结构、菜单行带 `aria-checked`、只有选中行有勾、会话头部菜单含状态块与确认块。CSS Modules 类名编译后带 `cp-` 前缀（确定性，见 build/preset.mjs），smoke 的类选择器与真机一致。
 
 **装到 profile**：`plugin_manager` 的 `install_bundle` 指向本目录。profile 里装成 `link:`，所以改文件即时生效、不需要重装。**但这套桌面安装没有 `dsh-client-hmr`**（`app.asar` 的 `@deepseek-ai` 下查不到这个包），页面不会自动重载——改完要在应用里刷新一次（`Ctrl+R`）才看得到新界面。同版本重复安装会返回 `already-installed`，要更新得先 `remove_bundle` 再 `install_bundle`（或先改 `package.json` 的 version）。安装结果以返回里的 `application: applied` 为准。
 
@@ -67,10 +82,7 @@ node --test scripts/untrusted-files.test.mjs
 
 ## 关键技术边界与坑
 
-> ⚠️ **client.js 必须保持单文件，Host 侧才可拆模块**
-> 症状/代价：想给 `client.js` 加相对 `import` 或拆成多个文件时，浏览器端根本不加载它们（页面白跑、控制台报模块缺失）。
-> 根因：浏览器只服务 `dsh.client` 声明的**入口**（`/plugins/<pkg>/client.js`），手写 bundle 没有相对模块的加载面（`require.async` 的包内 chunk 只对构建产物有意义）。
-> 正解：客户端逻辑留在 `client.js` 单文件里，用段落注释分区；纯函数、常量、装配这些可测的部分放 Host 侧（`host/*.js`），两边同名规则各持一份、改一侧必改另一侧。
+> **client 产物必须单文件，源码可多模块**：浏览器只服务 `dsh.client` 声明的入口（`/plugins/<pkg>/client.js`），但构建形态下源码在 `src/client/` 拆成多模块（contract/state/menu/panel/chips + apply.ts），由 tsdown 打成单文件 `lib/client.js`。改客户端源码后要 `pnpm build` 再刷新页面。
 
 > ⚠️ **DSH 的 CSS Module 类名带哈希，不能当选择器/样式契约**
 > 症状：照源码写的 `.heroOptions{...}` 完全不生效，编译产物里类名是 `an3WzG_heroOptions`。
@@ -103,8 +115,8 @@ node --test scripts/untrusted-files.test.mjs
 ## 添加或修改 UI 的标准流程
 
 1. 读 `docs/dsh-web-ui.md`：确认槽位、可复用 token、控件几何；要动的宿主源码路径写在该文档的「源码地图」。
-2. 改 `client.js`：样式都在顶部 `CSS` 常量块里，组件在「基础组件」段；两处 chip 复用 `Seat` / `MenuRow`。
-3. `node --check client.js`，再 `node scripts/smoke.mjs`，断言不通过就别急着截图。
+2. 改 `src/client/`：样式在 `panel/panel.module.css` 与 `menu/menu.module.css`（编译后类名带 `cp-` 前缀）；两处 chip 复用 `menu/seat.ts` 的 `Seat` / `MenuRow`。
+3. `pnpm build`，再 `node scripts/smoke.mjs`，断言不通过就别急着截图。
 4. 在应用里刷新一次页面（没有 HMR，见上），再截窗口图，按 DSH 自带控件对齐：触发器 28px 高、菜单行 34px 高、字号 13/20 与 12/16。
 5. 视觉事实有变化才同步 `docs/dsh-web-ui.md`；纯重命名/拆函数不用改文档。
 

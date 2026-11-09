@@ -158,4 +158,4 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 - `AGENTS.md`：给编码代理的项目说明（构建、安装、坑库、注释与文档维护规则）。
 - `docs/dsh-web-ui.md`：DSH Web UI 的设计 token、控件几何、槽位接入与验证配方——改界面先读它。
-- `scripts/smoke.mjs`：`node scripts/smoke.mjs`，在 happy-dom 里渲染两个 chip 并断言结构。
+- `scripts/smoke.mjs`：`pnpm build && node scripts/smoke.mjs`，在 happy-dom 里渲染配置面板与两个 chip 并断言结构（依赖来自本项目 devDependencies）。
