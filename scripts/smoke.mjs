@@ -3,8 +3,9 @@
  * 用假的 /session-context-config/api 数据在 happy-dom 里渲染配置面板与两个 chip，
  * 并模拟点击。
  *
- * 只断言结构与语义（seat 结构、aria-checked、勾只在选中行、分段选择/复选行的原生
- * 语义、头部菜单含状态块与确认块），不做像素比对——外观核对看真实窗口截图。
+ * 只断言结构与语义（seat 结构、aria-checked、勾只在选中行、宿主 SegmentedControl
+ * 的 tablist 语义、复选行的原生语义、头部菜单含状态块与确认块），不做像素比对——
+ * 外观核对看真实窗口截图。
  *
  * 依赖来自本项目 devDependencies（react/react-dom/happy-dom）；跑之前先 pnpm build。
  * 断言与旧版逐字一致，仅三处随结构迁移：bundle 路径 client.js → lib/client.js、
@@ -31,7 +32,7 @@ const win = new Window({ url: 'http://localhost/', width: 1280, height: 800 })
 for (const key of [
   'window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'SVGElement', 'Text',
   'Event', 'MouseEvent', 'KeyboardEvent', 'CustomEvent', 'getComputedStyle',
-  'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver',
+  'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver', 'localStorage',
 ]) {
   const value = key === 'window' ? win : key === 'document' ? win.document : win[key]
   try {
@@ -46,7 +47,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const tools = [
   { name: 'read', description: 'Read a file', group: 'files', server: null, chars: 100, tokens: 80 },
-  { name: 'write', description: 'Write a file', group: 'files', server: null, chars: 120, tokens: 90 },
+  { name: 'write', description: 'Create or fully replace a UTF-8 text file.', group: 'files', server: null, chars: 120, tokens: 90 },
   ...Array.from({ length: 13 }, (_, index) => ({
     name: `tool_${String(index + 1).padStart(2, '0')}`,
     description: `Generated tool ${index + 1}`,
@@ -56,21 +57,35 @@ const tools = [
     tokens: 40,
   })),
 ]
+const personaSlot = () => ({ enabled: true, override: false, text: '' })
 const profile = (id, name, description) => ({
-  id, name, description, groups: {}, servers: {}, tools: {},
-  prompt: { mode: 'inherit', text: '' }, runtimeContext: true, summaries: {},
+  id, name, description, groups: {}, servers: {}, tools: {}, contexts: {}, sections: {}, channels: {},
+  prompt: { prefix: personaSlot(), suffix: personaSlot() }, summaries: {},
 })
 const snapshot = {
   ok: true,
-  version: 2,
+  version: 4,
   profiles: [profile('standard', '完整', '标准档位，处理代码和资料'), profile('lean', '精简', '只留必要工具')],
   lastUsedId: 'standard',
   sessions: { s1: 'standard' },
-  baseline: { contract: true, cardReceipt: true, untrustedFiles: true, environmentFacts: true, inCompletePrompt: true },
+  baseline: { contract: true, cardReceipt: true, untrustedFiles: true },
   presets: [{ id: 'standard', name: '标准模式', tools }],
   defaultPreset: 'standard',
   tools,
   groups: [{ id: 'files', title: '文件' }],
+  sections: [
+    // 按真实装配顺序排列(identity -1000 → 宿主段 → 工具引导 → 收尾段);
+    // 空文本段不进目录(与 /api/state 的过滤一致)。
+    { name: 'harness:identity', chars: 48 },
+    { name: 'subagent-roles:catalog', chars: 420 },
+    { name: 'context:file-reference', chars: 300 },
+    { name: 'tool:read', chars: 150 },
+    { name: 'tool:write', chars: 100 },
+    { name: 'tool:subagent', chars: 400 },
+    { name: 'ui:deliverable-file-references', chars: 900 },
+    { name: 'harness:source', chars: 240 },
+    { name: 'app:web-surface', chars: 900 },
+  ],
   live: [{ sessionId: 's1', preset: 'standard', blank: true, profileId: 'standard', deferred: 1, hidden: 0, loaded: 0 }],
   diagnostics: [],
 }
@@ -85,9 +100,24 @@ const sessionState = {
 }
 
 const fetches = []
-globalThis.fetch = async (url) => {
-  fetches.push(String(url))
-  const body = String(url).includes('/api/session') ? sessionState : snapshot
+const translateCalls = []
+let holdFirstTranslate = true
+let pendingTranslate = null
+globalThis.fetch = async (url, options) => {
+  const target = String(url)
+  fetches.push(target)
+  if (target.includes('/api/translate')) {
+    const text = JSON.parse(String(options?.body ?? '{}')).text
+    translateCalls.push(text)
+    if (holdFirstTranslate) {
+      holdFirstTranslate = false
+      return new Promise((resolve) => {
+        pendingTranslate = (zh) => resolve({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true, zh }) })
+      })
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, zh: `译：${text.slice(0, 24)}` }) }
+  }
+  const body = target.includes('/api/session') ? sessionState : snapshot
   return { ok: true, status: 200, text: async () => JSON.stringify(body) }
 }
 win.fetch = globalThis.fetch
@@ -98,22 +128,59 @@ let factory = null
 win.__ModuleLoader__ = { load: (registration) => { factory = registration.factory } }
 new Function('window', 'document', 'fetch', readFileSync(bundle, 'utf8'))(win, win.document, globalThis.fetch)
 
+/* ui-primitives 桩:镜像宿主 SegmentedControl 的 DOM 契约(tablist + tab 按钮 +
+   aria-selected/roving tabindex,见 ui-primitives/src/SegmentedControl.tsx)与 Tag
+   的 data-tone 契约(胶囊视觉由宿主 CSS 提供,冒烟只断言语义);几何与键盘走位
+   不在冒烟范围,点选路径已覆盖。 */
+const SegmentedControlStub = ({ id, value, options, onChange, label }) =>
+  React.createElement(
+    'div',
+    { role: 'tablist', 'aria-label': label },
+    options.map((option) =>
+      React.createElement(
+        'button',
+        {
+          key: option.value,
+          id: `${id}-${option.value}`,
+          type: 'button',
+          role: 'tab',
+          'aria-selected': option.value === value,
+          tabIndex: option.value === value ? 0 : -1,
+          onClick: () => { if (option.value !== value) onChange(option.value) },
+        },
+        option.label,
+      ),
+    ),
+  )
+
+const TagStub = ({ tone = 'outline', className, children }) =>
+  React.createElement('span', { className: className ?? 'cp-tagStub', 'data-tone': tone }, children)
+
 const plugin = factory((name) => {
   if (name === 'react') return React
   if (name === 'react-dom') return ReactDOM
-  throw new Error(`client bundle 只应该 require react / react-dom，实际要了：${name}`)
+  if (name === '@deepseek-ai/dsh-client-ui-primitives') return { SegmentedControl: SegmentedControlStub, Tag: TagStub }
+  throw new Error(`client bundle 只应该 require react / react-dom / ui-primitives，实际要了：${name}`)
 })
 
 const renders = new Map()
 const faces = new Map()
+/** 与宿主渲染器一致:session 作用域槽位的 inject face 收到会话 id 作为位置参数
+ *  (ui-renderer/src/client/scoped-slots.tsx 的 runInject 传 binding.key)。 */
+const SESSION_SCOPED_SLOTS = new Set(['conversation.hero.options', 'conversation.session.header.actions'])
+const SLOT_SESSION_ID = 's1'
 plugin.apply({
   effect(callback) { return callback() },
   inject(_names, callback) { try { return callback({}) } catch { return () => {} } },
   get() { return undefined },
-  sessions: { current: () => ({ id: 's1' }) },
   slots: {
     inject(_name, callback) { callback() },
-    register(options, render) { renders.set(options.name, render); faces.set(options.name, options.inject?.() ?? {}); return () => {} },
+    register(options, render) {
+      renders.set(options.name, render)
+      const injected = SESSION_SCOPED_SLOTS.has(options.name) ? options.inject?.(SLOT_SESSION_ID) : options.inject?.()
+      faces.set(options.name, injected ?? {})
+      return () => {}
+    },
     registerFactory() { return () => {} },
   },
 })
@@ -165,37 +232,134 @@ check('未选中行也留了勾位（计数不跳）', heroRows.find((row) => ro
 
 console.log('\n[panel] 配置面板')
 const panel = await mount('main')
-const promptCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-cardTitle')?.textContent === '系统提示词')
-const promptChoice = promptCard?.querySelector('.cp-choice')
-const promptOpts = [...(promptChoice?.querySelectorAll('.cp-choiceOpt') ?? [])]
-check('提示词来源是分段选择', promptChoice?.getAttribute('role') === 'radiogroup')
-check('三个档位都是带原生 radio 的可点 label', promptOpts.length === 3 && promptOpts.every((opt) => opt.tagName === 'LABEL' && opt.querySelector('input[type="radio"]') !== null))
-const checkRows = [...(promptCard?.querySelectorAll('.cp-check') ?? [])]
-check('系统提示词卡里三个布尔项统一为复选行', checkRows.length === 3, String(checkRows.length))
-check('复选行把 checkbox 放在文字前（左对齐格式）', checkRows.every((row) => row.firstElementChild?.matches('input[type="checkbox"]') === true))
-const runtimeBox = checkRows[0]?.querySelector('input[type="checkbox"]')
-check('运行时上下文默认勾选', runtimeBox?.checked === true)
-await click(checkRows[0]?.querySelector('.cp-checkLabel'))
-check('点 label 文字即可切换复选', runtimeBox?.checked === false)
-check('通道行各带自己的说明', checkRows[1]?.querySelector('.cp-checkDesc')?.textContent?.includes('AGENTS.md') === true)
-const toolRowEl = panel.querySelector('.cp-tool')
-const stateRadios = [...(toolRowEl?.querySelectorAll('.cp-choiceInput') ?? [])]
-check('工具状态是三元原生 radio 组', stateRadios.length === 3 && new Set(stateRadios.map((input) => input.name)).size === 1)
-check('工具行固定为名字/描述/生效/成本/状态五列', toolRowEl?.children.length === 5, String(toolRowEl?.children.length))
-check('生效列在未改写时留空但保留位置', toolRowEl?.querySelector('.cp-shift')?.textContent === '')
-check('组状态复用同一分段选择', panel.querySelector('.cp-groupHead .cp-choice') !== null)
-await click(promptOpts[2])
-check('选「极简」后出现提示词输入框', panel.querySelector('.cp-textarea') !== null)
+const profileTabs = [...panel.querySelectorAll('.cp-chipRow [role="tab"]')]
+check('档位行用宿主分段选择渲染全部档位', profileTabs.length === 2 && profileTabs.map((tab) => tab.textContent).join('/') === '完整/精简', profileTabs.map((tab) => tab.textContent).join('/'))
+const systemCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '系统提示词')
+check('system 卡存在', systemCard !== undefined)
+check('system 卡不再有提示词来源 tablist', systemCard?.querySelector('[role="tablist"]') == null)
+const systemTitleRow = systemCard?.querySelector('.cp-msgTitleRow')
+const systemBadge = systemTitleRow?.querySelector('.cp-msgBadge')
+check('角色标签跟在标题后面且内容为 role: developer', systemTitleRow?.lastElementChild === systemBadge && systemBadge?.textContent === 'role: developer', systemTitleRow?.innerHTML?.slice(0, 200))
+check('卡片不再有 meta 与 footer', panel.querySelector('.cp-msgMeta') === null && panel.querySelector('.cp-msgFoot') === null)
+const systemNote = systemCard?.querySelector('.cp-msgNote')?.textContent ?? ''
+check('提示不再出现段计数与条件段说明', !systemNote.includes('当前会话装配到') && !systemNote.includes('条件段'))
+check('footer 的全局/档位说明已并入提示', systemNote.includes('只作用于根会话') && systemNote.includes('附加规则'))
 
-const baselineCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-cardTitle')?.textContent === '基线（所有新会话）')
-const baselineRows = [...(baselineCard?.querySelectorAll('.cp-check') ?? [])]
-check('基线卡存在且有 5 个开关', baselineRows.length === 5, String(baselineRows.length))
-check('基线开关默认全勾选', baselineRows.every((row) => row.querySelector('input[type="checkbox"]')?.checked === true))
-check('基线卡说明与档位无关', baselineCard?.textContent?.includes('与档位无关') === true)
-await click(baselineRows[0]?.querySelector('.cp-checkLabel'))
+const segmentRows = () => [...(systemCard?.querySelectorAll('.cp-segment') ?? [])]
+const rowByText = (text) => segmentRows().find((row) => row.querySelector('.cp-segmentLabel')?.textContent?.includes(text))
+const rowByChip = (name) => segmentRows().find((row) => row.querySelector('.cp-codeChip')?.textContent === name)
+const prefixRow = () => rowByChip('deployment:persona-prefix')
+const suffixRow = () => rowByChip('deployment:persona-suffix')
+const fieldLabels = [...panel.querySelectorAll('.cp-fieldLabel')].map((el) => el.textContent)
+check('档位名称/描述有可见 label', fieldLabels.join('/') === '名称/描述', fieldLabels.join('/'))
+check('前置人设默认开启', prefixRow()?.querySelector('input[type="checkbox"]')?.checked === true)
+check('前置覆盖默认关闭、文本不可用', prefixRow()?.nextElementSibling?.querySelector('input')?.checked === false && prefixRow()?.nextElementSibling?.nextElementSibling?.disabled === true)
+await click(prefixRow()?.nextElementSibling?.querySelector('.cp-segmentLabel'))
+check('勾选前置覆盖后文本可用', prefixRow()?.nextElementSibling?.nextElementSibling?.disabled === false)
+check('两个槽位分开配置:前置覆盖不影响后缘', suffixRow()?.nextElementSibling?.querySelector('input')?.checked === false)
+await click(suffixRow()?.querySelector('.cp-segmentLabel'))
+check('关闭后缘槽位只禁用后缘自己的覆盖', suffixRow()?.nextElementSibling?.querySelector('input')?.disabled === true && prefixRow()?.nextElementSibling?.querySelector('input')?.checked === true)
+await click(suffixRow()?.querySelector('.cp-segmentLabel'))
+
+check('不再区分人设/宿主/工具小区域', systemCard?.querySelector('.cp-groupLabel') === null)
+check('段列表不再包滚动容器', systemCard?.querySelector('.cp-sectionList') === null)
+const orderNames = segmentRows().map((row) => row.querySelector('.cp-codeChip')?.textContent).filter(Boolean)
+check('工具引导段不在这里配置（跟随工具状态）', orderNames.every((name) => !name.startsWith('tool:')))
+const expectedOrder = [
+  'harness:identity',
+  'deployment:persona-prefix',
+  'subagent-roles:catalog',
+  'context:file-reference',
+  'ui:deliverable-file-references',
+  'harness:source',
+  'app:web-surface',
+  'deployment:persona-suffix',
+  'session-context-config:contract',
+  'session-context-config:card-receipt',
+  'session-context-config:untrusted-files',
+]
+check('顺序=实际装配顺序（identity 最前、人设后缀收尾、附加规则最后）', orderNames.join('>') === expectedOrder.join('>'), orderNames.join('>'))
+const baselineHeading = [...systemCard.querySelectorAll('.cp-sectionTitle')].find((el) => el.textContent.includes('本插件附加'))
+check('附加规则上方有「本插件附加」小标题与说明', baselineHeading?.nextElementSibling?.textContent?.includes('不属于 DSH 自带') === true)
+check('每个段行都是 checkbox 前置 + 说明', segmentRows().every((row) => row.firstElementChild?.matches('input[type="checkbox"]') === true && row.querySelector('.cp-segmentDesc') !== null))
+
+const baselineLabels = ['行为契约', '卡片回执', '不可信下载']
+const baselineRows = () => baselineLabels.map(rowByText)
+check('附加规则三段各是一行且默认全开', baselineRows().every((row) => row?.querySelector('input[type="checkbox"]')?.checked === true))
+check('附加规则行标了全局', baselineRows().every((row) => row?.textContent?.includes('全局')))
+check('附加规则排在所有段之后', segmentRows().slice(-3).every((row, index) => row.querySelector('.cp-segmentLabel')?.textContent?.includes(baselineLabels[index]) === true))
+
+const snapshotCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '运行时上下文快照')
+const snapshotRows = [...(snapshotCard?.querySelectorAll('.cp-segment') ?? [])]
+check('快照卡是 7 个段', snapshotRows.length === 7, String(snapshotRows.length))
+check('快照段默认全开', snapshotRows.every((row) => row.querySelector('input[type="checkbox"]')?.checked === true))
+check('快照段标出上下文名', snapshotCard?.textContent?.includes('working-directory:current') === true)
+check('user 卡片角色标签是 role: user', snapshotCard?.querySelector('.cp-msgBadge')?.textContent === 'role: user')
+const workspaceCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '工作区指令')
+check('工作区指令卡有 checkbox + 说明', workspaceCard?.querySelector('.cp-segment input[type="checkbox"]') !== null && workspaceCard?.textContent?.includes('AGENTS.md') === true)
+check('工作区指令卡 footer 并入提示', workspaceCard?.querySelector('.cp-msgNote')?.textContent?.includes('已写入会话记录的消息不会被删除') === true)
+const timeCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '时间采样')
+check('时间采样卡有 checkbox + 说明', timeCard?.querySelector('.cp-segment input[type="checkbox"]') !== null && timeCard?.textContent?.includes('10 分钟') === true)
+check('时间采样卡 footer 并入提示', timeCard?.querySelector('.cp-msgNote')?.textContent?.includes('refreshIntervalMs') === true)
+const catalogHeading = [...panel.querySelectorAll('.cp-sectionTitle')].find((el) => el.textContent === '工具目录')
+check('工具目录上方有分区标题与说明', catalogHeading?.nextElementSibling?.textContent?.includes('工具引导文本跟随工具状态') === true)
+const toolRowEl = panel.querySelector('.cp-tool')
+const stateTabs = [...(toolRowEl?.querySelectorAll('[role="tab"]') ?? [])]
+const toolByName = (name) => [...panel.querySelectorAll('.cp-tool')].find((row) => row.querySelector('.cp-nm')?.textContent === name)
+check('工具状态是三元分段选择', stateTabs.length === 3 && stateTabs.filter((tab) => tab.getAttribute('aria-selected') === 'true').length === 1)
+check('工具行固定为 名字(含标签)/描述/状态 三列', toolRowEl?.children.length === 3, String(toolRowEl?.children.length))
+check('名字与状态标签同在一个单元格', toolRowEl?.querySelector('.cp-nameCell .cp-nm')?.textContent === 'read')
+check('每个工具都显示最终状态标签（开启 / success）', toolRowEl?.querySelector('.cp-stateTag')?.textContent === '开启' && toolRowEl?.querySelector('.cp-stateTag [data-tone]')?.getAttribute('data-tone') === 'success')
+check('状态标签带同色描边', toolRowEl?.querySelector('.cp-stateTag .cp-stateTagInner') !== null)
+check('状态标签旁并排 token 标签（默认描边灰）', toolRowEl?.querySelector('.cp-tokenTag')?.textContent === '≈80' && toolRowEl?.querySelector('.cp-tokenTag [data-tone]')?.getAttribute('data-tone') === 'outline', toolRowEl?.querySelector('.cp-tokenTag')?.textContent)
+check('token 标签是状态标签的兄弟节点、不再有独立成本列', toolRowEl?.querySelector('.cp-nameCell > .cp-stateTag + .cp-tokenTag') !== null && toolRowEl?.querySelector('.cp-cost') === null)
+check('组状态复用同一分段选择', panel.querySelector('.cp-groupHead [role="tablist"]') !== null)
+check('组标题不再有「摘要」入口与摘要输入', !panel.textContent.includes('目录摘要') && panel.querySelectorAll('.cp-groupHead .cp-link').length === 0)
+check('工具目录非空时不显示空目录告警', ![...panel.querySelectorAll('.cp-cardTitle')].some((el) => el.textContent === '工具目录'))
+
+console.log('\n[tool state] 生效状态标签')
+const stateText = (row) => row?.querySelector('.cp-stateTag')?.textContent
+check('未被改写时无 tooltip', toolByName('read')?.querySelector('.cp-stateTag')?.getAttribute('title') === null)
+await click([...panel.querySelectorAll('.cp-groupHead [role="tab"]')].find((tab) => tab.textContent === '延迟'))
+const shiftTag = toolByName('read')?.querySelector('.cp-stateTag')
+check('组改写生效状态时,标签紧跟在工具名右侧', shiftTag?.previousElementSibling?.classList.contains('cp-nm') === true)
+check('标签显示最终状态（延迟）且用告警色调', stateText(toolByName('read')) === '延迟' && shiftTag?.firstElementChild?.getAttribute('data-tone') === 'warning', stateText(toolByName('read')))
+check('被改写时 tooltip 说明本行选择', shiftTag?.getAttribute('title')?.includes('本行选择：开启') === true, shiftTag?.getAttribute('title') ?? '')
+check('右侧按钮组旁不再有生效列', toolByName('read')?.querySelector('.cp-shift') === null)
+await click([...(toolByName('read')?.querySelectorAll('[role="tab"]') ?? [])].find((tab) => tab.textContent === '延迟'))
+check('行内选择与生效一致时仍显示标签,只是不再有 tooltip', stateText(toolByName('read')) === '延迟' && toolByName('read')?.querySelector('.cp-stateTag')?.getAttribute('title') === null)
+check('换成隐藏时用中性色调', (await (async () => {
+  await click([...(toolByName('read')?.querySelectorAll('[role="tab"]') ?? [])].find((tab) => tab.textContent === '隐藏'))
+  return stateText(toolByName('read')) === '隐藏' && toolByName('read')?.querySelector('.cp-stateTag [data-tone]')?.getAttribute('data-tone') === 'neutral'
+})()))
+await click([...(toolByName('read')?.querySelectorAll('[role="tab"]') ?? [])].find((tab) => tab.textContent === '开启'))
+await click([...panel.querySelectorAll('.cp-groupHead [role="tab"]')].find((tab) => tab.textContent === '开启'))
+
+console.log('\n[translate] 工具说明切换')
+const storedLang = () => JSON.parse(win.localStorage.getItem('dsh-session-context-config:tool-lang') ?? '{}')
+const writeRow = toolByName('write')
+check('默认显示内置中文', writeRow?.querySelector('.cp-zhText')?.textContent === '创建或完整替换一个 UTF-8 文本文件。' && writeRow?.querySelector('.cp-trBtn')?.textContent === '文A')
+await click(writeRow?.querySelector('.cp-trBtn'))
+check('点一下切回原文', writeRow?.querySelector('.cp-zhText')?.textContent === 'Create or fully replace a UTF-8 text file.')
+await click(writeRow?.querySelector('.cp-trBtn'))
+check('再点切回中文且不发翻译请求', writeRow?.querySelector('.cp-zhText')?.textContent === '创建或完整替换一个 UTF-8 文本文件。' && translateCalls.filter((text) => text.includes('Create or fully replace')).length === 0)
+check('切换后的语言偏好被记住', storedLang().write === 'zh', JSON.stringify(storedLang()))
+const readRow = toolByName('read')
+check('未知工具默认自动翻译并进入 loading', readRow?.querySelector('.cp-trBtn')?.textContent === '翻译中…' && readRow?.querySelector('.cp-zhText')?.textContent === 'Read a file')
+await act(async () => { pendingTranslate?.('读取一个文件。'); await new Promise((done) => setTimeout(done, 10)) })
+check('未知工具译完默认显示中文', readRow?.querySelector('.cp-zhText')?.textContent === '读取一个文件。' && readRow?.querySelector('.cp-trBtn')?.textContent === '文A')
+await click(readRow?.querySelector('.cp-trBtn'))
+check('未知工具可切回原文并记住', readRow?.querySelector('.cp-zhText')?.textContent === 'Read a file' && storedLang().read === 'source')
+await click(readRow?.querySelector('.cp-trBtn'))
+check('再切中文不重复请求', readRow?.querySelector('.cp-zhText')?.textContent === '读取一个文件。' && translateCalls.filter((text) => text === 'Read a file').length === 1)
+
+await click(baselineRows()[0]?.querySelector('.cp-segmentLabel'))
 check('关掉行为契约后按钮进入未保存态', panel.querySelector('.cp-footNote')?.textContent?.includes('未保存') === true)
 
 console.log('\n[session header] 会话头部 chip')
+// 回归守卫:sessionId 只能来自槽位渲染器传入的位置参数,不能依赖 ctx.sessions
+// (假 ctx 已不提供 sessions,改回 ctx.sessions 这条路这里会直接渲染不出 seat)。
+check('inject face 从槽位参数拿到 sessionId', faces.get('conversation.session.header.actions')?.sessionId === SLOT_SESSION_ID, JSON.stringify(faces.get('conversation.session.header.actions')))
 const header = await mount('conversation.session.header.actions')
 const headerSeat = header.querySelector('button.cp-seat')
 check('触发器渲染', headerSeat?.querySelector('.cp-seatLabel')?.textContent === '完整')

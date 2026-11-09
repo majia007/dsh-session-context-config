@@ -7,9 +7,6 @@ interface ClientContext {
         inject(name: string, factory: () => unknown): void;
         register(options: Record<string, unknown>, component: unknown): unknown;
     };
-    sessions?: {
-        current?: (() => unknown) | unknown;
-    };
 }
 export declare const inject: string[];
 export declare function apply(ctx: ClientContext): void;

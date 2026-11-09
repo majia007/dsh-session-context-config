@@ -13,16 +13,26 @@ export interface CatalogTool {
     tokens: number;
     modes?: string[];
 }
+/** 部署人设的一个固定槽位(prefix/suffix 各一份,独立开关与覆盖)。 */
+export interface PersonaSlot {
+    enabled: boolean;
+    override: boolean;
+    text: string;
+}
 /** 档位(面板草稿与快照 profiles 数组元素)。 */
 export interface Profile {
     id: string;
     name: string;
     description: string;
+    /** 两个独立的人设槽位:关掉=不发送;覆盖=用 text 替换部署文本。 */
     prompt: {
-        mode: 'inherit' | 'replace' | 'complete';
-        text: string;
+        prefix: PersonaSlot;
+        suffix: PersonaSlot;
     };
-    runtimeContext: boolean;
+    /** 运行时上下文名 -> false 表示不注入;缺省=注入。 */
+    contexts: Record<string, boolean>;
+    /** 系统提示段名 -> false 表示不进入 system 消息;缺省=包含。 */
+    sections: Record<string, boolean>;
     channels: Record<string, string>;
     groups: Record<string, string>;
     servers: Record<string, string>;
@@ -57,6 +67,11 @@ export interface Snapshot {
     groups: Array<{
         id: string;
         title: string;
+    }>;
+    /** 当前 live 会话的完整 system 段目录(名称 + 字符数,按实际装配顺序);无 live 会话时为空数组。 */
+    sections: Array<{
+        name: string;
+        chars: number;
     }>;
     live: LiveSession[];
     diagnostics: unknown[];

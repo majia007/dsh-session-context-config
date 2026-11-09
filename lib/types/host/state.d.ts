@@ -14,5 +14,6 @@ export declare function statePath(): string;
 export declare function legacyStatePath(): string;
 export declare function messageOf(error: unknown): string;
 export declare function defaultState(): PluginState;
-/** 版本不符即整份作废:旧版本的字段语义不同,逐字段迁移不如让用户重选一次。 */
+/** 版本 2/3/4 可读:2 的 prompt.mode 与 complete 语义在 normalizeProfile 里一次性迁移;
+ *  v3 升级到 v4 时把三个内置档位的定义就地替换(新增 devtools 分组、人设双槽位、默认的延迟策略)。 */
 export declare function normalizeState(raw: unknown): PluginState;

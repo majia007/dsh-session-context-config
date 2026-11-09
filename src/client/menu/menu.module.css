@@ -4,93 +4,6 @@
  * 状态块与 mini 说明在 panel.module.css 有一份同名规则(PreviewDialog 复用同一材质)。
  */
 
-.choice {
-  display: inline-grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 2px;
-  flex: none;
-  padding: 4px;
-  border-radius: var(--dsw-radius-md, 12px);
-  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-}
-
-/* 分段选择:复刻 DSH SegmentedControl(ui-primitives)。浅色轨道 + 浮起的白色
-   选中片,选中态不反色成品牌色;状态色调只染文字,颜色全部走 token。 */
-.choiceOpt {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: var(--dsw-radius-sm, 8px);
-  color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
-  line-height: 20px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease;
-}
-
-.choiceOpt[data-on="1"] {
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  box-shadow: var(--dsw-elevation-soft, 0 1px 2px rgba(16, 24, 40, 0.08));
-}
-
-.choiceOpt[data-tone="ok"][data-on="1"] {
-  color: var(--dsw-alias-state-success-primary);
-}
-
-.choiceOpt[data-tone="warn"][data-on="1"] {
-  color: var(--dsw-alias-state-warn-primary);
-}
-
-.choiceOpt[data-tone="mute"][data-on="1"] {
-  color: var(--dsw-alias-label-secondary);
-}
-
-.choiceInput {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.choiceOpt:has(.choiceInput:focus-visible) {
-  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
-  outline-offset: 2px;
-}
-
-.choiceSm {
-  padding: 2px;
-}
-
-.choiceSm .choiceOpt {
-  height: 24px;
-  min-width: 40px;
-  padding: 0 8px;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-@media (hover: hover) {
-  .choiceOpt:hover {
-    color: var(--dsw-alias-label-primary);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .choiceOpt {
-    transition: none;
-  }
-}
-
 /* 复选行:label 包住 input,点整行文字即可切换;勾选框几何抄 DSH Checkbox
    (16px 原生框 + accent-color)。 */
 .check {
@@ -242,7 +155,7 @@
 .menuSep {
   height: 0.5px;
   margin: 3px 8px;
-  background: var(--dsw-alias-border-l2, var(--dsw-alias-border-l1));
+  background: var(--dsw-alias-border-l4);
 }
 
 /* 菜单里的状态块与行左右对齐(卡片自带 4px 内边距)。 */
@@ -316,7 +229,7 @@
   padding: 0 14px;
   border: 0;
   border-radius: var(--dsw-radius-md, 12px);
-  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l3);
+  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l4);
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font: inherit;

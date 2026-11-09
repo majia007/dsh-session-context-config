@@ -19,6 +19,8 @@ export interface AgentLike {
 
 /** agent 作用域 ctx 的最小面(档位应用要用 tools 与 systemPrompt)。 */
 export interface AgentContext {
+  /** agent 自己的 cordis Context;通道过滤器在 agent/created 里按 agent 注册,必须排在该 agent 预设插件之后。 */
+  on?(name: string, listener: (...args: never[]) => unknown, options?: { prepend?: boolean }): unknown
   tools: {
     restrict(filter: { deny: string[] }): unknown
     register(definition: unknown): unknown
@@ -26,8 +28,9 @@ export interface AgentContext {
   systemPrompt: {
     section(section: Record<string, unknown>): unknown
     context(context: Record<string, unknown>): unknown
-    suppressRuntimeContext(): unknown
     getSectionOrder(name: string): unknown
+    /** 老宿主可能没有;注册 required 上下文遮蔽时要按运行时判形。 */
+    getContextOrder?(name: string): unknown
   }
 }
 
@@ -72,7 +75,8 @@ export type RouteHandler = (request: HttpRequest, response: HttpResponse) => Pro
 /** cordis Host ctx 的最小面(宿主与测试桩都按此形状提供方法)。 */
 export interface HostContext {
   get(service: string): unknown
-  on(event: string, listener: (...args: never[]) => unknown, options?: { prepend?: boolean }): unknown
+  /** cordis Context.on;global:true 是收到 scopeTarget 派发(如 system-prompt/assemble)的必要条件。 */
+  on(event: string, listener: (...args: never[]) => unknown, options?: { prepend?: boolean; global?: boolean }): unknown
   inject(names: string[], callback: (scoped: HostContext) => void): void
   effect(fn: () => () => void, label?: string): void
   tools: {
@@ -88,6 +92,8 @@ export interface HostContext {
   }
   systemPrompt: {
     section(section: Record<string, unknown>): () => void
-    assemble(input: { agent: unknown; scope: unknown }): Promise<{ tools?: unknown[]; sections?: unknown[]; contexts?: unknown[] }>
+    assemble(input: { agent: unknown; scope: unknown; sccFullSections?: boolean }): Promise<{ tools?: unknown[]; sections?: unknown[]; contexts?: unknown[] }>
+    /** 干跑装配后复核请求准入阶段会不会把 required 上下文补回来。 */
+    refreshContext?(assembly: unknown, context?: unknown): { tools?: unknown[]; sections?: unknown[]; contexts?: unknown[] }
   }
 }

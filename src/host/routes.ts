@@ -5,6 +5,7 @@ import { messageOf, normalizeState, statePath, type PluginState } from './state.
 import type { StateStore } from './state-store.ts'
 import type { ProfileRuntime } from './profiles.ts'
 import type { SessionKit } from './sessions.ts'
+import type { TranslationRuntime } from './translations.ts'
 import type { AgentLike, HostContext, HttpRequest, HttpResponse, RouteHandler } from '../types.ts'
 
 const PACKAGE_NAME = 'dsh-session-context-config'
@@ -12,6 +13,7 @@ const ROUTE_STATE = '/session-context-config/api/state'
 const ROUTE_SESSION = '/session-context-config/api/session'
 const ROUTE_PREVIEW = '/session-context-config/api/preview'
 const ROUTE_ASSEMBLE = '/session-context-config/api/assemble'
+const ROUTE_TRANSLATE = '/session-context-config/api/translate'
 
 /** 四条 HTTP 路由 + 快照/预览(面板与 chip 的全部数据源)。 */
 export interface RoutesRuntime {
@@ -21,6 +23,7 @@ export interface RoutesRuntime {
   handleSession: RouteHandler
   handlePreview: RouteHandler
   handleAssemble: RouteHandler
+  handleTranslate: RouteHandler
 }
 
 interface RoutesDeps {
@@ -28,6 +31,7 @@ interface RoutesDeps {
   store: StateStore
   kit: SessionKit
   profiles: ProfileRuntime
+  translations: TranslationRuntime
   note: (source: string, error: unknown) => void
   diagnostics: unknown[]
 }
@@ -71,7 +75,7 @@ function loopbackOnly(request: HttpRequest): boolean {
 }
 
 export function createRoutes(deps: RoutesDeps): RoutesRuntime {
-  const { ctx, store, kit, profiles, note, diagnostics } = deps
+  const { ctx, store, kit, profiles, translations, note, diagnostics } = deps
   const catalog = createCatalog(ctx, note)
 
   /**
@@ -105,8 +109,27 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
     return true
   }
 
+  async function sectionCatalog(): Promise<Array<{ name: string; chars: number }>> {
+    // 取第一个 live 根会话做一次干跑装配。sccFullSections 旁路掉档位的 sections 过滤,
+    // 这样被关掉的段仍在目录里,面板才能把它重新打开。
+    // 返回顺序就是宿主 order 排好的实际装配顺序(面板直接按下标排列);空文本段
+    // 不产出任何内容,不列进目录,免得"当前未出现"把列表塞满。
+    const agent = ctx.agents.list().find((candidate) => kit.isRootAgent(candidate)) ?? null
+    if (!agent) return []
+    try {
+      const assembly = await ctx.systemPrompt.assemble({ agent, scope: agent, sccFullSections: true })
+      const sections = (assembly.sections ?? []) as Array<{ name?: unknown; text?: unknown }>
+      return sections
+        .map((section) => ({ name: String(section.name ?? ''), chars: String(section.text ?? '').length }))
+        .filter((section) => section.name.length > 0 && section.chars > 0)
+    } catch (error) {
+      note('sections', error)
+      return []
+    }
+  }
+
   async function snapshot(): Promise<Record<string, unknown>> {
-    const catalogValue = await catalog.buildCatalog()
+    const [catalogValue, sections] = await Promise.all([catalog.buildCatalog(), sectionCatalog()])
     const state = store.state
     const live = []
     for (const agent of ctx.agents.list()) {
@@ -141,6 +164,7 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
       defaultPreset: catalogValue.defaultPreset,
       tools: catalogValue.tools,
       groups: catalogValue.groups,
+      sections,
       live,
       diagnostics: diagnostics.slice(0, 8),
       statePath: statePath(),
@@ -294,6 +318,14 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         name: contextEntry.name,
         chars: String(contextEntry.text ?? '').length,
       }))
+      // 请求准入会走 refreshContext;required 上下文被删后会不会补回来,只能在这里复核。
+      const refreshed = typeof ctx.systemPrompt.refreshContext === 'function'
+        ? ctx.systemPrompt.refreshContext(assembly, { agent, scope: agent })
+        : null
+      const refreshedContexts = ((refreshed?.contexts ?? []) as Array<{ name?: unknown; text?: unknown }>).map((contextEntry) => ({
+        name: contextEntry.name,
+        chars: String(contextEntry.text ?? '').length,
+      }))
       const deferred = profiles.planOf(agent)?.plan?.deferred ?? new Map()
       const sample = tools
         .filter((tool) => deferred.has(tool.name))
@@ -318,6 +350,7 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         totals: { original: originalChars, placeholder: placeholderChars },
         sections,
         contexts,
+        refreshedContexts,
         sample,
       })
     } catch (error) {
@@ -325,7 +358,34 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
     }
   }
 
-  return { snapshot, previewFor, handleState, handleSession, handlePreview, handleAssemble }
+  /** 按需翻译一段工具描述(仅面板显示用)。命中缓存立即返回;没配默认模型时 ok:false。 */
+  const handleTranslate: RouteHandler = async (request, response) => {
+    try {
+      if (!guard(request, response)) return
+      if (request.method !== 'POST') return sendJson(response, 405, { ok: false, error: 'method not allowed' })
+      const essence = String(request.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase()
+      if (essence !== 'application/json') {
+        return sendJson(response, 415, { ok: false, error: 'content-type must be application/json' })
+      }
+      const parsed = JSON.parse(await readBody(request)) as { text?: unknown }
+      const text = typeof parsed.text === 'string' ? parsed.text : ''
+      if (!text.trim()) return sendJson(response, 400, { ok: false, error: 'text required' })
+      const cached = translations.lookup(text)
+      if (cached !== null) return sendJson(response, 200, { ok: true, zh: cached, cached: true })
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 30000)
+      try {
+        const zh = await translations.translate(text, controller.signal)
+        sendJson(response, 200, { ok: true, zh, cached: false })
+      } finally {
+        clearTimeout(timer)
+      }
+    } catch (error) {
+      sendJson(response, 200, { ok: false, error: messageOf(error) })
+    }
+  }
+
+  return { snapshot, previewFor, handleState, handleSession, handlePreview, handleAssemble, handleTranslate }
 }
 
-export const ROUTES = { STATE: ROUTE_STATE, SESSION: ROUTE_SESSION, PREVIEW: ROUTE_PREVIEW, ASSEMBLE: ROUTE_ASSEMBLE } as const
+export const ROUTES = { STATE: ROUTE_STATE, SESSION: ROUTE_SESSION, PREVIEW: ROUTE_PREVIEW, ASSEMBLE: ROUTE_ASSEMBLE, TRANSLATE: ROUTE_TRANSLATE } as const

@@ -40,3 +40,7 @@ const tsdownBin = typeof tsdownManifest.bin === 'string' ? tsdownManifest.bin : 
 run(localTool('typescript', 'lib/tsc.js'), ['-p', 'tsconfig.json'], 'tsc(emit lib/types)')
 run(localTool('tsdown', tsdownBin), ['--config', 'build/tsdown.config.mjs'], 'tsdown')
 console.log('build: lib/index.js + lib/client.js + lib/types 已生成')
+// 桌面自带 client-hmr:Host 每 500ms stat-poll client bundle,变化即通过 /plugins/events
+// 推 rebuilt 帧,页面自动重挂该 entry(约 1s),不需要刷新或重启。Host 侧的
+// lib/index.js 不在 watch 范围(忽略 node_modules),要 disable→enable 或重启。
+console.log('✔ client bundle:桌面 HMR 会自动生效(约 1s);Host 改动请用插件页行开关 disable→enable 或重启。不要刷新页面(实测会崩)。')

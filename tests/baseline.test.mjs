@@ -15,12 +15,9 @@ import {
   BASELINE_DEFAULTS,
   BASELINE_TEXT,
   baselineSections,
-  clearGitCache,
-  composeCompletePrompt,
-  environmentFactsText,
   normalizeBaseline,
-  probeGit,
 } from '../src/baseline.ts'
+import { clearGitCache, environmentFactsText, probeGit } from '../src/host/environment-facts.ts'
 
 function tempDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -71,28 +68,17 @@ test('段按开关返回文本，关闭时为空串（装配层丢弃空段）',
   assert.equal(sections[1].text(), BASELINE_TEXT.cardReceipt)
 })
 
-test('段顺序落在 persona(0) 与 PLAN_POLICY(500) 之间，且互不重复', () => {
+test('段顺序排在部署段之后（附加规则收尾），且互不重复', () => {
   const orders = baselineSections(() => BASELINE_DEFAULTS).map((section) => section.order)
   assert.deepEqual(orders.slice().sort((a, b) => a - b), orders)
-  for (const order of orders) assert.ok(order > 0 && order < 500)
+  // 宿主最大段位是 deployment:persona-suffix 的 10200,附加规则必须排在它之后。
+  for (const order of orders) assert.ok(order > 10200)
   assert.equal(new Set(orders).size, orders.length)
 })
 
-test('complete 合并：默认追加在用户文本之后，可单独关掉基线合并', () => {
-  const baseline = { ...BASELINE_DEFAULTS }
-  const merged = composeCompletePrompt('自定义提示词。', baseline)
-  assert.ok(merged.startsWith('自定义提示词。'))
-  assert.ok(merged.includes(BASELINE_TEXT.contract))
-  assert.equal(composeCompletePrompt('', baseline), [
-    BASELINE_TEXT.contract,
-    BASELINE_TEXT.cardReceipt,
-    BASELINE_TEXT.untrustedFiles,
-  ].join('\n\n'))
-  assert.equal(composeCompletePrompt('只有我的', { ...baseline, inCompletePrompt: false }), '只有我的')
-  assert.equal(
-    composeCompletePrompt('x', { ...baseline, contract: false, cardReceipt: false, untrustedFiles: false }),
-    'x',
-  )
+test('complete 合并已移除：附加规则只作为全局段存在', () => {
+  assert.equal(Object.hasOwn(BASELINE_DEFAULTS, 'inCompletePrompt'), false)
+  assert.equal(normalizeBaseline({ inCompletePrompt: false }).contract, true)
 })
 
 test('环境事实格式：仓库/非仓库/探测失败三态', () => {

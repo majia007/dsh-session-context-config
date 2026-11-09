@@ -42,5 +42,5 @@ interface SearchResult {
     definitions: string;
     message: string;
 }
-export declare function createProfileRuntime(ctx: HostContext, store: StateStore, kit: SessionKit, note: (source: string, error: unknown) => void, composeBaseline: (text: string) => string): ProfileRuntime;
+export declare function createProfileRuntime(ctx: HostContext, store: StateStore, kit: SessionKit, note: (source: string, error: unknown) => void): ProfileRuntime;
 export {};

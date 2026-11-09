@@ -1,75 +1,67 @@
-/** 工具行与目录摘要输入(组卡片的行级构件)。 */
+/** 工具行(组卡片的行级构件)。 */
 import { createElement as h, type ReactElement } from 'react'
-import { Choice } from '../menu/controls.ts'
-import { effective, formatTokens, ON, STATE_LABEL } from '../state/resolve.ts'
+import { SegmentedControl, Tag, type TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
+import { effective, formatTokens, ON } from '../state/resolve.ts'
 import type { CatalogTool, Profile } from '../contract/types.ts'
 import { TOOL_STATES } from './options.ts'
+import { ToolDescription } from './ToolDescription.ts'
 import styles from './panel.module.css'
 
-type Patch = (mutate: (target: Profile) => void) => void
+/** 行内标签用分段选择的措辞(「开启」),不用摘要里的「注入」。 */
+const ROW_LABEL: Record<string, string> = { on: '开启', defer: '延迟', off: '隐藏', force: '强制开启' }
+
+/** 状态色调跟宿主 Tag 的语义走:启用=success、延迟=warning、隐藏=中性灰。 */
+const TAG_TONE: Record<string, TagTone> = { on: 'success', defer: 'warning', off: 'neutral', force: 'success' }
+
+/** 每个工具都贴最终生效状态;被组/server 改写时补一条 tooltip 说明本行选择。 */
+export function stateTag(effectiveState: string, rowState: string): ReactElement {
+  const label = ROW_LABEL[effectiveState] ?? effectiveState
+  const overridden = effectiveState !== rowState
+  return h(
+    'span',
+    {
+      className: styles.stateTag,
+      title: overridden
+        ? `由组 / server 决定：生效 ${label}（本行选择：${ROW_LABEL[rowState] ?? rowState}）`
+        : undefined,
+    },
+    h(Tag, { tone: TAG_TONE[effectiveState] ?? 'outline', className: styles.stateTagInner }, label),
+  )
+}
+
+/** 该工具的估算 token 占用,用默认(描边灰)标签,与状态标签并排。 */
+function tokenTag(tokens: number): ReactElement {
+  return h(
+    'span',
+    { className: styles.tokenTag, title: '工具定义（名字 + 描述 + 参数）的估算占用' },
+    h(Tag, null, `≈${formatTokens(tokens)}`),
+  )
+}
 
 export function toolRow(tool: CatalogTool, profile: Profile, setToolState: (toolName: string, state: string) => void): ReactElement {
   const state = effective(profile, tool)
   const raw = profile.tools?.[tool.name] ?? ON
-  // 生效状态被组/server 改写时,只在固定宽度的小列里标出「→延迟」这类结果;
-  // 未改写时留空,避免每行重复一个与选中段相同的徽标。
   return h(
     'div',
     { className: styles.tool, key: tool.name },
-    h('span', { className: styles.nm, title: tool.name }, tool.name),
-    h('span', { className: styles.zh }, tool.server ? '' : tool.description ?? ''),
-    h('span', { className: styles.cost }, `≈${formatTokens(tool.tokens)}`),
     h(
       'span',
-      {
-        className: styles.shift,
-        'data-s': state,
-        title: state !== raw ? `生效：${STATE_LABEL[state]}（工具级记录：${STATE_LABEL[raw]}）` : undefined,
-      },
-      state !== raw ? `→${state === ON ? '开启' : STATE_LABEL[state]}` : '',
+      { className: styles.nameCell },
+      h('span', { className: styles.nm, title: tool.name }, tool.name),
+      stateTag(state, raw),
+      tokenTag(tool.tokens),
     ),
-    h(Choice, {
-      small: true,
-      value: raw,
-      options: TOOL_STATES,
-      onChange: (next) => setToolState(tool.name, next),
-      name: `scc-tool-${tool.name}`,
-      label: `${tool.name} 状态`,
-    }),
-  )
-}
-
-/** 目录摘要输入:summaryKey 命中时显示,值写进 profile.summaries。 */
-export function summaryInput(key: string, hint: string, profile: Profile, summaryKey: string | null, patch: Patch): ReactElement | null {
-  return summaryKey === key
-    ? h(
-        'div',
-        { className: styles.field, style: { margin: '4px 0 8px' } },
-        h('input', {
-          className: styles.input,
-          value: profile.summaries?.[key] ?? '',
-          placeholder: hint,
-          onChange: (event: { target: { value: string } }) => {
-            const value = event.target.value
-            patch((target) => {
-              if (value.trim()) target.summaries[key] = value
-              else delete target.summaries[key]
-            })
-          },
-        }),
-      )
-    : null
-}
-
-/** 组头部的状态徽标说明(server 生效状态被组改写时的「→开启」小列)。 */
-export function shiftBadge(serverEffective: string, serverState: string): ReactElement {
-  return h(
-    'span',
-    {
-      className: styles.shift,
-      'data-s': serverEffective,
-      title: serverEffective !== serverState ? `生效：${STATE_LABEL[serverEffective]}` : undefined,
-    },
-    serverEffective !== serverState ? `→${serverEffective === ON ? '开启' : STATE_LABEL[serverEffective]}` : '',
+    h(ToolDescription, { name: tool.name, text: tool.description ?? '' }),
+    h(
+      'span',
+      { className: styles.control },
+      h(SegmentedControl, {
+        id: `scc-tool-${tool.name}`,
+        value: raw,
+        options: TOOL_STATES,
+        onChange: (next) => setToolState(tool.name, next),
+        label: `${tool.name} 状态`,
+      }),
+    ),
   )
 }

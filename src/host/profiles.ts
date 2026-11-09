@@ -1,12 +1,8 @@
-import { DEFER, OFF, ON, type ContextProfile } from './constants.ts'
+import { CONTEXT_ORDER_FALLBACK, CONTEXT_ORDER_NAMES, DEFER, OFF, ON, PERSONA_ORDER_NAME, PERSONA_SECTION, PERSONA_SUFFIX_ORDER_NAME, PERSONA_SUFFIX_SECTION, type ContextProfile } from './constants.ts'
 import type { StateStore } from './state-store.ts'
 import type { SessionKit } from './sessions.ts'
 import { effectiveState, placehold, serverOf, summaryFor, groupOf, type ToolDefinitionLike } from './tools.ts'
-import { composeCompletePrompt, type BaselineFlags } from '../baseline.ts'
 import type { AgentLike, HostContext, ToolDefinition } from '../types.ts'
-
-const PERSONA_SECTION = 'deployment:persona-prefix'
-const PERSONA_ORDER_NAME = 'DEPLOYMENT_PERSONA_PREFIX'
 
 /** 一次档位应用的计划:hidden(整体 deny)/ deferred(名→摘要)/ originals(名→完整定义)。 */
 export interface ApplyPlan {
@@ -48,7 +44,7 @@ interface SearchResult {
   message: string
 }
 
-export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: SessionKit, note: (source: string, error: unknown) => void, composeBaseline: (text: string) => string): ProfileRuntime {
+export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: SessionKit, note: (source: string, error: unknown) => void): ProfileRuntime {
   const applied = new Map<string, AppliedEntry>()
   const loadedByAgent = new WeakMap<object, Set<string>>()
   let toolSearchDispose: (() => void) | null = null
@@ -129,31 +125,48 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
       }
 
       if (profile) {
-        // replace/complete 一律注册,空文本是有效配置:complete+空 = developer 提示词
-        // 清空(renderPrompt 丢弃空段,complete 段落成为唯一 section);replace+空 =
-        // 只清掉部署 persona 前缀。此前空文本被静默跳过,档位形同 inherit。
-        if (profile.prompt.mode === 'replace' || profile.prompt.mode === 'complete') {
-          const section: {
-            name: string
-            order: unknown
-            text: string
-            interpolate: boolean
-            complete?: boolean
-          } = {
-            name: PERSONA_SECTION,
-            order: agentCtx.systemPrompt.getSectionOrder(PERSONA_ORDER_NAME),
-            // complete 段会成为唯一的 prompt 段,全局基线段在那时全部失效;
-            // 只有在这里并进去,才能保证「任何新会话都含行为契约」。
-            text: profile.prompt.mode === 'complete'
-              ? composeBaseline(profile.prompt.text)
-              : profile.prompt.text,
+        // 人设两个固定槽位各自独立(prefix order 0 / suffix order 10200):
+        // - enabled=false:该槽位注册空影子 = 不发送;
+        // - enabled=true 且 override:用 text(空文本 = 不发送该槽位);
+        // - enabled=true 且不覆盖:不注册,沿用部署的 personaPrefix / personaSuffix。
+        const personaSlots = [
+          { config: profile.prompt?.prefix, name: PERSONA_SECTION, orderName: PERSONA_ORDER_NAME },
+          { config: profile.prompt?.suffix, name: PERSONA_SUFFIX_SECTION, orderName: PERSONA_SUFFIX_ORDER_NAME },
+        ]
+        for (const slot of personaSlots) {
+          const config = slot.config
+          if (!config) continue
+          const enabled = config.enabled !== false
+          if (enabled && !config.override) continue
+          disposers.push(agentCtx.systemPrompt.section({
+            name: slot.name,
+            order: agentCtx.systemPrompt.getSectionOrder(slot.orderName),
+            text: enabled ? config.text : '',
             interpolate: false,
-          }
-          if (profile.prompt.mode === 'complete') section.complete = true
-          disposers.push(agentCtx.systemPrompt.section(section) as () => void)
+          }) as () => void)
         }
-        if (profile.runtimeContext === false) {
-          disposers.push(agentCtx.systemPrompt.suppressRuntimeContext() as () => void)
+        for (const [name, enabled] of Object.entries(profile.contexts ?? {})) {
+          if (enabled !== false) continue
+          // 每个被关掉的运行时上下文都在 agent 作用域注册同名非 required 空上下文:
+          // required 段(当前工作目录)靠它遮住 required 标志,refreshContext 才不会补回;
+          // 可选段靠它保证同样不被补回。真实文本由最外层 system-prompt/assemble 删除。
+          try {
+            const orderName = CONTEXT_ORDER_NAMES[name]
+            const resolved = orderName && typeof agentCtx.systemPrompt.getContextOrder === 'function'
+              ? agentCtx.systemPrompt.getContextOrder(orderName)
+              : CONTEXT_ORDER_FALLBACK[name] ?? 0
+            const order = typeof resolved === 'number' ? resolved : 0
+            const dispose = agentCtx.systemPrompt.context({
+              name,
+              order,
+              text: '',
+              interpolate: false,
+            })
+            if (typeof dispose === 'function') disposers.push(dispose as () => void)
+          } catch (error) {
+            // 失败时保持注入(fail-open):多给一段,不要让装配直接坏掉。
+            note(`context:${name}`, error)
+          }
         }
       }
 

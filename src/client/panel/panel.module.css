@@ -21,7 +21,7 @@
   align-items: flex-start;
   gap: 12px;
   padding: 18px 22px 14px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--dsw-alias-border-l4);
 }
 
 .headIcon {
@@ -83,7 +83,7 @@
 }
 
 .card {
-  border: 0.5px solid var(--dsw-alias-border-l1);
+  border: 0.5px solid var(--dsw-alias-border-l4);
   background: var(--dsw-alias-bg-layer-1);
   border-radius: var(--dsw-radius-lg, 16px);
   padding: 14px 16px;
@@ -102,31 +102,12 @@
   align-items: center;
 }
 
-.chip {
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  border-radius: 999px;
-  corner-shape: round;
-  padding: 5px 13px;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.chip:hover {
-  border-color: var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-2);
-}
-
-.chip[data-on="1"] {
-  border-color: var(--dsw-alias-brand-primary);
-  color: var(--dsw-alias-brand-primary);
-  background: var(--dsw-alias-bg-layer-2);
-  font-weight: 600;
+/* 档位行用宿主 SegmentedControl(ui-primitives):等宽网格 + nowrap 不换行,
+   极端长档位名/档位过多时横向滚动兜底(会裁掉组件自身的 soft 阴影,可接受)。 */
+.segWrap {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .link {
@@ -152,8 +133,28 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin-top: 10px;
+}
+
+/* 名称/描述:左侧标签 + 右侧输入框,与设置界面的字段行同一密度。 */
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fieldLabel {
+  flex: none;
+  width: 40px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.fieldRow .input {
+  flex: 1;
+  min-width: 0;
 }
 
 .input,
@@ -195,7 +196,7 @@
   gap: 8px;
   padding: 0 0 8px;
   margin-bottom: 2px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l4);
 }
 
 .groupName {
@@ -223,18 +224,22 @@
 }
 
 .serverRow .srv {
+  min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* 工具行:五列定宽。名字列与描述列左缘在所有行对齐,token 与状态控件贴右;
-   长描述交给省略号,不再按字符数硬切。「生效」列只在被组/server 改写时出现,
-   仍保留固定宽度,右缘不会跳。 */
+/* 工具行:三列定宽。名字列(名字 + 状态标签 + token 标签)与描述列左缘在所有行
+   对齐;描述完整显示(超宽就折行),不再省略号截断。名字列按「名字上限 + 两枚标签」
+   取宽,名字过长时先省略名字,不挤压标签与后面的列。 */
 .tool {
   display: grid;
-  grid-template-columns: minmax(120px, 148px) minmax(0, 1fr) 46px 42px auto;
-  align-items: center;
+  grid-template-columns: minmax(160px, 250px) minmax(0, 1fr) auto;
+  align-items: start;
   gap: 10px;
   padding: 5px 8px;
   margin: 0 -8px;
@@ -245,7 +250,28 @@
   background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
 }
 
+/* 描述会折行,行高不再固定:名字列与描述列统一按首行对齐,顶部补
+   (36px 分段选择 - 18px 行高) / 2 = 9px,单行时与按钮组垂直居中等价;
+   分段选择自己始终在整行的垂直中心。 */
+.tool .nameCell,
+.tool .zh {
+  padding-top: 9px;
+}
+
+.tool .control {
+  align-self: center;
+  display: inline-flex;
+}
+
+.tool .nameCell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .tool .nm {
+  min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 18px;
@@ -255,43 +281,82 @@
 }
 
 .tool .zh {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   min-width: 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.tool .cost {
-  font-size: 11px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+.tool .zhText {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
-.shift {
+/* 原文/中文切换:文A 跟在描述后面。观感照宿主小按钮(outline sm)抄写,
+   但高度压到 22px 以贴合工具行;描边用 inset 投影,分数宽度下笔画不断。 */
+.tool .trBtn {
   flex: none;
-  width: 42px;
-  font-size: 11px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: transparent;
+  box-shadow: inset 0 0 0 var(--dsh-hairline-width, 0.5px) var(--dsw-alias-border-l4);
+  color: var(--dsw-alias-label-secondary);
+  font-family: inherit;
+  font-size: 12px;
   line-height: 18px;
   white-space: nowrap;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
 
-.shift[data-s="on"] {
-  color: var(--dsw-alias-state-success-primary);
+@media (hover: hover) {
+  .tool .trBtn:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+    color: var(--dsw-alias-label-primary);
+  }
 }
 
-.shift[data-s="defer"] {
-  color: var(--dsw-alias-state-warn-primary);
+.tool .trBtn:active:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-active, rgba(38, 49, 72, 0.1));
 }
 
-.shift[data-s="off"] {
-  color: var(--dsw-alias-label-tertiary);
+.tool .trBtn:focus-visible {
+  outline: 1px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.tool .trBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tool .trErr {
+  flex: none;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* 状态标签:紧跟在名字后面,标签本体用宿主 Tag(胶囊 + 色调),这一层只是
+   tooltip 的载体与 flex 占位。宿主 Tag 的语义色调只染底色,这里补一圈同色描边
+   (inset 投影,不占盒宽,分数宽度下笔画不断)。 */
+.stateTag,
+.tokenTag {
+  display: inline-flex;
+  flex: none;
+}
+
+.stateTagInner {
+  box-shadow: inset 0 0 0 var(--dsh-hairline-width, 0.5px) color-mix(in srgb, currentColor 45%, transparent);
 }
 
 .clear {
@@ -320,7 +385,7 @@
   align-items: center;
   gap: 10px;
   padding: 12px 22px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 1px solid var(--dsw-alias-border-l4);
   background: var(--dsw-alias-bg-layer-1);
 }
 
@@ -343,7 +408,7 @@
   padding: 0 14px;
   border: 0;
   border-radius: var(--dsw-radius-md, 12px);
-  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l3);
+  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l4);
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font: inherit;
@@ -383,9 +448,13 @@
   word-break: break-word;
 }
 
+.cardAction {
+  margin-top: 10px;
+}
+
 .sep {
   height: 1px;
-  background: var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-border-l4);
   margin: 10px 0;
 }
 
@@ -405,20 +474,6 @@
 
 .checks + .hint {
   margin-left: 24px;
-}
-
-.divider {
-  height: 0.5px;
-  background: var(--dsw-alias-border-l2, var(--dsw-alias-border-l1));
-  margin: 14px 0 10px;
-}
-
-.subhead {
-  margin: 0 0 2px;
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
 }
 
 .mini {
@@ -441,14 +496,14 @@
   -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);
   backdrop-filter: var(--dsw-menu-backdrop-filter);
   box-shadow: var(--dsw-elevation-prominent, 0 16px 40px rgba(16, 24, 40, 0.18));
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l4);
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .popHead {
   padding: 9px 12px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l4);
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
   display: flex;
@@ -476,4 +531,218 @@
 .statusRow .st {
   margin-left: auto;
   color: var(--dsw-alias-label-secondary);
+}
+
+/* ── 按消息分卡:每条实际消息一张卡片,段用 checkbox 行 ─────────────────── */
+
+.msgCard {
+  padding: 0;
+  overflow: hidden;
+  /* .scroll 是 flex column:overflow:hidden 会把 flex item 的自动最小高度变成 0,
+     不锁 flex 就会被挤成只剩两条边(实际页面里四张消息卡整块消失)。 */
+  flex: none;
+}
+
+.msgHead {
+  padding: 12px 16px 10px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l4);
+}
+
+.msgTitleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.msgBadge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 1px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 999px;
+  corner-shape: round;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.msgBadgeSystem {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.msgCardTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.msgNote {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+}
+
+.msgBody {
+  padding: 6px 8px 8px;
+}
+
+/* 分区小标题:分割线 + 标题 + 一句说明,用来分开插件附加内容与工具目录。 */
+.sectionHead {
+  margin: 14px 0 6px;
+  padding-top: 12px;
+  border-top: 0.5px solid var(--dsw-alias-border-l4);
+}
+
+.sectionHead:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.sectionDesc {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+}
+
+.segment {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--dsw-radius-sm, 8px);
+  cursor: pointer;
+}
+
+.segment:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+}
+
+/* 依赖未满足(例如人设关闭时的覆盖开关):保留位置但不可操作。 */
+.segmentOff,
+.segmentOff:hover {
+  background: none;
+  cursor: default;
+  opacity: 0.55;
+}
+
+.segment input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--dsw-alias-brand-primary);
+  cursor: inherit;
+}
+
+.segment input:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.segmentBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.segmentTitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.segmentLabel {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.segmentDesc {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  white-space: normal;
+}
+
+.segmentMeta {
+  margin-left: auto;
+  flex: none;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+  font-variant-numeric: tabular-nums;
+}
+
+.tags {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.codeChip {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-interactive-bg-hover));
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 999px;
+  corner-shape: round;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+.sectionList {
+  max-height: 300px;
+  overflow: auto;
+  margin-top: 6px;
+  padding-right: 4px;
+  border: 0.5px solid var(--dsw-alias-border-l2, var(--dsw-alias-border-l1));
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: var(--dsw-alias-bg-base);
+}
+
+/* 人设输入框:与 msgBody 的 8px 内边距对齐,不再贴边。 */
+.msgBody .textarea {
+  width: calc(100% - 16px);
+  margin: 4px 8px 8px;
 }

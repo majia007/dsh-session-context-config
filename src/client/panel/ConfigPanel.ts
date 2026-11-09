@@ -3,15 +3,15 @@
  * 保存与预览。草稿干净时跟随快照镜像,脏时冻结;写成功后置干净等镜像重derive。
  */
 import { createElement as h, useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
-import { Choice } from '../menu/controls.ts'
+import { SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Glyph } from '../menu/icons.ts'
 import { useError, useSnapshot } from '../state/hooks.ts'
 import { loadSnapshot, request, setSnapshot, emit } from '../state/store.ts'
-import { DEFER, effective, FORCE, formatTokens, NONE, OFF, ON, presetNames, statsFor } from '../state/resolve.ts'
+import { effective, formatTokens, NONE, ON, presetNames, statsFor } from '../state/resolve.ts'
 import type { CatalogTool, Profile, Snapshot } from '../contract/types.ts'
-import { GROUP_STATES } from './options.ts'
-import { BaselineCard, SystemPromptCard, type PanelDraft } from './cards.ts'
-import { shiftBadge, summaryInput, toolRow } from './group-cards.ts'
+import { GROUP_STATES, CHANNEL_CARDS } from './options.ts'
+import { ChannelCard, SectionHeading, SnapshotCard, SystemMessageCard, type PanelDraft } from './cards.ts'
+import { stateTag, toolRow } from './group-cards.ts'
 import { PreviewDialog } from './PreviewDialog.ts'
 import styles from './panel.module.css'
 
@@ -19,6 +19,17 @@ const API_STATE = '/session-context-config/api/state'
 const LABEL = '上下文档位'
 
 type Patch = (mutate: (target: Profile) => void) => void
+
+/** 取快照诊断里的第一条可读消息;工具目录为空时给面板一个自报告入口,而不是静默少一块。 */
+function firstDiagnostic(diagnostics: unknown[]): string | null {
+  for (const item of diagnostics) {
+    if (!item || typeof item !== 'object') continue
+    const { source, message } = item as { source?: unknown; message?: unknown }
+    if (typeof message !== 'string' || !message) continue
+    return typeof source === 'string' && source ? `${source}: ${message}` : message
+  }
+  return null
+}
 
 export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const snapshot = useSnapshot()
@@ -29,7 +40,6 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const [status, setStatus] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewMode, setPreviewMode] = useState<string | null>(null)
-  const [summaryKey, setSummaryKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (!snapshot || draft) return
@@ -137,7 +147,22 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
       ...draft,
       profiles: [
         ...draft.profiles,
-        { id, name: `档位 ${index}`, description: '', prompt: { mode: 'inherit', text: '' }, runtimeContext: true, channels: {}, groups: {}, servers: {}, tools: {}, summaries: {} },
+        {
+          id,
+          name: `档位 ${index}`,
+          description: '',
+          prompt: {
+            prefix: { enabled: true, override: false, text: '' },
+            suffix: { enabled: true, override: false, text: '' },
+          },
+          contexts: {},
+          sections: {},
+          channels: {},
+          groups: {},
+          servers: {},
+          tools: {},
+          summaries: {},
+        },
       ],
     })
     setSelectedId(id)
@@ -189,6 +214,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
 
   const modeNames = presetNames(snapshot, previewMode ?? snapshot.defaultPreset) ?? presetNames(snapshot, snapshot.defaultPreset)
   const s = statsFor(profile, tools, modeNames)
+  const catalogDiagnostic = tools.length === 0 ? firstDiagnostic(snapshot.diagnostics) : null
 
   const perMode = snapshot.presets.map((preset) => ({
     id: preset.id,
@@ -204,9 +230,6 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     ]
     if (list.length === 0 && servers.length === 0) return null
     const groupState = profile.groups?.[group.id] ?? ON
-    const groupDeferred =
-      groupState === DEFER ||
-      (groupState !== OFF && groupState !== FORCE && list.some((tool) => effective(profile, tool) === DEFER))
     const customized = list.some((tool) => (profile.tools?.[tool.name] ?? ON) !== ON)
     return h(
       'div',
@@ -218,22 +241,14 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         h('span', { className: styles.count }, `${list.length} 个`),
         group.id === 'mcp' && servers.length > 0 ? h('span', { className: styles.mini }, `${servers.length} 个 server`) : null,
         h('span', { className: styles.push }),
-        groupDeferred
-          ? h(
-              'button',
-              { className: styles.link, type: 'button', title: '目录摘要', onClick: () => setSummaryKey(summaryKey === group.id ? null : group.id) },
-              '摘要',
-            )
-          : null,
-        h(Choice, {
+        h(SegmentedControl, {
+          id: `scc-group-${group.id}`,
           value: groupState,
           options: GROUP_STATES,
           onChange: (next) => setGroupState(group.id, next),
-          name: `scc-group-${group.id}`,
           label: `${group.title}组状态`,
         }),
       ),
-      summaryInput(group.id, '目录摘要（默认取首个工具描述的首句）', profile, summaryKey, patch),
       group.id === 'mcp'
         ? servers.map((serverId) => {
             const serverTools = list.filter((tool) => tool.server === serverId)
@@ -246,24 +261,17 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
                 'div',
                 { className: styles.serverRow },
                 h('span', { className: styles.srv, title: serverId }, serverId),
+                stateTag(serverEffective, serverState),
                 h('span', { className: styles.count }, serverTools.length > 0 ? `${serverTools.length} 个` : '未上线'),
                 h('span', { className: styles.push }),
-                h(
-                  'button',
-                  { className: styles.link, type: 'button', title: '目录摘要', onClick: () => setSummaryKey(summaryKey === serverId ? null : serverId) },
-                  '摘要',
-                ),
-                shiftBadge(serverEffective, serverState),
-                h(Choice, {
-                  small: true,
+                h(SegmentedControl, {
+                  id: `scc-server-${serverId}`,
                   value: serverState,
                   options: GROUP_STATES,
                   onChange: (next) => setServerState(serverId, next),
-                  name: `scc-server-${serverId}`,
                   label: `${serverId} 状态`,
                 }),
               ),
-              summaryInput(serverId, `目录摘要（server ${serverId}）`, profile, summaryKey, patch),
               ...serverTools.map((tool) => toolRow(tool, profile, setToolState)),
             )
           })
@@ -304,12 +312,16 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         h(
           'div',
           { className: styles.chipRow },
-          ...draft.profiles.map((item) =>
-            h(
-              'button',
-              { key: item.id, className: styles.chip, 'data-on': item.id === selectedId ? '1' : '0', onClick: () => setSelectedId(item.id) },
-              item.name,
-            ),
+          h(
+            'div',
+            { className: styles.segWrap },
+            h(SegmentedControl, {
+              id: 'scc-profile',
+              value: profile.id,
+              options: draft.profiles.map((item) => ({ value: item.id, label: item.name })),
+              onChange: setSelectedId,
+              label: '档位',
+            }),
           ),
           h('button', { className: styles.link, type: 'button', onClick: addProfile }, '+ 新建档位'),
           h('button', { className: styles.link, type: 'button', onClick: removeProfile, disabled: draft.profiles.length <= 1 }, '删除当前'),
@@ -317,31 +329,41 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         h(
           'div',
           { className: styles.field },
-          h('input', {
-            className: styles.input,
-            value: profile.name,
-            maxLength: 60,
-            'aria-label': '档位名称',
-            onChange: (event: { target: { value: string } }) => {
-              const value = event.target.value
-              patch((target) => {
-                target.name = value
-              })
-            },
-          }),
-          h('input', {
-            className: styles.input,
-            value: profile.description,
-            maxLength: 200,
-            placeholder: '一句话说明这套档位用来做什么',
-            'aria-label': '档位说明',
-            onChange: (event: { target: { value: string } }) => {
-              const value = event.target.value
-              patch((target) => {
-                target.description = value
-              })
-            },
-          }),
+          h(
+            'label',
+            { className: styles.fieldRow },
+            h('span', { className: styles.fieldLabel }, '名称'),
+            h('input', {
+              className: styles.input,
+              value: profile.name,
+              maxLength: 60,
+              'aria-label': '档位名称',
+              onChange: (event: { target: { value: string } }) => {
+                const value = event.target.value
+                patch((target) => {
+                  target.name = value
+                })
+              },
+            }),
+          ),
+          h(
+            'label',
+            { className: styles.fieldRow },
+            h('span', { className: styles.fieldLabel }, '描述'),
+            h('input', {
+              className: styles.input,
+              value: profile.description,
+              maxLength: 200,
+              placeholder: '一句话说明这套档位用来做什么',
+              'aria-label': '档位说明',
+              onChange: (event: { target: { value: string } }) => {
+                const value = event.target.value
+                patch((target) => {
+                  target.description = value
+                })
+              },
+            }),
+          ),
         ),
         h('div', { className: styles.sep }),
         h(
@@ -358,9 +380,33 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         ),
       ),
 
-      h(SystemPromptCard, { profile, patch }),
+      h(SystemMessageCard, { profile, draft, patch, patchBaseline, sections: snapshot.sections ?? [] }),
 
-      h(BaselineCard, { draft, patchBaseline }),
+      h(SnapshotCard, { profile, patch }),
+
+      ...CHANNEL_CARDS.map((option) => h(ChannelCard, { key: option.key, profile, patch, option })),
+
+      h(SectionHeading, {
+        title: '工具目录',
+        desc: '按组 / server / 单个工具控制注入、延迟（占位折叠）与隐藏；工具引导文本跟随工具状态，不在上方逐段配置。',
+      }),
+
+      tools.length === 0
+        ? h(
+            'section',
+            { className: styles.card },
+            h('h2', { className: styles.cardTitle }, '工具目录'),
+            h('p', { className: styles.error }, catalogDiagnostic ?? '没有读到任何工具。'),
+            h(
+              'p',
+              { className: styles.hint },
+              catalogDiagnostic
+                ? '上面的诊断来自宿主工具目录枚举；修复后点「重新读取」。'
+                : '宿主没有返回工具表；确认已配置 agent preset 后点「重新读取」。',
+            ),
+            h('button', { className: `${styles.btn} ${styles.cardAction}`, type: 'button', onClick: () => loadSnapshot(true) }, '重新读取'),
+          )
+        : null,
 
       ...groupRows,
 

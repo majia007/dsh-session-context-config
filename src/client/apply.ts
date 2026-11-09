@@ -25,18 +25,16 @@ interface ClientContext {
     inject(name: string, factory: () => unknown): void
     register(options: Record<string, unknown>, component: unknown): unknown
   }
-  sessions?: { current?: (() => unknown) | unknown }
 }
 
-/** 从宿主 sessions 服务解析当前会话 id(注册面 inject face 闭包里调用)。 */
-function serviceSessionId(ctx: ClientContext): string | null {
-  try {
-    const service = ctx?.sessions
-    const current = typeof service?.current === 'function' ? (service.current as () => { id?: unknown; sessionId?: unknown })() : service?.current as { id?: unknown; sessionId?: unknown } | undefined
-    return (current?.id ?? current?.sessionId ?? null) as string | null
-  } catch {
-    return null
-  }
+/**
+ * session 作用域槽位的 inject face 会收到槽位渲染器传入的 sessionId(位置参数,
+ * `ui-renderer/src/client/scoped-slots.tsx` 的 runInject 传 binding.key)。不要
+ * 改回 `ctx.sessions.current()`:sessions 不在插件 inject 名单里,Cordis 注入检查
+ * 会抛错,被吞掉后返回 null,会话头部 chip 就不渲染(只剩新会话行靠空白会话兜底)。
+ */
+function sessionIdFrom(argument: unknown): string | null {
+  return typeof argument === 'string' && argument.length > 0 ? argument : null
 }
 
 export const inject = ['slots']
@@ -90,12 +88,12 @@ export function apply(ctx: ClientContext): void {
   )
 
   ctx.slots.inject('conversation.hero.options', () =>
-    ctx.slots.register({ name: 'conversation.hero.options', id: 'session-context-config', order: 20, inject: () => ({ sessionId: serviceSessionId(ctx) }) }, (props: unknown) => h(HeroChip, { ...(props as object) })),
+    ctx.slots.register({ name: 'conversation.hero.options', id: 'session-context-config', order: 20, inject: (sessionId: unknown) => ({ sessionId: sessionIdFrom(sessionId) }) }, (props: unknown) => h(HeroChip, { ...(props as object) })),
   )
 
   // 会话头部:和「模式」标签同槽(那个静态标签 order -10),排在它右侧;
   // 放进 utilities 会被推到整行最右端。
   ctx.slots.inject('conversation.session.header.actions', () =>
-    ctx.slots.register({ name: 'conversation.session.header.actions', id: 'session-context-config', order: 10, inject: () => ({ sessionId: serviceSessionId(ctx) }) }, (props: unknown) => h(SessionChip, { ...(props as object) })),
+    ctx.slots.register({ name: 'conversation.session.header.actions', id: 'session-context-config', order: 10, inject: (sessionId: unknown) => ({ sessionId: sessionIdFrom(sessionId) }) }, (props: unknown) => h(SessionChip, { ...(props as object) })),
   )
 }

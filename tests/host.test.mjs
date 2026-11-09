@@ -31,6 +31,11 @@ test('分组与 server 归属：锚定前缀，不靠子串猜', () => {
   assert.equal(groupOf('pwsh'), 'terminal')
   assert.equal(groupOf('mcp__github__create_issue'), 'mcp')
   assert.equal(groupOf('build_deploy'), 'other')
+  // 平台只留运行时基础;插件开发/宿主诊断单独成组(极简也要保留平台这两个)。
+  assert.equal(groupOf('working_directory'), 'platform')
+  assert.equal(groupOf('load_workspace_dependencies'), 'platform')
+  assert.equal(groupOf('plugin_manager'), 'devtools')
+  assert.equal(groupOf('cordis_inspect_query'), 'devtools')
   assert.equal(serverOf('mcp__github__create_issue'), 'github')
   assert.equal(serverOf('mcp_connector_list'), 'mcp_connector')
   assert.equal(serverOf('read'), null)
@@ -104,4 +109,24 @@ test('状态归一化：版本不符整份作废，重复 id 去掉，坏引用�
   assert.deepEqual(normalized.profiles.map((p) => p.id), ['a', 'profile-3'])
   assert.deepEqual(normalized.sessions, { s1: 'a' })
   assert.equal(normalized.lastUsedId, 'none')
+  // 新字段缺省=全注入；旧 runtimeContext/workingDirectory/环境事实一次性迁成逐项 false。
+  assert.deepEqual(normalized.profiles[0].contexts, {})
+  const legacy = normalizeState({
+    version: 2,
+    profiles: [{ id: 'a', runtimeContext: false, workingDirectory: false }],
+    baseline: { environmentFacts: false },
+  }).profiles[0]
+  assert.equal(legacy.contexts['working-directory:current'], false)
+  assert.equal(legacy.contexts['sandbox:policy'], false)
+  assert.equal(legacy.contexts['session-context-config:environment'], false)
+  assert.equal(legacy.contexts['harness:source'], false)
+  const wdOnly = normalizeState({ version: 2, profiles: [{ id: 'a', workingDirectory: false }] }).profiles[0]
+  assert.deepEqual(wdOnly.contexts, { 'working-directory:current': false })
+  // contexts 一旦存在就是新模型；旧字段和旧全局环境事实开关都不再参与。
+  const explicit = normalizeState({
+    version: 2,
+    profiles: [{ id: 'a', contexts: { 'sandbox:policy': false, 'approval:policy': true } }],
+    baseline: { environmentFacts: false },
+  }).profiles[0]
+  assert.deepEqual(explicit.contexts, { 'sandbox:policy': false })
 })

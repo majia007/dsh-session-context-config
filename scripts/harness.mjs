@@ -26,6 +26,8 @@ assert.equal(captured?.id, 'dsh-session-context-config', 'factory id 必须是�
 const face = captured.factory((name) => {
   if (name === 'react') return React
   if (name === 'react-dom') return ReactDOM
+  // apply 不渲染组件,宿主 ui-primitives 给空桩即可。
+  if (name === '@deepseek-ai/dsh-client-ui-primitives') return { SegmentedControl: () => null }
   throw new Error(`模块表没有 ${name}`)
 })
 

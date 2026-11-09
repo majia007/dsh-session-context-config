@@ -44,7 +44,11 @@ export function createCatalog(ctx: HostContext, note: (source: string, error: un
     let defaultPreset = 'standard'
     const registry = ctx.get('agentPresets') as {
       list?: () => Promise<Array<{ id: string; name?: string }>>
-      acquireScope?: (id: string) => Promise<{ key: unknown; dispose?: () => Promise<void> }>
+      acquireScope?: (id: string) => Promise<{
+        key: unknown
+        dispose?: () => Promise<void>
+        [Symbol.asyncDispose]?: () => Promise<void>
+      }>
     } | undefined
     try {
       const registryConfig = ctx.get('agentPresetRegistry') as { config?: { default?: string } } | undefined
@@ -57,13 +61,16 @@ export function createCatalog(ctx: HostContext, note: (source: string, error: un
       for (const preset of list) {
         let tools: CatalogTool[] = []
         try {
-          const acquire = registry?.acquireScope
-          if (!acquire) throw new Error('agentPresets.acquireScope 不可用')
-          const lease = await acquire(preset.id)
+          if (!registry?.acquireScope) throw new Error('agentPresets.acquireScope 不可用')
+          // 必须作为方法调用：宿主实现内部要用 this.retain，解构成局部函数后 receiver 丢失。
+          const lease = await registry.acquireScope(preset.id)
           try {
             tools = (ctx.tools.schemas(lease.key) as Array<{ name?: unknown; description?: unknown; parameters?: unknown }>).map(toolEntry)
           } finally {
-            await lease.dispose?.()
+            // 当前宿主用 Symbol.asyncDispose 释放租约；旧宿主可能给 dispose()，两个都兜住。
+            const asyncDispose = lease[Symbol.asyncDispose]
+            if (typeof asyncDispose === 'function') await asyncDispose.call(lease)
+            else await lease.dispose?.()
           }
         } catch (error) {
           note(`catalog:${preset.id}`, error)

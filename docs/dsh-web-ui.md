@@ -152,7 +152,7 @@ div:has(> [data-slot="conversation.hero.options"]) { margin-left: 0 }
 | `.cp-check` / `.cp-checkBody` | `Checkbox` | label 包 input，点文字即切换；标题 13/20 + 说明 12/18 |
 | `.cp-groupHead` / `.cp-divider` / `.cp-subhead` | 无直接对应 | 分组标题、设置分组与 0.5px `border-l2` 分隔线 |
 | `.cp-btn` | `ui-primitives` 的 Button | md 档：36px 高、14px 字、radius-md、`0 14px`；主按钮 `--dsw-alias-button-primary-fill` + 前景色（不是品牌色 + `#fff`） |
-| `.cp-tool` / `.cp-shift` / `.cp-clear` | 无直接对应 | 工具清单的定宽列：名字/描述/token/生效/状态；`.cp-shift` 仅在生效值被组或 server 改写时显示 `→延迟` 这类结果 |
+| `.cp-tool` / `.cp-nameCell` / `.cp-stateTag` / `.cp-tokenTag` / `.cp-clear` | 宿主 `Tag` | 工具清单的定宽列：名字（含两枚标签）/描述（超宽折行，完整显示）/状态。两枚标签都用 `Tag` 胶囊：`.cp-stateTag` 按生效状态取 `success` / `warning` / `neutral` 色调并补一圈同色 inset 描边（`.cp-stateTagInner`），被组或 server 改写时用 tooltip 说明本行选择；`.cp-tokenTag` 用默认 `outline` 灰标签显示 token 估算 |
 | `.cp-row` / `.cp-rowMain` / `.cp-rowName` / `.cp-rowDesc` / `.cp-rowCount` / `.cp-rowCheck` | `.item` / `.itemIcon` / `.itemLabel` / `.check` | 两行条目 + 行尾计数 + 勾 |
 | `.cp-menuSep` | `.separator` | 0.5px + `border-l2` |
 | `.cp-status` / `.cp-statusRow` / `.cp-tools` | 无直接对应 | 会话头部的工具状态清单，沿用本项目自己的紧凑排版；`.cp-tools` 是固定可视高度 + 内部滚动的清单区（全量渲染，不截断成「另外 N 个」） |
