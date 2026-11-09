@@ -1,6 +1,18 @@
-# 上下文档位（dsh-session-context-config）
+# 上下文档位（@jia-tools/dsh-session-context-config）
 
 为新会话选择注入到上下文的**工具集合**与**系统提示词**。左侧栏顶部「上下文档位」入口打开配置面板；新会话与已有会话都能在会话头部切换档位。插件列表里这一行叫「会话上下文配置」，产品内仍按「档位」称呼。
+
+## 安装
+
+要求 DSH `>=0.2.2-rc.1 <0.3.0`（prerelease 参与匹配）。
+
+```sh
+dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
+```
+
+桌面端 / Web 在「插件」页搜索 `@jia-tools/dsh-session-context-config` 安装。bundle 集变化需重启对应 profile 后生效；档位只作用于新会话，已有会话不回改。
+
+本地源码安装（开发）：`dsh plugin --profile <profile> add <本目录>`；改代码后 `pnpm build` 并重启宿主。
 
 ## 档位模型
 
@@ -207,7 +219,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 | 通道过滤顺序 | 2026-11-09 会话 `session-f6a33b8a…` 实证（旧版 complete 语义）：Chat 档 channels 全 off、tools=0、system 为空，但仍漏一条 `time-context` user 消息。根因是 preset 的 `prepend` 监听器晚于全局过滤器注册、反包住过滤器；修复为 `agent/created` 时按 agent 再注册（回归 `tests/channels.test.mjs`） |
 | 客户端 | bundle 已进 boot graph |
 
-未验证：会话头部下拉菜单的像素级核对（与 hero 下拉同一套组件，DOM 已核对）。
+未验证：会话头部下拉菜单的像素级核对（与 hero 下拉同一套组件，DOM 已核对）；卡片回执条款只做 1 次行为抽查（`present` 后只回一句确认），交付失败时仍给错误细节由契约文本保证，未单独构造失败场景。
 
 ## 已知限制
 

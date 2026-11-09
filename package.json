@@ -1,6 +1,6 @@
 {
-  "name": "dsh-session-context-config",
-  "version": "0.5.0",
+  "name": "@jia-tools/dsh-session-context-config",
+  "version": "1.0.0",
   "license": "MIT",
   "author": "Jia",
   "description": "Context profiles for new sessions: choose the tools and the system prompt each new conversation receives.",
@@ -10,6 +10,22 @@
   },
   "bugs": {
     "url": "https://github.com/majia007/dsh-session-context-config/issues"
+  },
+  "homepage": "https://github.com/majia007/dsh-session-context-config#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek",
+    "deepseek-harness",
+    "context",
+    "session",
+    "system-prompt"
+  ],
+  "engines": {
+    "dsh": ">=0.2.2-rc.1 <0.3.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -49,6 +65,8 @@
   },
   "scripts": {
     "build": "node build/build.mjs",
+    "prepack": "node build/build.mjs",
+    "prepare": "node build/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-force-exit \"tests/**/*.test.mjs\"",
     "smoke": "node scripts/smoke.mjs"

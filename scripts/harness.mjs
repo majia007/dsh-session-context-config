@@ -22,7 +22,7 @@ globalThis.document = {
 }
 
 new Function('window', 'document', readFileSync(fileURLToPath(new URL('../lib/client.js', import.meta.url)), 'utf8'))(globalThis.window, globalThis.document)
-assert.equal(captured?.id, 'dsh-session-context-config', 'factory id 必须是包名')
+assert.equal(captured?.id, JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')).name, 'factory id 必须是包名')
 const face = captured.factory((name) => {
   if (name === 'react') return React
   if (name === 'react-dom') return ReactDOM
@@ -39,7 +39,8 @@ const ctx = {
   get: () => undefined,
   effect: (fn) => { fn(); return () => {} },
   inject: (names, cb) => { if (names.includes('layout')) return; cb(ctx) },
-  sessions: { current: () => ({ id: 's-live' }) },
+  // 假 ctx 不提供 sessions:sessionId 契约是槽位渲染器传入的位置参数,
+  // 提供 sessions 会掩盖「改回 ctx.sessions.current()」这类回归(同 smoke.mjs 守卫)。
   slots: {
     inject(name, factory) { factory() },
     register(options, component) { registrations.set(options.name, { options, component }) },
@@ -49,7 +50,7 @@ face.apply(ctx)
 for (const slot of ['sidebar.panellist', 'main', 'conversation.hero.options', 'conversation.session.header.actions']) {
   assert.ok(registrations.has(slot), `槽位 ${slot} 必须注册`)
 }
-const heroFace = registrations.get('conversation.hero.options').options.inject()
+const heroFace = registrations.get('conversation.hero.options').options.inject('s-live')
 assert.equal(heroFace.sessionId, 's-live', 'hero 槽位的 inject face 要提供当前会话 id')
 const mainFace = registrations.get('main').options.inject()
 assert.equal(typeof mainFace.closePanel, 'function')

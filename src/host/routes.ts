@@ -8,7 +8,7 @@ import type { SessionKit } from './sessions.ts'
 import type { TranslationRuntime } from './translations.ts'
 import type { AgentLike, HostContext, HttpRequest, HttpResponse, RouteHandler } from '../types.ts'
 
-const PACKAGE_NAME = 'dsh-session-context-config'
+const PACKAGE_NAME = '@jia-tools/dsh-session-context-config'
 const ROUTE_STATE = '/session-context-config/api/state'
 const ROUTE_SESSION = '/session-context-config/api/session'
 const ROUTE_PREVIEW = '/session-context-config/api/preview'

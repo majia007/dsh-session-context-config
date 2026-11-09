@@ -1,5 +1,5 @@
 /**
- * dsh-session-context-config · 浏览器半边入口。
+ * @jia-tools/dsh-session-context-config · 浏览器半边入口。
  *
  * /client 只导出 cordis 加载所需(inject/apply)——组件、纯函数、常量一律内部
  * (官方导出纪律);smoke 门禁按 loader 方式加载 lib/client.js 验证,不为测试放宽导出面。

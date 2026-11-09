@@ -1,4 +1,4 @@
-# AGENTS.md — dsh-session-context-config（上下文档位）
+# AGENTS.md — @jia-tools/dsh-session-context-config（上下文档位）
 
 DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪段系统提示词。Host 做档位解析与装配，Client 在 Web UI 里出一个配置面板和两个切换 chip。
 
@@ -163,7 +163,7 @@ node scripts/harness.mjs
 1. 读 `docs/dsh-web-ui.md`：确认槽位、可复用 token、控件几何；要动的宿主源码路径写在该文档的「源码地图」。
 2. 改 `src/client/`：样式在 `panel/panel.module.css` 与 `menu/menu.module.css`（编译后类名带 `cp-` 前缀）；两处 chip 复用 `menu/seat.ts` 的 `Seat` / `MenuRow`。
 3. `pnpm build`，再 `node scripts/smoke.mjs`，断言不通过就别急着截图。
-4. `pnpm build` 后**重启整个 DSH 桌面应用**再打开——只刷新页面或 disable→enable 都会因桌面 boot manifest 快照失配而 404；然后截窗口图，按 DSH 自带控件对齐：触发器 28px 高、菜单行 34px 高、字号 13/20 与 12/16。
+4. `pnpm build` 后约 1s client HMR 自动重挂 entry（**不要刷新页面**）；需要新页面时才重启桌面应用。然后截窗口图，按 DSH 自带控件对齐：触发器 28px 高、菜单行 34px 高、字号 13/20 与 12/16。
 5. 视觉事实有变化才同步 `docs/dsh-web-ui.md`；纯重命名/拆函数不用改文档。
 
 ## 已知待优化
