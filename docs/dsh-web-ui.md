@@ -40,6 +40,8 @@
 
 ## 2. 控件几何（抄自宿主，用来对齐观感）
 
+> 表里的字号 / 行高是**标准档（界面字号 14–15px）的设计值**，且是宿主抄写值。代码里小字号只有四档，按信息层级取：**11** = 角标/计数/代码片段/标签胶囊，**12** = 辅助说明与元信息（描述、提示、状态行、工具名、分组标题、时间），**13** = 正文与行标题，**14** = 输入框与按钮文字；原先 10px 的并入 11 或 12，不再出现 10px。实现一律写 `font-size: var(--dsh-plugin-fs-N, Npx)`、行高写 `calc(Npx + var(--dsh-plugin-font-boost, 0px))`，16px 以上的标题用 `calc(16px + var(--dsh-plugin-font-boost, 0px))`。变量定义集中在 `panel.module.css` 顶部的 `body` 规则，`menu.module.css` 共用同一份（同一 bundle 一起注入）；规则原文与理由见仓库根 `AGENTS.md` 的「字号响应规则」。
+
 ### 2.1 触发器 chip —— 对应宿主的 `.workspace`（工作区）与 `.seat`（模式）
 
 | 项 | 值 |
@@ -66,7 +68,7 @@
 | 行 | `display:flex`，`gap:6px`，`width:100%`，`min-height:34px`，`padding:6px 8px`，`border-radius: var(--dsw-radius-md)`，13px / 20px |
 | 行悬停 / 键盘焦点 | `background: var(--dsw-alias-interactive-bg-hover)`，焦点不画 outline |
 | 行图标 / 勾 | 14px；勾在行尾，色 `label-primary` |
-| 分组标题行 | `padding:6px 8px`，11px / 15px，色 `label-tertiary` |
+| 分组标题行 | `padding:6px 8px`，11px / 15px（宿主值；本项目按四档统一为 12px / 18px），色 `label-tertiary` |
 | 分隔线 | 高 `.5px`，`margin:3px 8px`，色 `border-l2` |
 | 多行条目 | 名称 13/20 `label-primary`，描述 12/16 `label-caption`，`white-space:normal` |
 | 进场动画 | 只动 opacity，时长走 `--dsh-menu-*`；`prefers-reduced-motion` 归零 |
