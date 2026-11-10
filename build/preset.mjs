@@ -10,7 +10,7 @@
  *      <style>(tag=包名);Node 半边输出 lib/index.js,tsc 输出 lib/types/**;
  *   4. build.mjs 负责编排:tsc(出 lib/types)→ tsdown(出 lib/index.js + lib/client.js)。
  *
- * 与官方 preset 的完整偏差清单见本插件 AGENTS.md(与 dsh-ask-choice 同一套定案)。
+ * 与官方 preset 的完整偏差清单见本插件 AGENTS.md。
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'

@@ -31,7 +31,7 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 | `src/client/menu/` | 浮层与席位原语（Popover/Seat/MenuRow/图标/复选行）+ `menu.module.css`；分段选择用宿主 ui-primitives 的 `SegmentedControl`（类型面在 `src/ambient.d.ts`） |
 | `src/client/panel/` | 配置面板（ConfigPanel/cards/group-cards/PreviewDialog/options/ToolDescription/translations）+ `panel.module.css`；`cards.ts` 按最终请求的消息分卡（系统提示词/快照/工作区指令/时间采样），`options.ts` 的 `CONTEXT_SWITCHES`、`CHANNEL_CARDS`、`SECTION_OPTIONS` 是 UI 清单，与 Host 的上下文名/段名同步；`translations.ts` 是已知工具的**内置中文**（key=原始描述文本），`ToolDescription.ts` 是「文A」原文/中文切换与按需翻译 loading |
 | `src/client/chips/` | 新会话 chip（`conversation.hero.options`）+ 会话头部 chip（`conversation.session.header.actions`，紧跟「模式」标签）+ 共用 picker |
-| `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-ask-choice/AGENTS.md`） |
+| `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-workspace-sidebar/AGENTS.md`「与官方 preset 的偏差」） |
 | `tests/` | 直读 src 的单元测试：host 纯函数、附加规则快照、环境事实（`host/environment-facts.ts`）、不可信下载规则可执行性、v2→v3 迁移、人设开关/覆盖、system 段过滤（含 `global:true` 注册断言） |
 | `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 lib/client.js，喂假快照渲染面板与两个 chip 并点击 |
 | `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 lib/client.js，验 id/槽位注册/样式注入/inject face |
