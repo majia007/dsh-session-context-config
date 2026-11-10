@@ -1,8 +1,16 @@
 /*
  * 配置面板样式(CSS Modules,编译后类名带 cp- 前缀,见 build/preset.mjs)。
- * 声明与旧版内联 CSS 逐条一致,本轮不改任何值。
  * 状态块(status/statusRow)在 menu.module.css 有一份同名规则(chips/菜单复用同一材质)。
  */
+
+/* 字号随界面字号设置缩放:14/15px 用设计值,更小以用户字号为上限,更大按正文增量上调。 */
+body {
+  --dsh-plugin-font-boost: max(0px, calc(var(--dsh-content-font-size, 14px) - 15px));
+  --dsh-plugin-fs-11: min(var(--dsh-content-font-size, 14px), calc(11px + var(--dsh-plugin-font-boost)));
+  --dsh-plugin-fs-12: min(var(--dsh-content-font-size, 14px), calc(12px + var(--dsh-plugin-font-boost)));
+  --dsh-plugin-fs-13: min(var(--dsh-content-font-size, 14px), calc(13px + var(--dsh-plugin-font-boost)));
+  --dsh-plugin-fs-14: min(var(--dsh-content-font-size, 14px), calc(14px + var(--dsh-plugin-font-boost)));
+}
 
 .root {
   height: 100%;
@@ -11,8 +19,8 @@
   flex-direction: column;
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
 }
 
 .head {
@@ -42,14 +50,14 @@
 
 .title {
   margin: 0;
-  font-size: 16px;
+  font-size: calc(16px + var(--dsh-plugin-font-boost, 0px));
   font-weight: 600;
-  line-height: 24px;
+  line-height: calc(24px + var(--dsh-plugin-font-boost, 0px));
 }
 
 .sub {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -91,7 +99,7 @@
 
 .cardTitle {
   margin: 0 0 10px;
-  font-size: 13px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
   font-weight: 600;
 }
 
@@ -115,7 +123,7 @@
   background: none;
   color: var(--dsw-alias-brand-primary);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   cursor: pointer;
   padding: 4px 2px;
 }
@@ -147,8 +155,8 @@
 .fieldLabel {
   flex: none;
   width: 40px;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -167,8 +175,8 @@
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--dsh-plugin-fs-14, 14px);
+  line-height: calc(22px + var(--dsh-plugin-font-boost, 0px));
   outline: none;
 }
 
@@ -200,12 +208,12 @@
 }
 
 .groupName {
-  font-size: 13px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
   font-weight: 600;
 }
 
 .count {
-  font-size: 11px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -226,8 +234,8 @@
 .serverRow .srv {
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -273,8 +281,8 @@
 .tool .nm {
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -285,8 +293,8 @@
   align-items: flex-start;
   gap: 6px;
   min-width: 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
 }
 
@@ -311,8 +319,8 @@
   box-shadow: inset 0 0 0 var(--dsh-hairline-width, 0.5px) var(--dsw-alias-border-l4);
   color: var(--dsw-alias-label-secondary);
   font-family: inherit;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   white-space: nowrap;
   cursor: pointer;
 }
@@ -341,8 +349,8 @@
 .tool .trErr {
   flex: none;
   color: var(--dsw-alias-state-error-primary);
-  font-size: 11px;
-  line-height: 16px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   white-space: nowrap;
 }
 
@@ -366,8 +374,8 @@
   background: none;
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
   font: inherit;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   padding: 4px 6px;
   margin: 2px 0 0 -6px;
   border-radius: var(--dsw-radius-xs, 4px);
@@ -392,7 +400,7 @@
 .footNote {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -412,8 +420,8 @@
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--dsh-plugin-fs-14, 14px);
+  line-height: calc(22px + var(--dsh-plugin-font-boost, 0px));
   cursor: pointer;
 }
 
@@ -438,12 +446,12 @@
 
 .empty {
   padding: 16px 2px;
-  font-size: 12px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-label-secondary);
 }
 
 .error {
-  font-size: 12px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-state-error-primary);
   word-break: break-word;
 }
@@ -467,8 +475,8 @@
 
 .hint {
   margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
 }
 
@@ -477,7 +485,7 @@
 }
 
 .mini {
-  font-size: 11px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -504,7 +512,7 @@
 .popHead {
   padding: 9px 12px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l4);
-  font-size: 12px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-label-secondary);
   display: flex;
   justify-content: space-between;
@@ -519,13 +527,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   padding: 2px 0;
 }
 
 .statusRow .nm {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
 }
 
 .statusRow .st {
@@ -564,8 +572,8 @@
   border-radius: 999px;
   corner-shape: round;
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
-  font-size: 11px;
-  line-height: 17px;
+  font-size: var(--dsh-plugin-fs-11, 11px);
+  line-height: calc(17px + var(--dsh-plugin-font-boost, 0px));
   font-weight: 500;
   white-space: nowrap;
 }
@@ -577,15 +585,15 @@
 .msgCardTitle {
   margin: 0;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
   font-weight: 600;
-  line-height: 20px;
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
 }
 
 .msgNote {
   margin: 3px 0 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
 }
 
@@ -607,16 +615,16 @@
 }
 
 .sectionTitle {
-  font-size: 13px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
   font-weight: 600;
-  line-height: 20px;
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-primary);
 }
 
 .sectionDesc {
   margin: 2px 0 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
 }
 
@@ -677,15 +685,15 @@
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
 }
 
 .segmentDesc {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
   white-space: normal;
 }
@@ -693,8 +701,8 @@
 .segmentMeta {
   margin-left: auto;
   flex: none;
-  font-size: 10px;
-  line-height: 16px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   font-variant-numeric: tabular-nums;
 }
@@ -712,8 +720,8 @@
   background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-interactive-bg-hover));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
-  line-height: 16px;
+  font-size: var(--dsh-plugin-fs-11, 11px);
+  line-height: calc(16px + var(--dsh-plugin-font-boost, 0px));
   font-weight: 400;
 }
 
@@ -726,8 +734,8 @@
   border-radius: 999px;
   corner-shape: round;
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
-  font-size: 10px;
-  line-height: 16px;
+  font-size: var(--dsh-plugin-fs-11, 11px);
+  line-height: calc(16px + var(--dsh-plugin-font-boost, 0px));
   font-weight: 400;
 }
 

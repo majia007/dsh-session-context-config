@@ -10,7 +10,7 @@ import { loadSnapshot, request, setSnapshot, emit } from '../state/store.ts'
 import { effective, formatTokens, NONE, ON, presetNames, statsFor } from '../state/resolve.ts'
 import type { CatalogTool, Profile, Snapshot } from '../contract/types.ts'
 import { GROUP_STATES, CHANNEL_CARDS } from './options.ts'
-import { ChannelCard, SectionHeading, SnapshotCard, SystemMessageCard, type PanelDraft } from './cards.ts'
+import { ChannelCard, DEFAULT_BASELINE, SectionHeading, SnapshotCard, SystemMessageCard, type PanelDraft } from './cards.ts'
 import { stateTag, toolRow } from './group-cards.ts'
 import { PreviewDialog } from './PreviewDialog.ts'
 import styles from './panel.module.css'
@@ -46,7 +46,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     setDraft(JSON.parse(JSON.stringify({
       profiles: snapshot.profiles,
       lastUsedId: snapshot.lastUsedId,
-      baseline: snapshot.baseline ?? {},
+      baseline: snapshot.baseline ?? DEFAULT_BASELINE,
     })))
     setSelectedId(snapshot.profiles[0]?.id ?? null)
   }, [snapshot, draft])
@@ -72,11 +72,11 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     return JSON.stringify(draft) !== JSON.stringify({
       profiles: snapshot.profiles,
       lastUsedId: snapshot.lastUsedId,
-      baseline: snapshot.baseline ?? {},
+      baseline: snapshot.baseline ?? DEFAULT_BASELINE,
     })
   }, [snapshot, draft])
 
-  const patchBaseline = useCallback((key: string, value: boolean) => {
+  const patchBaseline = useCallback((key: string, value: boolean | string) => {
     setDraft((current) => (current ? { ...current, baseline: { ...current.baseline, [key]: value } } : current))
     setStatus(null)
   }, [])
@@ -186,7 +186,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
       setDraft(JSON.parse(JSON.stringify({
         profiles: result.snapshot.profiles,
         lastUsedId: result.snapshot.lastUsedId,
-        baseline: result.snapshot.baseline ?? {},
+        baseline: result.snapshot.baseline ?? DEFAULT_BASELINE,
       })))
       setStatus('已保存')
       emit()

@@ -15,7 +15,17 @@ export interface AppliedEntry {
   profileId: string
   plan: ApplyPlan
   agent: AgentLike
+  /** 延迟占位的按名注册簿:未变化的工具必须沿用同一份注册,宿主的 step admission 按对象身份校验。 */
+  deferred: Map<string, DeferredRegistration>
+  /** hidden 面的整体 restrict 撤销器;restrict 只影响被 deny 的名字,不改变其它工具的注册身份。 */
+  hiddenDispose: (() => void) | null
   dispose(): void
+}
+
+/** 一个延迟占位的注册记录;summary 与注册时写入的 description 绑定,增量重算以它为准。 */
+interface DeferredRegistration {
+  summary: string
+  dispose: () => void
 }
 
 /** 档位应用运行时:计划计算、按 agent 应用/撤销、tool_search 注册与查询面。 */
@@ -23,6 +33,8 @@ export interface ProfileRuntime {
   profileById(id: string): ContextProfile | null
   planFor(profile: ContextProfile, definitions: ToolDefinitionLike[], extraNames?: Iterable<string>, previousOriginals?: Map<string, ToolDefinitionLike>): ApplyPlan
   applyTo(agent: AgentLike, profileId: string): ApplyPlan
+  /** 工具表变化后的增量刷新:只动新增/消失的延迟工具与 hidden 面,未变化的保持原注册对象。 */
+  refresh(agent: AgentLike): void
   release(agent: AgentLike): void
   planOf(agent: AgentLike): { profileId: string; plan: ApplyPlan } | null
   deferredFor(agent: AgentLike): Map<string, string>
@@ -68,45 +80,61 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
       } else if (stateOfTool === DEFER) {
         const definition = byName.get(name)
         deferred.set(name, summaryFor(profile, name, definition?.description))
+        // 只记真实定义:extraNames 里被别的 restrict 挡掉的工具没有定义,
+        // 塞一份空壳会污染后续 tool_search(之后真定义出现也不再被采纳)。
         const previous = previousOriginals?.get(name)
-        originals.set(
-          name,
-          previous ?? {
+        if (previous) originals.set(name, previous)
+        else if (definition) {
+          originals.set(name, {
             name,
-            description: definition?.description ?? '',
-            parameters: definition?.parameters ?? { type: 'object', properties: {} },
-          },
-        )
+            description: definition.description ?? '',
+            parameters: definition.parameters ?? { type: 'object', properties: {} },
+          })
+        }
       }
     }
     return { hidden, deferred, originals }
   }
 
+  /**
+   * 继承层(全局 + 预设父作用域)注册的工具名;拿不到工具视图时返回 null。
+   *
+   * `restrictableNames` 恰好只含继承层:注册在本作用域里的东西(延迟占位)不在其中。
+   * 因此它还能回答「占位背后是否还有真实实现」——`definitionsOf` 里本作用域的影子会让
+   * 该名字永远可见,看不出真实实现已经卸载。
+   */
+  function inheritedNames(agent: AgentLike): Set<string> | null {
+    try {
+      const view = ctx.tools.view(agent) as { restrictableNames?: Iterable<string> } | undefined
+      if (!view || view.restrictableNames === undefined) return null
+      return new Set(view.restrictableNames)
+    } catch {
+      return null
+    }
+  }
+
   function applyTo(agent: AgentLike, profileId: string): ApplyPlan {
     const sessionId = kit.sessionIdOf(agent)
     const previousOriginals = sessionId ? applied.get(sessionId)?.plan?.originals : undefined
-    release(agent)
+    // 重入守卫必须先于 release:撤销注册会同步触发 tools/change,守卫之外会白排一次去抖重算。
     applying += 1
     try {
+      release(agent, { quiet: true })
       const profile = profileId === 'none' ? null : profileById(profileId)
       const agentCtx = agent.ctx
       if (!agentCtx) throw new Error('agent 没有可用的 ctx')
       const definitions = kit.definitionsOf(agent)
-      const extraNames = (() => {
-        try {
-          return [...((ctx.tools.view(agent) as { restrictableNames?: string[] } | undefined)?.restrictableNames ?? [])]
-        } catch {
-          return []
-        }
-      })()
+      const extraNames = inheritedNames(agent) ?? undefined
       const byName = new Map(definitions.map((definition) => [definition.name, definition]))
       const plan = profile
         ? planFor(profile, definitions, extraNames, previousOriginals)
         : { hidden: [], deferred: new Map<string, string>(), originals: new Map<string, ToolDefinitionLike>() }
       const disposers: Array<() => void> = []
+      const deferred = new Map<string, DeferredRegistration>()
+      let hiddenDispose: (() => void) | null = null
 
       if (plan.hidden.length > 0) {
-        disposers.push(agentCtx.tools.restrict({ deny: plan.hidden }) as () => void)
+        hiddenDispose = agentCtx.tools.restrict({ deny: plan.hidden }) as () => void
       }
 
       // 延迟:在 agent 作用域重新注册一份瘦身定义,遮住继承来的完整定义。
@@ -115,10 +143,13 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
         const original = byName.get(toolName) ?? previousOriginals?.get(toolName)
         if (!original) continue
         try {
-          disposers.push(agentCtx.tools.register({
-            ...original,
-            ...placehold(original, summary),
-          }) as () => void)
+          deferred.set(toolName, {
+            summary,
+            dispose: agentCtx.tools.register({
+              ...original,
+              ...placehold(original, summary),
+            }) as () => void,
+          })
         } catch (error) {
           note(`defer:${toolName}`, error)
         }
@@ -170,11 +201,29 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
         }
       }
 
-      applied.set(sessionId as string, {
+      const entry: AppliedEntry = {
         profileId,
         plan,
         agent,
+        deferred,
+        hiddenDispose,
         dispose: () => {
+          for (const record of entry.deferred.values()) {
+            try {
+              record.dispose()
+            } catch (error) {
+              note('dispose:defer', error)
+            }
+          }
+          entry.deferred.clear()
+          if (entry.hiddenDispose) {
+            try {
+              entry.hiddenDispose()
+            } catch (error) {
+              note('dispose:restrict', error)
+            }
+            entry.hiddenDispose = null
+          }
           for (const dispose of disposers.reverse()) {
             try {
               dispose()
@@ -183,7 +232,8 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
             }
           }
         },
-      })
+      }
+      applied.set(sessionId as string, entry)
       syncToolSearch()
       return plan
     } finally {
@@ -191,7 +241,8 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
     }
   }
 
-  function release(agent: AgentLike): void {
+  /** 撤销该 agent 的全部档位注册;quiet 供内部重建使用,不抖动 tool_search 的根注册。 */
+  function release(agent: AgentLike, options: { quiet?: boolean } = {}): void {
     const sessionId = kit.sessionIdOf(agent)
     const entry = sessionId ? applied.get(sessionId) : undefined
     if (!entry) return
@@ -201,7 +252,94 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
       note('release', error)
     }
     applied.delete(sessionId as string)
-    syncToolSearch()
+    if (!options.quiet) syncToolSearch()
+  }
+
+  /**
+   * 工具表变化后增量刷新延迟面与隐藏面:未变化的工具沿用原注册对象。
+   *
+   * 为什么不能整份 release→重注册:宿主的每个 step 有一份按「定义 + 注册」对象身份
+   * 比对的准入集,执行时逐名复核当刻的工具表;整份重建会让该 step 内所有延迟工具
+   * 立刻报 `unknown tool`(实测:governance 重载触发 tools/change,300ms 去抖落在
+   * 下一步,模型按原 schema 调用 plugin_manager / cordis_inspect_query 全部失败,
+   * 再下一步自愈)。工具表变化只影响新增/消失的名字,增量 diff 就够了。
+   */
+  function refresh(agent: AgentLike): void {
+    const sessionId = kit.sessionIdOf(agent)
+    const entry = sessionId ? applied.get(sessionId) : undefined
+    if (!entry) return
+    const agentCtx = agent.ctx
+    if (!agentCtx) return
+    const profile = entry.profileId === 'none' ? null : profileById(entry.profileId)
+    if (!profile) return
+    applying += 1
+    try {
+      const definitions = kit.definitionsOf(agent)
+      const inherited = inheritedNames(agent)
+      const byName = new Map(definitions.map((definition) => [definition.name, definition]))
+      const plan = planFor(profile, definitions, inherited ?? undefined, entry.plan.originals)
+
+      // 新增的延迟工具:此刻 definitions 里还是完整定义(尚未被自己的占位遮住)。
+      for (const [toolName, summary] of plan.deferred) {
+        if (entry.deferred.has(toolName)) continue
+        const original = byName.get(toolName)
+        if (!original) continue
+        try {
+          entry.deferred.set(toolName, {
+            summary,
+            dispose: agentCtx.tools.register({
+              ...original,
+              ...placehold(original, summary),
+            }) as () => void,
+          })
+        } catch (error) {
+          note(`defer:${toolName}`, error)
+        }
+      }
+      // 消失的延迟工具(背后实现已卸载,或被隐藏):只撤它自己,别人的注册身份不动。
+      // 判据不能只看 definitions:占位是注册在本作用域里的同名影子,会让该名字在
+      // definitions 里一直可见;能证明「背后还有真实实现」的只有继承层名单。
+      for (const [toolName, record] of [...entry.deferred]) {
+        const backed = inherited === null || inherited.has(toolName)
+        if (backed && plan.deferred.has(toolName)) continue
+        entry.deferred.delete(toolName)
+        plan.deferred.delete(toolName)
+        if (!backed) plan.originals.delete(toolName)
+        try {
+          record.dispose()
+        } catch (error) {
+          note('defer dispose', error)
+        }
+      }
+      // 摘要以注册簿为准:已延迟工具的 definitions 是占位描述,重算会把【延迟】再套一层。
+      for (const [toolName, record] of entry.deferred) plan.deferred.set(toolName, record.summary)
+
+      const sameHidden =
+        plan.hidden.length === entry.plan.hidden.length && plan.hidden.every((name) => entry.plan.hidden.includes(name))
+      if (!sameHidden) {
+        if (entry.hiddenDispose) {
+          try {
+            entry.hiddenDispose()
+          } catch (error) {
+            note('restrict dispose', error)
+          }
+          entry.hiddenDispose = null
+        }
+        if (plan.hidden.length > 0) {
+          try {
+            entry.hiddenDispose = agentCtx.tools.restrict({ deny: plan.hidden }) as () => void
+          } catch (error) {
+            note('restrict', error)
+          }
+        }
+      }
+      entry.plan = plan
+      syncToolSearch()
+    } catch (error) {
+      note('refresh', error)
+    } finally {
+      applying -= 1
+    }
   }
 
   function planOf(agent: AgentLike): { profileId: string; plan: ApplyPlan } | null {
@@ -353,6 +491,7 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
     profileById,
     planFor,
     applyTo,
+    refresh,
     release,
     planOf,
     deferredFor,

@@ -12,14 +12,14 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 |---|---|
 | `src/index.ts` | Host 半边插件面：name/inject/apply + 装配（附加规则段注册、webServer 路由、agent/created·disposed、tools/change、通道拦截 pre-step、运行时上下文与 system 段逐项过滤、重装载补、teardown） |
 | `src/types.ts` | 宿主服务面最小结构声明（镜像 checkout 形状，未验证字段不写） |
-| `src/baseline.ts` | 附加规则层（界面名；代码沿用 baseline）：行为契约/卡片回执/不可信下载三段提示词 |
+| `src/baseline.ts` | 附加规则层（界面名；代码沿用 baseline）：行为契约/卡片回执/不可信下载三段固定提示词 + 可勾选的自定义文本 |
 | `src/host/constants.ts` | 状态字面量、组表(含 platform/devtools 拆分)、通道表、运行时上下文清单/order 映射、人设段常量、内置档位、token 估算系数 |
 | `src/host/translations.ts` | 工具说明按需翻译:默认模型(agentDefaultModel→llm.prepareCall)+ 以原始文本为 key 的缓存(独立文件),只供面板显示 |
 | `src/host/state.ts` | 状态文件路径、默认值、**读入归一化**（坏字段静默丢弃，面板与装配不必各自防御） |
 | `src/host/tools.ts` | 档位解析（`effectiveState`）与延迟占位（`skeleton`/`placehold`）——**与 `src/client/state/resolve.ts` 同规则双份** |
 | `src/host/state-store.ts` | 状态存取：加载/旧文件名迁移/防抖落盘 |
 | `src/host/sessions.ts` | 会话与 agent 小工具集：身份解析、blank/根判定、schema/定义读取 |
-| `src/host/profiles.ts` | 档位应用运行时：planFor/applyTo/release、tool_search 注册与查询面 |
+| `src/host/profiles.ts` | 档位应用运行时：planFor/applyTo/refresh/release、tool_search 注册与查询面 |
 | `src/host/environment.ts` | 环境事实的 per-agent 注册与释放（探测一次固定；是否进请求按档位 contexts 过滤） |
 | `src/host/environment-facts.ts` | 环境事实探测（platform/shell/git）与文本渲染（从 baseline.ts 拆出） |
 | `src/host/catalog.ts` | agent preset 目录枚举（15s 缓存） |
@@ -67,10 +67,10 @@ node scripts/harness.mjs
 
 **看真实效果**：桌面端默认不开放调试端口；以 `--remote-debugging-port=9202` 启动后可用 `use-chrome` 技能直连（CDP 端口 9202，`node cdp.mjs eval/screenshot --port=9202`），比系统级鼠标/键盘自动化可靠。不带调试参数时退回截桌面窗口的图核对；**不要用系统级鼠标/键盘自动化**去点用户界面：会打断用户操作、留下文字选中，而且验证价值不如一次截图。
 
-**发版流程（修 bug / 加功能后必走）**：
+**发版流程（仅在用户明确要求发布时走）**：
 
 1. 本地验证：`pnpm build` → `pnpm test` → `node scripts/smoke.mjs` → `node scripts/harness.mjs`，全绿再谈发布。
-2. 升版本号：改 `package.json` 的 `version`（semver；修 bug 升 patch，加功能升 minor），并 `pnpm build` 让 `lib/` 与版本一致。
+2. **版本号只在发布时改**：平时本地修 bug / 加功能一律不动 `package.json` 的 `version`，也不 push、不 publish；用户要求发布时按他指定的版本号改（修 bug 升 patch，加功能升 minor），并 `pnpm build` 让 `lib/` 与版本一致。
 3. **不自行 push、不自行发版**：改动提交到本地后，先问用户「是否推送、是否发版」；用户确认后才 `git push`，再 `npm publish`。
 4. 发布：在包目录执行 `npm publish`（`prepack` / `prepare` 会重建产物；`files` 已含 `lib/index.js`、`lib/client.js`、`lib/types`、`cordis.patch.yml`、`locale`、`icon`）。账号开了 2FA 时会报 `EOTP`，用 `npm publish --otp=<6 位验证码>` 重试。
 5. 核对：`npm view @jia-tools/dsh-session-context-config version` 应返回新版本；再 `remove_bundle` → `install_bundle` 让 profile 里的 link 安装重新解析。
@@ -87,12 +87,12 @@ node scripts/harness.mjs
 
 - **四级状态解析**：组和 server 只给默认值，`force` / `off` 两个极端压过子项；工具级只有三态。解析同时存在于 Host 与 Client（Client 那份必须与 Host 同规则，改一侧必改另一侧）。
 - **延迟不是删除**：延迟工具在 tools 数组里保留「名字 + 功能摘要 + 参数类型骨架」的占位定义（每个参数的名称与类型都在，只剥说明/示例/默认值），完整 schema 由 `tool_search` 以工具结果的形式追加进历史。这样 tools 数组整场不变，加载动作不打断前缀缓存——这是整套设计的核心取舍，别顺手改成「按需注册/注销」。**类型不能从骨架里省**：早先只留 required 参数，可选布尔/数字会被当字符串传（实测 `plugin_manager` 的 `enabled: false` 报 "must be a boolean"）。
-- **生效边界**：`agent/created` 时套用会话记录或 `lastUsedId`；已开始的会话不跟随配置变化，只在用户确认切换时重算；`tools/change`（可见工具集合变化）时就地按同一档位重算，因为那一刻 schema 本来就在变，不额外付缓存代价。
+- **生效边界**：`agent/created` 时套用会话记录或 `lastUsedId`；已开始的会话不跟随配置变化，只在用户确认切换时重算；`tools/change`（可见工具集合变化）时按同一档位**增量**刷新延迟占位与隐藏面（只加新增、撤消失，未变化的工具不重注册）——整份重建会让当前 step 的延迟工具全部 `unknown tool`，见坑库。
 - **运行时上下文逐项开关**：`ContextProfile.contexts` 只存关掉的上下文名（缺省=注入）；旧 `runtimeContext` / `workingDirectory` / `baseline.environmentFacts` 在 `normalizeProfile` 里一次性迁移成逐项 false。`host/profiles.ts` 对每个 false 在 agent 作用域注册同名非 required 空上下文（required 段靠它遮住 required 标志），`src/index.ts` 的全局 `system-prompt/assemble`（`prepend`）在 `next()` 之后按名字过滤；因此 `refreshContext` 不会把 required 段补回。验收：`/api/assemble` 的 `contexts` 与 `refreshedContexts` 都要遵守同一份开关。
-- **system 段逐项开关**：`ContextProfile.sections` 只存关掉的段名（缺省=包含）。同一份 `system-prompt/assemble` 过滤器在 `next()` 之后按名字删 `assembly.sections`；`refreshContext` 不重跑 sections，所以不需要影子段。**过滤器必须 `{prepend:true, global:true}` 注册**（见坑库：assemble 走 scopeTarget 过滤派发）。`deployment:persona-prefix` / `deployment:persona-suffix` 与 3 条附加规则段受保护：人设是 `prompt.prefix` / `prompt.suffix` 两个独立槽位（各自 `enabled/override/text`），附加规则走全局 baseline 开关。**工具引导段（`tool:*`）跟随工具可用性（工具被隐藏时宿主不再产出文本），不落 `profile.sections`，归一化时剪掉，面板也不列**。`sccFullSections: true` 是面板列目录的私有旁路（返回未过滤名单）；真正的请求路径不带这个字段。面板段列表按 `assembly.sections` 的**实际顺序**扁平排列（不再分「人设/宿主固定/工具引导」小区域），人设两个槽位按各自 order 插在列表里（prefix 紧随 identity，suffix 在 app:web-surface 之后）；附加规则 order 固定 20000+，用「本插件附加 · 全局」小标题与分割线分隔并排在最后；消息卡标题不带「system 消息 / user 消息」前缀，角色由右上角 `role:` 标签表达。
+- **system 段逐项开关**：`ContextProfile.sections` 只存关掉的段名（缺省=包含）。同一份 `system-prompt/assemble` 过滤器在 `next()` 之后按名字删 `assembly.sections`；`refreshContext` 不重跑 sections，所以不需要影子段。**过滤器必须 `{prepend:true, global:true}` 注册**（见坑库：assemble 走 scopeTarget 过滤派发）。`deployment:persona-prefix` / `deployment:persona-suffix` 与 4 条附加规则段受保护：人设是 `prompt.prefix` / `prompt.suffix` 两个独立槽位（各自 `enabled/override/text`），附加规则走全局 baseline 开关。**工具引导段（`tool:*`）跟随工具可用性（工具被隐藏时宿主不再产出文本），不落 `profile.sections`，归一化时剪掉，面板也不列**。`sccFullSections: true` 是面板列目录的私有旁路（返回未过滤名单）；真正的请求路径不带这个字段。面板段列表按 `assembly.sections` 的**实际顺序**扁平排列（不再分「人设/宿主固定/工具引导」小区域），人设两个槽位按各自 order 插在列表里（prefix 紧随 identity，suffix 在 app:web-surface 之后）；附加规则 order 固定 20000+，用「本插件附加 · 全局」小标题与分割线分隔并排在最后；消息卡标题不带「system 消息 / user 消息」前缀，角色由右上角 `role:` 标签表达。
 - **内置档位与 v4 迁移**：`full` = 全部开启 + 编排/目标/调度/MCP/插件开发/第三方延迟；`lean` = full 再隐藏编排/目标/调度/插件开发；`minimal` = lean 再隐藏交互/技能与网络/协作/MCP/第三方，**平台（工作目录、随包依赖路径、lsp）始终开启**。组已拆分：`platform` = `load_workspace_dependencies|working_directory|lsp`，`devtools` = `plugin_manager|cordis_*`。`normalizeState` 接受 v2/v3/v4；v3→v4 **就地替换三个内置 id 的定义**（不新增缺失的内置档位），custom-*、sessions、baseline 原样保留。
 - **工具说明翻译（只供面板显示）**：默认显示中文。已知工具走 `src/client/panel/translations.ts` 的内置字典（key=原始描述文本）；未知工具在面板挂载时自动按需翻译（串行队列，带 loading/失败重试），走 `POST /session-context-config/api/translate` → 命中 `$DSH_HOME/session-context-config-translations.json`（key 是**原始文本**）即返回，否则用 `agentDefaultModel.currentSelection()` + `llm.prepareCall`（与 dsh-web-extract 同链路）翻译并落盘。每个工具的显示语言按工具名记在 localStorage（`dsh-session-context-config:tool-lang`，默认 `zh`，切回原文会记住）。模型侧工具 schema / 延迟摘要 / `tool_search` 完全不动。
-- **附加规则不再控制环境事实**：界面上的「附加规则」只保留三段提示词；环境事实是 `contexts` 里的 `session-context-config:environment`，按档位开关。子代理没有档位，环境事实默认保留。
+- **附加规则不再控制环境事实**：界面上的「附加规则」只保留三段固定提示词与一段自定义文本（勾选才注入，未勾选也可编辑，纯空白视同空段）；环境事实是 `contexts` 里的 `session-context-config:environment`，按档位开关。子代理没有档位，环境事实默认保留。
 - 切换档位会重建整个工具表与前缀缓存；面向用户的确认话术已写在菜单里，改动这段行为时同步它。
 
 ## 关键技术边界与坑
@@ -140,6 +140,13 @@ node scripts/harness.mjs
 > 症状：段开关/上下文开关只写状态，装配结果毫无变化；单测全绿。
 > 根因：宿主在 `core/system-prompt` 用 `scopeTarget(this, scope)` 派发这个 waterfall，Cordis 的 context filter 只放行 `hook.global`、无 filter、或 scope 链上的监听器（`vendor/cordis/src/events.ts` 的 `_resolve`）；插件的根 ctx 监听器在真机上被挡掉。
 > 正解：`ctx.on('system-prompt/assemble', listener, { prepend: true, global: true })`。单测直接调 listener 发现不了，`tests/sections.test.mjs` 额外断言 `hook.options.global === true`。2026-11-09 真机实证：修复后 `/api/assemble` 的 sections 不再包含被关掉的段（contexts 仍可能被宿主的 required 补回，靠 agent 作用域空 shadow 把文本变空，见上下文开关条目）。
+
+> ⚠️ **延迟占位只能增量刷新，整份重注册会让当前 step 的延迟工具全部 UNKNOWN_TOOL**
+> 症状：开启「延迟」档位后，模型调用 `plugin_manager` / `cordis_inspect_query` 等延迟工具报 `Error: unknown tool "..."`；同一 step 内所有延迟工具都失败，下一个 step 自愈（用户描述为「第一次报错、第二次正常」）。
+> 根因：`tools/change` 的 300ms 去抖回调原先走 `applyTo`（整份 `release`→重注册），换掉了每个占位定义的**对象身份**。宿主每个 step 的准入集（`tools.resolve` 的 `ResolvedToolSet`）在执行时逐名复核「当前定义 === 准入时定义」且「当前注册 === 准入时注册」，任一不等就把该名字排除、抛 `ToolNotFoundError`。典型触发：`plugin_manager set_plugin` 热重载带延迟工具的插件（如 governance），工具表变化后 300ms 去抖正好落在下一步的模型生成期间。
+> 正解：`tools/change` 走 `profiles.refresh()` 增量 diff——已注册的名字直接跳过（摘要以注册簿为准，不能拿占位描述重算，否则【延迟】会套两层）、新增的注册、消失的撤销；`hidden` 面变化才重建 `restrict`（restrict 只影响被 deny 的名字，不改变其它工具的注册身份）。`applyTo` 只用于 `agent/created` 与用户切档位，且重入守卫必须包住 `release`（否则 release 触发的 tools/change 会白排一次去抖）。
+> 「消失」的判据必须是**继承层名单**（`tools.view(agent).restrictableNames`），不能只看 `definitions`：占位注册在 agent 自己作用域里，会遮住同名全局工具，`definitions` 里永远还看得见这个名字。只看定义就发现不了「插件已停用、占位却还在、仍能调用已卸载实现」的幽灵工具。
+> 验证：`tests/refresh.test.mjs`（未变化的占位只注册一次、背后实现卸载后撤占位、restrict 重建）；真机对照 2026-11-10 `session-551de4b7` step 32：`plugin_manager` 与 `cordis_inspect_query` 连续 `UNKNOWN_TOOL`，下一步恢复。
 
 > **人设是两个独立槽位，不是一个总开关**
 > `deployment:persona-prefix`（order 0，固定身份之后、所有第一方指导之前，"你是谁"）与 `deployment:persona-suffix`（order 10200，所有第一方指导之后、提示词最末，"收尾叮嘱"）各自配置：`enabled=false` → 该槽位注册空影子（不发送）；`enabled=true && !override` → 不注册（沿用部署 `personaPrefix`/`personaSuffix`）；`override=true` 且 text 非空 → 替换该槽位；`override=true` 且 text 为空 → 该槽位不发送。UI 每个槽位一条开关 + 一条「覆盖部署文本」+ 文本域，两槽位互不影响。不要退回「一个总开关 + 一个覆盖」的旧模型（前缀和后缀的位置、语义、缓存代价都不同，必须分开）。

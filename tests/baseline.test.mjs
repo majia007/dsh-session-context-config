@@ -23,19 +23,21 @@ function tempDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-test('默认全开，缺字段回落到默认值，非布尔值被忽略', () => {
-  assert.deepEqual(normalizeBaseline(undefined), BASELINE_DEFAULTS)
-  assert.deepEqual(normalizeBaseline({ contract: false }), { ...BASELINE_DEFAULTS, contract: false })
+test('默认:三段全开、自定义关闭且文本为空;缺字段回落,非布尔/非字符串被忽略', () => {
+  assert.deepEqual(normalizeBaseline(undefined), { ...BASELINE_DEFAULTS, customText: '' })
+  assert.deepEqual(normalizeBaseline({ contract: false }), { ...BASELINE_DEFAULTS, contract: false, customText: '' })
   assert.equal(normalizeBaseline({ contract: 'off' }).contract, true)
+  assert.equal(normalizeBaseline({ customText: 42 }).customText, '')
+  assert.equal(normalizeBaseline({ customText: 'x'.repeat(30000) }).customText.length, 20000)
 })
 
-test('契约覆盖 A1 的六条要求，且不含本机路径或用户名', () => {
+test('契约覆盖六条要求，且不含本机路径或用户名', () => {
   const contract = BASELINE_TEXT.contract
-  assert.match(contract, /irreversible or externally visible actions/)
-  assert.match(contract, /Report honestly/)
-  assert.match(contract, /Act once the information is sufficient/)
-  assert.match(contract, /Match the surrounding code/)
-  assert.match(contract, /Do not re-read a file you just wrote or edited/)
+  assert.match(contract, /不可逆或对外可见/)
+  assert.match(contract, /如实汇报/)
+  assert.match(contract, /信息足够就行动/)
+  assert.match(contract, /跟随周边代码/)
+  assert.match(contract, /刚写完或刚改过的文件不回读/)
   assert.match(contract, /<system-reminder>/)
   assert.doesNotMatch(contract, /[A-Za-z]:\\|\/Users\/|\/home\//)
   assert.ok(!contract.includes(homedir()))
@@ -43,29 +45,43 @@ test('契约覆盖 A1 的六条要求，且不含本机路径或用户名', () =
 
 test('不可信文件规则含隔离目录、参数传路径、python -I 与 3.11 的 -P', () => {
   const text = BASELINE_TEXT.untrustedFiles
-  assert.match(text, /new empty directory/)
-  assert.match(text, /Pass paths as arguments/)
+  assert.match(text, /新空目录/)
+  assert.match(text, /作为参数传给解释器/)
   assert.match(text, /python -I/)
-  assert.match(text, /older than 3\.11/)
+  assert.match(text, /早于 3\.11/)
   assert.match(text, /-P/)
   assert.match(text, /json\.py/)
-  assert.match(text, /do not replace it/)
+  assert.match(text, /不取代它/)
 })
 
 test('卡片回执只限制成功回执，失败仍要细节', () => {
-  assert.match(BASELINE_TEXT.cardReceipt, /one sentence/)
-  assert.match(BASELINE_TEXT.cardReceipt, /Error details stay allowed/)
+  assert.match(BASELINE_TEXT.cardReceipt, /一句话确认/)
+  assert.match(BASELINE_TEXT.cardReceipt, /失败细节不受此限/)
 })
 
 test('段按开关返回文本，关闭时为空串（装配层丢弃空段）', () => {
   let baseline = { ...BASELINE_DEFAULTS }
   const sections = baselineSections(() => baseline)
-  assert.equal(sections.length, 3)
+  assert.equal(sections.length, 4)
   for (const section of sections) assert.equal(section.interpolate, false)
   assert.equal(sections[0].text(), BASELINE_TEXT.contract)
   baseline = { ...baseline, contract: false }
   assert.equal(sections[0].text(), '')
   assert.equal(sections[1].text(), BASELINE_TEXT.cardReceipt)
+})
+
+test('自定义文本:勾选才注入,换行原样保留,纯空白视同空段', () => {
+  let baseline = normalizeBaseline({ customText: 'line one\nline two' })
+  const sections = baselineSections(() => baseline)
+  const custom = sections.find((section) => section.name === 'session-context-config:custom-text')
+  assert.notEqual(custom, undefined)
+  assert.equal(custom.text(), '')
+  baseline = { ...baseline, custom: true }
+  assert.equal(custom.text(), 'line one\nline two')
+  baseline = { ...baseline, customText: '  \n\t ' }
+  assert.equal(custom.text(), '')
+  baseline = { ...baseline, customText: 'again' }
+  assert.equal(custom.text(), 'again')
 })
 
 test('段顺序排在部署段之后（附加规则收尾），且互不重复', () => {

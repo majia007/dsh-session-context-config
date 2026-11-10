@@ -1,7 +1,8 @@
 /** 配置卡片:按最终请求里的消息分卡;system 卡内每段单独开关。 */
 import { createElement as h, Fragment, type ReactElement, type ReactNode } from 'react'
+import { BASELINE_DEFAULTS, BASELINE_TEXT } from '../../baseline.ts'
 import { OFF } from '../state/resolve.ts'
-import type { Profile, Snapshot } from '../contract/types.ts'
+import type { BaselineState, Profile, Snapshot } from '../contract/types.ts'
 import { CONTEXT_SWITCHES, SECTION_OPTIONS, inferSectionOption, type ChannelCardOption, type SectionOption } from './options.ts'
 import styles from './panel.module.css'
 
@@ -10,16 +11,20 @@ type Patch = (mutate: (target: Profile) => void) => void
 export interface PanelDraft {
   profiles: Profile[]
   lastUsedId: string
-  baseline: Record<string, boolean>
+  baseline: BaselineState
 }
 
 type SectionEntry = Snapshot['sections'][number]
+
+/** 快照缺 baseline 字段时的兜底(正常链路 Host 总是返回完整值,这里只为类型完整)。 */
+export const DEFAULT_BASELINE: BaselineState = { ...BASELINE_DEFAULTS, customText: '' }
 
 /** 附加规则由全局 baseline 开关控制,在列表末尾单独渲染,不进 `profile.sections`。 */
 const BASELINE_NAMES = new Set([
   'session-context-config:contract',
   'session-context-config:card-receipt',
   'session-context-config:untrusted-files',
+  'session-context-config:custom-text',
 ])
 
 function MessageCard({ role, title, note, children }: {
@@ -65,17 +70,19 @@ function Tags({ names, tags }: { names?: string[]; tags?: string[] }): ReactElem
   )
 }
 
-function SegmentRow({ checked, onChange, title, desc, meta, disabled }: {
+function SegmentRow({ checked, onChange, title, desc, meta, disabled, tooltip }: {
   checked: boolean
   onChange(checked: boolean): void
   title: ReactNode
   desc: ReactNode
   meta?: ReactNode
   disabled?: boolean
+  /** 悬停整行显示的文本;HTML title 里的 \n 会被浏览器渲染成换行。 */
+  tooltip?: string
 }): ReactElement {
   return h(
     'label',
-    { className: `${styles.segment}${disabled ? ` ${styles.segmentOff}` : ''}` },
+    { className: `${styles.segment}${disabled ? ` ${styles.segmentOff}` : ''}`, title: tooltip },
     h('input', {
       type: 'checkbox',
       checked,
@@ -96,19 +103,50 @@ function SegmentRow({ checked, onChange, title, desc, meta, disabled }: {
   )
 }
 
-function baselineRows(draft: PanelDraft, patchBaseline: (key: string, value: boolean) => void): ReactElement[] {
-  const rows = [
-    { key: 'contract', label: '行为契约', name: 'session-context-config:contract', desc: '不可逆动作先确认、如实汇报、信息足够就行动、跟随周边风格等 6 条。' },
-    { key: 'cardReceipt', label: '卡片回执', name: 'session-context-config:card-receipt', desc: 'UI 已渲染卡片时只回一句确认，不复述字段；失败仍给细节。' },
-    { key: 'untrustedFiles', label: '不可信下载', name: 'session-context-config:untrusted-files', desc: '隔离目录、路径传参、python -I 三条读取规则。' },
+function baselineRows(draft: PanelDraft, patchBaseline: (key: string, value: boolean | string) => void): ReactElement[] {
+  const rows: Array<{ key: 'contract' | 'cardReceipt' | 'untrustedFiles'; label: string; name: string; desc: string; text: string }> = [
+    { key: 'contract', label: '行为契约', name: 'session-context-config:contract', desc: '不可逆动作先确认、如实汇报、信息足够就行动、跟随周边风格等 6 条。', text: BASELINE_TEXT.contract },
+    { key: 'cardReceipt', label: '卡片回执', name: 'session-context-config:card-receipt', desc: 'UI 已渲染卡片时只回一句确认，不复述字段；失败仍给细节。', text: BASELINE_TEXT.cardReceipt },
+    { key: 'untrustedFiles', label: '不可信下载', name: 'session-context-config:untrusted-files', desc: '隔离目录、路径传参、python -I 三条读取规则。', text: BASELINE_TEXT.untrustedFiles },
   ]
-  return rows.map((row) => h(SegmentRow, {
-    key: row.key,
-    checked: draft?.baseline?.[row.key] !== false,
-    onChange: (checked) => patchBaseline(row.key, checked),
-    title: h('span', { className: styles.segmentLabel }, row.label, h(Tags, { names: [row.name], tags: ['全局'] })),
-    desc: row.desc,
-  }))
+  const baseline = draft?.baseline
+  const customOn = baseline?.custom === true
+  const customText = baseline?.customText ?? ''
+  const customMeta = !customOn
+    ? '未勾选 · 可先编辑'
+    : customText.trim() ? `注入 · ${customText.length} 字` : '已勾选 · 空文本不发送'
+  return [
+    ...rows.map((row) => h(SegmentRow, {
+      key: row.key,
+      checked: baseline?.[row.key] !== false,
+      onChange: (checked) => patchBaseline(row.key, checked),
+      // tooltip 是原样注入 system 的全文;文本里的 \n 在悬停提示里显示为换行。
+      tooltip: row.text,
+      title: h('span', { className: styles.segmentLabel }, row.label, h(Tags, { names: [row.name], tags: ['全局'] })),
+      desc: row.desc,
+    })),
+    h(SegmentRow, {
+      key: 'custom',
+      checked: customOn,
+      onChange: (checked) => patchBaseline('custom', checked),
+      tooltip: customText.trim() ? customText : undefined,
+      title: h('span', { className: styles.segmentLabel }, '自定义文本', h(Tags, { names: ['session-context-config:custom-text'], tags: ['全局'] })),
+      desc: '自由输入的提示词；勾选后对所有会话与子代理生效，留空不发送。',
+      meta: customMeta,
+    }),
+    h('textarea', {
+      key: 'customText',
+      className: styles.textarea,
+      'aria-label': '自定义附加文本',
+      value: customText,
+      maxLength: 20000,
+      // 未勾选也允许编辑:先写好文本,再勾选开关生效。
+      placeholder: '输入要附加的文本（支持多行）；勾选上方开关后注入。',
+      onChange: (event: { target: { value: string } }) => {
+        patchBaseline('customText', event.target.value)
+      },
+    }),
+  ]
 }
 
 /**
@@ -215,7 +253,7 @@ export function SystemMessageCard({ profile, draft, patch, patchBaseline, sectio
   profile: Profile
   draft: PanelDraft
   patch: Patch
-  patchBaseline(key: string, value: boolean): void
+  patchBaseline(key: string, value: boolean | string): void
   sections: SectionEntry[]
 }): ReactElement {
   const disabled = new Set(
@@ -255,7 +293,7 @@ export function SystemMessageCard({ profile, draft, patch, patchBaseline, sectio
     ...sectionRows,
     h(SectionHeading, {
       title: '本插件附加 · 全局',
-      desc: '以下 3 段由 dsh-session-context-config 额外加入，不属于 DSH 自带提示词；对所有新会话与子代理生效。',
+      desc: '以下 4 项由 dsh-session-context-config 额外加入，不属于 DSH 自带提示词；对所有新会话与子代理生效。悬停各行可查看注入的完整文本。',
     }),
     ...baselineRows(draft, patchBaseline),
   )

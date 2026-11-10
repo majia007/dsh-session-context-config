@@ -43,6 +43,12 @@ for (const key of [
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
+// happy-dom 不解析 min();把共享字号变量钉在 14px 标准档的设计值上,
+// 让 12/13px 的 computed 断言仍然可读。
+for (const px of [11, 12, 13, 14]) {
+  win.document.body.style.setProperty(`--dsh-plugin-fs-${px}`, `${px}px`)
+}
+
 /* ── 假数据：两个档位、十五个工具（超过可视行数，验证不截断）、一个空白会话 ── */
 
 const tools = [
@@ -68,7 +74,7 @@ const snapshot = {
   profiles: [profile('standard', '完整', '标准档位，处理代码和资料'), profile('lean', '精简', '只留必要工具')],
   lastUsedId: 'standard',
   sessions: { s1: 'standard' },
-  baseline: { contract: true, cardReceipt: true, untrustedFiles: true },
+  baseline: { contract: true, cardReceipt: true, untrustedFiles: true, custom: false, customText: '' },
   presets: [{ id: 'standard', name: '标准模式', tools }],
   defaultPreset: 'standard',
   tools,
@@ -277,17 +283,35 @@ const expectedOrder = [
   'session-context-config:contract',
   'session-context-config:card-receipt',
   'session-context-config:untrusted-files',
+  'session-context-config:custom-text',
 ]
 check('顺序=实际装配顺序（identity 最前、人设后缀收尾、附加规则最后）', orderNames.join('>') === expectedOrder.join('>'), orderNames.join('>'))
 const baselineHeading = [...systemCard.querySelectorAll('.cp-sectionTitle')].find((el) => el.textContent.includes('本插件附加'))
 check('附加规则上方有「本插件附加」小标题与说明', baselineHeading?.nextElementSibling?.textContent?.includes('不属于 DSH 自带') === true)
 check('每个段行都是 checkbox 前置 + 说明', segmentRows().every((row) => row.firstElementChild?.matches('input[type="checkbox"]') === true && row.querySelector('.cp-segmentDesc') !== null))
 
-const baselineLabels = ['行为契约', '卡片回执', '不可信下载']
+const baselineLabels = ['行为契约', '卡片回执', '不可信下载', '自定义文本']
 const baselineRows = () => baselineLabels.map(rowByText)
-check('附加规则三段各是一行且默认全开', baselineRows().every((row) => row?.querySelector('input[type="checkbox"]')?.checked === true))
+const fixedBaselineRows = () => baselineLabels.slice(0, 3).map(rowByText)
+check('附加规则前三段各是一行且默认全开', fixedBaselineRows().every((row) => row?.querySelector('input[type="checkbox"]')?.checked === true))
 check('附加规则行标了全局', baselineRows().every((row) => row?.textContent?.includes('全局')))
-check('附加规则排在所有段之后', segmentRows().slice(-3).every((row, index) => row.querySelector('.cp-segmentLabel')?.textContent?.includes(baselineLabels[index]) === true))
+check('附加规则排在所有段之后', segmentRows().slice(-4).every((row, index) => row.querySelector('.cp-segmentLabel')?.textContent?.includes(baselineLabels[index]) === true))
+check('三段固定文本的 tooltip 是注入全文且保留换行', (
+  rowByText('行为契约')?.getAttribute('title')?.includes('## 工作契约\n\n- 不可逆') === true &&
+  rowByText('卡片回执')?.getAttribute('title')?.includes('## 工具卡片\n\n- 工具结果注明') === true &&
+  rowByText('不可信下载')?.getAttribute('title')?.includes('## 不可信下载\n\n把每个下载') === true
+))
+const customRow = rowByText('自定义文本')
+const customTextarea = customRow?.nextElementSibling
+check('自定义文本默认未勾选,输入框存在、有可访问名且未禁用(未勾选也可编辑)', customRow?.querySelector('input[type="checkbox"]')?.checked === false && customTextarea?.tagName === 'TEXTAREA' && customTextarea?.getAttribute('aria-label') === '自定义附加文本' && customTextarea?.disabled === false)
+await act(async () => {
+  // React 受控组件:直接设 value 会被 input value tracker 忽略,要走原型 setter。
+  const setValue = Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, 'value')?.set
+  setValue?.call(customTextarea, '自定义提示第一行\n第二行')
+  customTextarea?.dispatchEvent(new win.Event('input', { bubbles: true }))
+})
+await flush()
+check('未勾选时输入文本生效(草稿进入未保存态)', panel.querySelector('.cp-footNote')?.textContent?.includes('未保存') === true && customTextarea?.value === '自定义提示第一行\n第二行', customTextarea?.value)
 
 const snapshotCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '运行时上下文快照')
 const snapshotRows = [...(snapshotCard?.querySelectorAll('.cp-segment') ?? [])]

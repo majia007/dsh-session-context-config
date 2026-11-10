@@ -6,7 +6,7 @@
  */
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { normalizeBaseline, BASELINE_DEFAULTS, type BaselineFlags } from '../baseline.ts'
+import { normalizeBaseline, type BaselineFlags } from '../baseline.ts'
 import {
   CHANNEL_IDS,
   DEFAULT_PROFILES,
@@ -54,7 +54,7 @@ export function defaultState(): PluginState {
     lastUsedId: 'none',
     profiles: JSON.parse(JSON.stringify(DEFAULT_PROFILES)),
     sessions: {},
-    baseline: { ...BASELINE_DEFAULTS },
+    baseline: normalizeBaseline(undefined),
   }
 }
 

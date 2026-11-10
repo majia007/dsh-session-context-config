@@ -3,6 +3,7 @@
  * Host 侧的权威定义在 src/host/constants.ts 与 src/host/state.ts,这里镜像 client
  * 实际消费的字段;改 Host 形状时同步这里。
  */
+import type { BaselineFlags } from '../../baseline.ts'
 
 /** 目录里的工具条目(快照 tools 数组元素)。 */
 export interface CatalogTool {
@@ -51,6 +52,10 @@ export interface LiveSession {
   loaded: number
 }
 
+/** 附加规则开关(全局层):三段固定提示词 + 自定义文本(勾选才注入,未勾选也可编辑)。
+ *  直接复用 Host 侧的类型,避免两边字段漂移时无人报错。 */
+export type BaselineState = BaselineFlags
+
 /** 快照(GET /api/state 的返回)。 */
 export interface Snapshot {
   ok: boolean
@@ -58,7 +63,7 @@ export interface Snapshot {
   profiles: Profile[]
   lastUsedId: string
   sessions: Record<string, string>
-  baseline: Record<string, boolean>
+  baseline: BaselineState
   presets: Array<{ id: string; name: string; tools: CatalogTool[] }>
   defaultPreset: string
   tools: CatalogTool[]

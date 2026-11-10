@@ -124,6 +124,8 @@ export function apply(ctx: HostContext): void {
     profiles.release(agent)
   })
 
+  // 工具表变化只做增量刷新(不走 applyTo):整份 release→重注册会让当前 step 的准入集
+  // 失效,该 step 内所有延迟工具都会报 unknown tool(见 host/profiles.ts 的 refresh)。
   let changeTimer: ReturnType<typeof setTimeout> | null = null
   ctx.on('tools/change', () => {
     if (profiles.isApplying) return
@@ -131,28 +133,9 @@ export function apply(ctx: HostContext): void {
     changeTimer = setTimeout(() => {
       changeTimer = null
       for (const entry of [...profiles.applied.values()]) {
-        const agent = entry.agent
-        if (!agent) continue
-        const profile = entry.profileId === 'none' ? null : profiles.profileById(entry.profileId)
-        if (!profile) continue
-        const extraNames = (() => {
-          try {
-            return [...(ctx.tools.view(agent)?.restrictableNames ?? [])]
-          } catch {
-            return []
-          }
-        })()
-        const plan = profiles.planFor(profile, kit.definitionsOf(agent), extraNames, entry.plan.originals)
-        const sameHidden =
-          plan.hidden.length === entry.plan.hidden.length &&
-          plan.hidden.every((name) => entry.plan.hidden.includes(name))
-        const sameDeferred = plan.deferred.size === entry.plan.deferred.size
-        if (sameHidden && sameDeferred) {
-          entry.plan = plan
-          continue
-        }
+        if (!entry.agent || entry.profileId === 'none') continue
         try {
-          profiles.applyTo(agent, entry.profileId)
+          profiles.refresh(entry.agent)
         } catch (error) {
           note('tools/change', error)
         }

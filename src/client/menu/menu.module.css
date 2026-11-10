@@ -1,6 +1,6 @@
 /*
  * 菜单/浮层/席位样式(CSS Modules,编译后类名带 cp- 前缀,见 build/preset.mjs)。
- * 素材照 DSH 菜单的材质与行几何写(MenuItem / MenuSurface);值与旧版内联 CSS 逐条一致。
+ * 素材照 DSH 菜单的材质与行几何写(MenuItem / MenuSurface)。
  * 状态块与 mini 说明在 panel.module.css 有一份同名规则(PreviewDialog 复用同一材质)。
  */
 
@@ -41,14 +41,14 @@
 }
 
 .checkLabel {
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-primary);
 }
 
 .checkDesc {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
 }
 
@@ -78,15 +78,15 @@
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  font-size: 11px;
-  line-height: 15px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
   white-space: nowrap;
 }
 
 .menuNote {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   overflow: hidden;
   text-overflow: ellipsis;
@@ -123,14 +123,14 @@
 }
 
 .rowName {
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-primary);
 }
 
 .rowDesc {
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(16px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   white-space: normal;
 }
@@ -138,8 +138,8 @@
 .rowCount {
   flex: none;
   margin-top: 1px;
-  font-size: 11px;
-  line-height: 18px;
+  font-size: var(--dsh-plugin-fs-11, 11px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   font-variant-numeric: tabular-nums;
 }
@@ -180,7 +180,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   padding: 2px 0;
 }
 
@@ -206,7 +206,7 @@
 
 .statusRow .nm {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
 }
 
 .statusRow .st {
@@ -215,7 +215,7 @@
 }
 
 .mini {
-  font-size: 11px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -233,8 +233,8 @@
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--dsh-plugin-fs-14, 14px);
+  line-height: calc(22px + var(--dsh-plugin-font-boost, 0px));
   cursor: pointer;
 }
 
@@ -272,8 +272,8 @@
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--dsh-plugin-fs-13, 13px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -303,8 +303,8 @@
 
 .seatCount {
   flex: none;
-  font-size: 12px;
-  line-height: 20px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   font-variant-numeric: tabular-nums;
 }
@@ -325,8 +325,8 @@
   padding: 0 4px 0 2px;
   border-radius: var(--dsw-radius-xs, 4px);
   background: var(--dsw-alias-fill-tsp-secondary);
-  font-size: 12px;
-  line-height: 22px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(22px + var(--dsh-plugin-font-boost, 0px));
   font-weight: 400;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -337,7 +337,7 @@
 }
 
 .seat[data-compact="1"] .seatCount {
-  line-height: 22px;
+  line-height: calc(22px + var(--dsh-plugin-font-boost, 0px));
 }
 
 /* 新会话行把插件选项推到行尾(宿主 .heroOptions 带 margin-left:auto)。
