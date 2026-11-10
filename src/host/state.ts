@@ -16,6 +16,7 @@ import {
   OFF,
   ON,
   OPTIONAL_CONTEXT_NAMES,
+  SESSIONS_LIMIT,
   VERSION,
   WORKING_DIRECTORY_CONTEXT,
   type ContextProfile,
@@ -56,6 +57,19 @@ export function defaultState(): PluginState {
     sessions: {},
     baseline: normalizeBaseline(undefined),
   }
+}
+
+/**
+ * 写一条会话→档位记录并维持有界(SESSIONS_LIMIT):重复写入移到「最新」端,
+ * 超限淘汰最旧。会话被 dispose 不代表记录作废——同 sessionId 可被宿主 resume
+ * 复用,不能按事件删;被淘汰的会话重开时回落 lastUsedId。
+ */
+export function recordSession(state: PluginState, sessionId: string, profileId: string): void {
+  delete state.sessions[sessionId]
+  state.sessions[sessionId] = profileId
+  const ids = Object.keys(state.sessions)
+  const excess = ids.length - SESSIONS_LIMIT
+  if (excess > 0) for (const id of ids.slice(0, excess)) delete state.sessions[id]
 }
 
 const GROUP_STATES = new Set([ON, DEFER, OFF, FORCE])
@@ -240,6 +254,9 @@ export function normalizeState(raw: unknown): PluginState {
       if (value === 'none' || unique.some((profile) => profile.id === value)) sessions[key] = value as string
     }
   }
+  // 有界保留(见 recordSession):超限的旧状态文件读入时同样淘汰最旧的映射。
+  const sessionIds = Object.keys(sessions)
+  for (const id of sessionIds.slice(0, Math.max(0, sessionIds.length - SESSIONS_LIMIT))) delete sessions[id]
   const lastUsedId = record.lastUsedId === 'none' || unique.some((p) => p.id === record.lastUsedId)
     ? record.lastUsedId as string
     : 'none'

@@ -1,7 +1,7 @@
 import { DEFER, OFF, ON, VERSION, type ContextProfile } from './constants.ts'
 import { createCatalog } from './catalog.ts'
 import { effectiveState, groupOf, serverOf } from './tools.ts'
-import { messageOf, normalizeState, statePath, type PluginState } from './state.ts'
+import { messageOf, normalizeState, recordSession, statePath, type PluginState } from './state.ts'
 import type { StateStore } from './state-store.ts'
 import type { ProfileRuntime } from './profiles.ts'
 import type { SessionKit } from './sessions.ts'
@@ -15,7 +15,7 @@ const ROUTE_PREVIEW = '/session-context-config/api/preview'
 const ROUTE_ASSEMBLE = '/session-context-config/api/assemble'
 const ROUTE_TRANSLATE = '/session-context-config/api/translate'
 
-/** 四条 HTTP 路由 + 快照/预览(面板与 chip 的全部数据源)。 */
+/** 五条 HTTP 路由 + 快照/预览(面板与 chip 的全部数据源)。 */
 export interface RoutesRuntime {
   snapshot(): Promise<Record<string, unknown>>
   previewFor(agent: AgentLike, profileId: string): Record<string, unknown>
@@ -223,7 +223,7 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         if (!sessionId) continue
         const recorded = store.state.sessions[sessionId] ?? store.state.lastUsedId
         profiles.applyTo(agent, recorded)
-        store.state.sessions[sessionId] = recorded
+        recordSession(store.state, sessionId, recorded)
       }
       catalog.invalidate()
       sendJson(response, 200, { ok: true, snapshot: await snapshot() })
@@ -274,7 +274,7 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
       if (profileId !== 'none' && !profiles.profileById(profileId)) {
         return sendJson(response, 400, { ok: false, error: 'unknown profile' })
       }
-      store.state.sessions[sessionId] = profileId
+      recordSession(store.state, sessionId, profileId)
       store.state.lastUsedId = profileId
       store.persistSoon()
       const agent = kit.agentFor(sessionId)

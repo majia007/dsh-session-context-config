@@ -180,14 +180,14 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "lastUsedId": "none",
   "profiles": [{ "id": "lean", "...": "..." }],
   "sessions": { "<sessionId>": "lean" }
 }
 ```
 
-`sessions` 是**一次性记录**：写入后用于恢复会话时保持一致；`none` 表示“不处理”。
+`sessions` 是**一次性恢复记录**：写入后用于重开旧会话时恢复档位；`none` 表示“不处理”。映射有界保留最近 500 条，更旧的会话重开时回落 `lastUsedId`。
 
 版本 2/3 读入时自动迁移到 4：`prompt.mode` 的 `inherit` → `override:false`，`replace`/`complete` → `override:true`（文本保留；complete 的整段独占语义已移除），`sections` 默认空，`baseline.inCompletePrompt` 丢弃。人设从单个 `prompt.{enabled,override,text}` 扩成 `prompt.prefix` / `prompt.suffix` 两个槽位时，旧扁平字段整体迁到 `prefix`，`suffix` 默认 `{enabled:true, override:false, text:''}`（沿用部署）。v3→v4 还会**就地替换**三个内置档位的定义（新的分组拆分与默认延迟策略），自定义档位与 `sessions` 映射保留。
 

@@ -16,7 +16,7 @@
 }
 
 .check:hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  background: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, CanvasText 6%, transparent));
 }
 
 .check input {
@@ -67,7 +67,7 @@
   background: var(--dsw-specific-menu, var(--dsw-alias-bg-overlay));
   -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);
   backdrop-filter: var(--dsw-menu-backdrop-filter);
-  box-shadow: var(--dsw-elevation-prominent, 0 16px 40px rgba(16, 24, 40, 0.18));
+  box-shadow: var(--dsw-elevation-prominent, 0 16px 40px color-mix(in srgb, GrayText 25%, transparent));
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
@@ -110,7 +110,7 @@
 
 .row:hover,
 .row:focus-visible {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  background: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, CanvasText 6%, transparent));
   outline: none;
 }
 
@@ -281,7 +281,7 @@
 
 .seat[aria-expanded="true"],
 .seat:not(:disabled):hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  background: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, CanvasText 6%, transparent));
 }
 
 .seat:disabled {
@@ -333,7 +333,7 @@
 
 .seat[data-compact="1"][aria-expanded="true"],
 .seat[data-compact="1"]:not(:disabled):hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  background: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, CanvasText 6%, transparent));
 }
 
 .seat[data-compact="1"] .seatCount {

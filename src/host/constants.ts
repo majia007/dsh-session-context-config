@@ -71,6 +71,14 @@ export const GROUPS: ReadonlyArray<{ id: string; title: string; test: (name: str
   { id: 'other', title: '其他', test: () => true },
 ]
 
+/**
+ * sessions 映射的有界保留条数。宿主 dispose 一个 agent 后,同一 sessionId 仍可被
+ * resume 复用(切回旧会话 = 同 id 重新 agent/created,见 api/session-controller 的
+ * resolve),因此不能按 dispose 事件删条目;只保留最近写入的条数,被淘汰的会话
+ * 重开时回落 lastUsedId。
+ */
+export const SESSIONS_LIMIT = 500
+
 /** 通道拦截:把这两类“档位模型之外”的注入消息从发给模型的请求里滤掉。 */
 export const CHANNELS = [
   { id: 'workspaceInstructions', source: 'agent-instructions' },

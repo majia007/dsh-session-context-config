@@ -21,7 +21,7 @@ import { createEnvironmentRuntime } from './host/environment.ts'
 import { createProfileRuntime } from './host/profiles.ts'
 import { ROUTES, createRoutes } from './host/routes.ts'
 import { createSessionKit } from './host/sessions.ts'
-import { messageOf } from './host/state.ts'
+import { messageOf, recordSession } from './host/state.ts'
 import { createStateStore } from './host/state-store.ts'
 import { createTranslationRuntime } from './host/translations.ts'
 import type { AgentContext, AgentLike, HostContext } from './types.ts'
@@ -109,7 +109,7 @@ export function apply(ctx: HostContext): void {
       }
       if (!kit.isBlank(agent)) return
       profiles.applyTo(agent, store.state.lastUsedId)
-      store.state.sessions[sessionId] = store.state.lastUsedId
+      recordSession(store.state, sessionId, store.state.lastUsedId)
       store.persistSoon()
     } catch (error) {
       note('agent/created', error)

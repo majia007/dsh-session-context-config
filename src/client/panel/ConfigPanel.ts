@@ -1,6 +1,6 @@
 /**
  * 配置面板:档位草稿(增删改名/组/server/工具状态/摘要)、系统提示词与基线开关、
- * 保存与预览。草稿干净时跟随快照镜像,脏时冻结;写成功后置干净等镜像重derive。
+ * 保存与预览。草稿干净时跟随快照镜像,脏时冻结;写成功后按响应快照重建并置干净。
  */
 import { createElement as h, useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
 import { SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -20,6 +20,15 @@ const LABEL = '上下文档位'
 
 type Patch = (mutate: (target: Profile) => void) => void
 
+/** 从快照派生面板草稿(profiles/lastUsedId/baseline 的深拷贝)。 */
+function draftOf(value: Snapshot): PanelDraft {
+  return JSON.parse(JSON.stringify({
+    profiles: value.profiles,
+    lastUsedId: value.lastUsedId,
+    baseline: value.baseline ?? DEFAULT_BASELINE,
+  }))
+}
+
 /** 取快照诊断里的第一条可读消息;工具目录为空时给面板一个自报告入口,而不是静默少一块。 */
 function firstDiagnostic(diagnostics: unknown[]): string | null {
   for (const item of diagnostics) {
@@ -35,6 +44,9 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const snapshot = useSnapshot()
   const error = useError()
   const [draft, setDraft] = useState<PanelDraft | null>(null)
+  // 「干净锚点」:草稿最近一次从快照派生(或保存成功)时的序列化镜像。
+  // 草稿与锚点一致 = 干净,快照更新时跟随重建;不一致 = 用户改过,冻结等保存(「重新读取」也不丢弃未保存改动)。
+  const [anchor, setAnchor] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -42,14 +54,20 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const [previewMode, setPreviewMode] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!snapshot || draft) return
-    setDraft(JSON.parse(JSON.stringify({
-      profiles: snapshot.profiles,
-      lastUsedId: snapshot.lastUsedId,
-      baseline: snapshot.baseline ?? DEFAULT_BASELINE,
-    })))
-    setSelectedId(snapshot.profiles[0]?.id ?? null)
-  }, [snapshot, draft])
+    if (!snapshot) return
+    // 脏草稿冻结:外部更新(如会话 chip 切档位)不得覆盖用户未保存的编辑。
+    if (draft && anchor !== null && JSON.stringify(draft) !== anchor) return
+    const next = draftOf(snapshot)
+    const serialized = JSON.stringify(next)
+    // 内容与锚点一致时跳过,避免每个快照帧都重建草稿对象(setState 新对象会再触发本 effect)。
+    if (serialized === anchor) return
+    setAnchor(serialized)
+    setDraft(next)
+    setSelectedId((current) => {
+      const ids = next.profiles.map((item) => item.id)
+      return current && ids.includes(current) ? current : (ids[0] ?? null)
+    })
+  }, [snapshot, draft, anchor])
 
   const profile = useMemo(
     () => draft?.profiles?.find((item) => item.id === selectedId) ?? null,
@@ -67,14 +85,12 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     return map
   }, [tools])
 
+  // 「未保存改动」只看草稿与锚点的差异:外部快照更新对干净草稿不是改动(跟随重建后仍干净)。
+  // 拿草稿对比最新快照会把 chip 切档位误报成用户改动,诱导保存把旧 lastUsedId 回滚。
   const dirty = useMemo(() => {
-    if (!snapshot || !draft) return false
-    return JSON.stringify(draft) !== JSON.stringify({
-      profiles: snapshot.profiles,
-      lastUsedId: snapshot.lastUsedId,
-      baseline: snapshot.baseline ?? DEFAULT_BASELINE,
-    })
-  }, [snapshot, draft])
+    if (!snapshot || !draft || anchor === null) return false
+    return JSON.stringify(draft) !== anchor
+  }, [snapshot, draft, anchor])
 
   const patchBaseline = useCallback((key: string, value: boolean | string) => {
     setDraft((current) => (current ? { ...current, baseline: { ...current.baseline, [key]: value } } : current))
@@ -182,12 +198,10 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     setBusy(true)
     try {
       const result = await request<{ snapshot: Snapshot }>(API_STATE, { method: 'POST', body: JSON.stringify(draft) })
+      const saved = draftOf(result.snapshot)
       setSnapshot(result.snapshot)
-      setDraft(JSON.parse(JSON.stringify({
-        profiles: result.snapshot.profiles,
-        lastUsedId: result.snapshot.lastUsedId,
-        baseline: result.snapshot.baseline ?? DEFAULT_BASELINE,
-      })))
+      setAnchor(JSON.stringify(saved))
+      setDraft(saved)
       setStatus('已保存')
       emit()
     } catch (cause) {

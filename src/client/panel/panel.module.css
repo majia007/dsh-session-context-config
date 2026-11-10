@@ -255,7 +255,7 @@ body {
 }
 
 .tool:hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  background: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, CanvasText 6%, transparent));
 }
 
 /* 描述会折行,行高不再固定:名字列与描述列统一按首行对齐,顶部补
@@ -327,13 +327,13 @@ body {
 
 @media (hover: hover) {
   .tool .trBtn:hover:not(:disabled) {
-    background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+    background: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, CanvasText 6%, transparent));
     color: var(--dsw-alias-label-primary);
   }
 }
 
 .tool .trBtn:active:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-active, rgba(38, 49, 72, 0.1));
+  background: var(--dsw-alias-interactive-bg-active, color-mix(in srgb, CanvasText 10%, transparent));
 }
 
 .tool .trBtn:focus-visible {
@@ -383,7 +383,7 @@ body {
 }
 
 .clear:hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  background: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, CanvasText 6%, transparent));
   color: var(--dsw-alias-label-primary);
 }
 
@@ -503,7 +503,7 @@ body {
   background: var(--dsw-specific-menu, var(--dsw-alias-bg-overlay));
   -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);
   backdrop-filter: var(--dsw-menu-backdrop-filter);
-  box-shadow: var(--dsw-elevation-prominent, 0 16px 40px rgba(16, 24, 40, 0.18));
+  box-shadow: var(--dsw-elevation-prominent, 0 16px 40px color-mix(in srgb, GrayText 25%, transparent));
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l4);
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
@@ -638,7 +638,7 @@ body {
 }
 
 .segment:hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
+  background: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, CanvasText 6%, transparent));
 }
 
 /* 依赖未满足(例如人设关闭时的覆盖开关):保留位置但不可操作。 */

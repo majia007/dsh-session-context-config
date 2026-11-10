@@ -6,7 +6,7 @@
 
 1. **类名不可当契约**：DSH 的组件样式走 CSS Modules，产物类名带哈希（例如 `.heroOptions` 编译后是 `an3WzG_heroOptions`，逐版本变化）。能稳定用的只有 **设计 token（`--dsw-*`）** 和 **槽位锚点 `[data-slot="<slot key>"]`**。
 2. **宿主 `ui-primitives` 可以 import**（2026-11-08 实证修正，旧版此处断言有误）：它是平台种子词——`packages/client/web/src/platform.ts` 的 `PLATFORM_MODULES` 含该行，`require` 第一跳命中种子表——任何 client bundle（含本项目手写 `client.js`）都能拿到 `Menu`、图标、`Tooltip`、`Checkbox`、`SegmentedControl` 等。本项目组件仍是自绘（历史设计、已验证），不是拿不到；真正拿不到的是表外 specifier（见第 7 节）。
-3. **本文数值是抄写值**：真正的源头是 DSH 源码（第 6 节源码地图）。宿主升级后如果观感不对，先回源码复核，再同步本文与 `client.js` 的 `CSS` 块。
+3. **本文数值是抄写值**：真正的源头是 DSH 源码（第 6 节源码地图）。宿主升级后如果观感不对，先回源码复核，再同步本文与对应的 `*.module.css`。
 
 ## 1. 设计 token（可直接用在我们的 CSS 里）
 
@@ -82,18 +82,18 @@
 - 卡片内边距 4px 时，内嵌的状态块要用 `padding:4px 8px` 才能和行的左右边对齐。
 - 清单类区域（工具状态那种可能上百条的列表）用**固定可视高度 + 内部滚动**，不要截断成「另外 N 个」：区域高度稳定，菜单不会再随数据长高。本项目对应 `.cp-tools`。
 
-### 2.4 复选行与分段选择（配置页里的原生控件）
+### 2.4 复选行与分段选择
 
-`Checkbox` / `SegmentedControl` 可以从 `ui-primitives` import（第 0 节）；本项目照着 `ui-primitives` 的几何自绘，是历史设计选择：
+复选行是本项目自绘（原生 checkbox）；分段选择直接用宿主 `SegmentedControl`（`ui-primitives`，第 0 节，选项表在 `src/client/panel/options.ts` 的 `GROUP_STATES` / `TOOL_STATES`），档位行、组 / server、工具行渲染的都是同一个宿主组件。
 
 - **复选行**：`<label>` 包住 `input[type=checkbox]` + 文字，点整行文字即可切换。勾选框 16×16、`accent-color: var(--dsw-alias-brand-primary)`、与文字 `gap: 8px`；DSH 原版 gap 是 6px，本项目 13px 字号用 8px。出处 `ui-primitives/src/Checkbox.tsx` + `Checkbox.module.css`。对应 `.cp-check` / `.cp-checkBody`。
-- **分段选择**：轨道 `padding: 4px`、`border-radius: var(--dsw-radius-md)`、底色 `--dsw-alias-interactive-bg-hover`；选中片高 28px、底色 `--dsw-alias-bg-layer-1`、`box-shadow: var(--dsw-elevation-soft)`（表面把 `--dsw-elevation-stroke-color` 重绑到 `border-l1`）、圆角 `--dsw-radius-sm`；未选中文字 `label-secondary`，选中 `label-primary`。出处 `ui-primitives/src/SegmentedControl.tsx` + `SegmentedControl.module.css`。对应 `.cp-choice`；`.cp-choice.sm` 把轨道内边距降到 2px、段高 24px，仅用于工具行。
+- **分段选择（宿主组件的观感抄写值）**：轨道 `padding: 4px`、`border-radius: var(--dsw-radius-md)`、底色 `--dsw-alias-interactive-bg-hover`；选中片高 28px、底色 `--dsw-alias-bg-layer-1`、`box-shadow: var(--dsw-elevation-soft)`（表面把 `--dsw-elevation-stroke-color` 重绑到 `border-l1`）、圆角 `--dsw-radius-sm`；未选中文字 `label-secondary`，选中 `label-primary`。出处 `ui-primitives/src/SegmentedControl.tsx` + `SegmentedControl.module.css`。
 - **选中态不是实心品牌色**：DSH 的分段选中片是「抬起的浅色面」，靠阴影和轨道底色分离；状态色调（强制开启/延迟/隐藏）只染选中段文字，取 `state-success/warn/*` token。不要把选中段做成黑底白字。
-- 键盘行为：DSH 原版是 tablist + roving tabindex；本项目用原生 radio（`name` 分组、隐藏 input、label 全行可点）复刻外观，方向键与读屏语义交给浏览器，不另写 roving tabindex。
+- 键盘行为：宿主 `SegmentedControl` 自带 tablist + roving tabindex（方向键走位、`aria-selected`），冒烟脚本断言的就是这套 DOM 契约；本项目不再自绘 radio 版本。
 
 ### 2.5 圆角与「全圆」的 superellipse 退出
 
-`ui-theme/src/styles/corner-shape.css` 在 `@supports (corner-shape: superellipse(1.5))` 里给 `*`（含 `::before/::after`）设了 `corner-shape: superellipse(1.5)`。所以任何**不封顶**的圆角——`border-radius: 50%`、`999px`、或远大于盒子高度的 pill 半径——都必须在**同一条规则里**配 `corner-shape: round`，否则胶囊两端被切方、圆点变成超椭圆。宿主有全量 spec（`ui-theme/tests/corner-shape-styles.client.spec.ts`）只扫 `packages/`，插件不在覆盖内，只能自查。本插件对应 `.cp-chip`（999px）与 `.cp-sw`（50%）。
+`ui-theme/src/styles/corner-shape.css` 在 `@supports (corner-shape: superellipse(1.5))` 里给 `*`（含 `::before/::after`）设了 `corner-shape: superellipse(1.5)`。所以任何**不封顶**的圆角——`border-radius: 50%`、`999px`、或远大于盒子高度的 pill 半径——都必须在**同一条规则里**配 `corner-shape: round`，否则胶囊两端被切方、圆点变成超椭圆。宿主有全量 spec（`ui-theme/tests/corner-shape-styles.client.spec.ts`）只扫 `packages/`，插件不在覆盖内，只能自查。本插件对应 `.cp-msgBadge` / `.cp-tag`（999px）与 `.cp-sw`（50%）。
 
 **实心状态色块上的文字不要写 `#fff`**：前景色随主题翻转，用 `--dsw-alias-bg-layer-3` 或 `--dsw-alias-label-primary-foreground`（宿主先例 `ui-agent-preset/.../AgentPresetSection.module.css`）。
 
@@ -130,7 +130,7 @@ div.heroWorkspaceRow            flex, gap 2px, padding 0 16px 0 20px
 `.heroOptions` 的 `margin-left:auto` 会把整块插件选项推到右端。由于我们只能从自己的 CSS 里选到它，用锚点反向选中父层：
 
 ```css
-/* client.js 顶部 CSS 块里就这一条，别改成 :has(> .cp-seat-*)：
+/* menu.module.css 里唯一一条全局规则，别改成 :has(> .cp-seat-*)：
    直接父元素是 display:contents 的锚点，不是 .heroOptions。 */
 div:has(> [data-slot="conversation.hero.options"]) { margin-left: 0 }
 ```
@@ -141,7 +141,7 @@ div:has(> [data-slot="conversation.hero.options"]) { margin-left: 0 }
 
 ## 4. 本项目对宿主样式的复刻对照
 
-数值都写在 `client.js` 顶部的 `CSS` 块里，本文只解释「抄的是谁、为什么这么写」。
+数值都写在 `src/client/**/*.module.css`（构建期编译进 client bundle），本文只解释「抄的是谁、为什么这么写」。
 
 | 本项目 | 复刻自 | 说明 |
 |---|---|---|
@@ -150,9 +150,9 @@ div:has(> [data-slot="conversation.hero.options"]) { margin-left: 0 }
 | `.cp-menu` | `MenuSurface` + `Menu.module.css` 的 `.list` | 材质、圆角、4px 内边距、阴影缝合变量 |
 | `.cp-pop` / `.cp-popHead` | `MenuSurface`（同上） | 预览浮层：半径、材质、阴影与菜单一致（无描边、`--dsw-specific-menu` + backdrop、`--dsw-elevation-prominent`），只有位置由 JS 量算 |
 | `.cp-menuHead` / `.cp-menuNote` | `.label`（分组标题） | 右侧说明是本项目加的 |
-| `.cp-choice` / `.cp-choiceOpt` | `SegmentedControl` | 轨道 + 抬起的选中片；用原生 radio 取代 tablist，外观一致、键盘交给浏览器 |
+| 宿主 `SegmentedControl`（直接 import） | `SegmentedControl` | 档位行、组 / server、工具行的分段选择都用宿主组件，tablist 语义随组件自带 |
 | `.cp-check` / `.cp-checkBody` | `Checkbox` | label 包 input，点文字即切换；标题 13/20 + 说明 12/18 |
-| `.cp-groupHead` / `.cp-divider` / `.cp-subhead` | 无直接对应 | 分组标题、设置分组与 0.5px `border-l2` 分隔线 |
+| `.cp-groupHead` / `.cp-sep` / `.cp-sectionHead` / `.cp-sectionTitle` | 无直接对应 | 工具分组标题行、档位卡内分隔线、分区小标题（附加规则 / 工具目录） |
 | `.cp-btn` | `ui-primitives` 的 Button | md 档：36px 高、14px 字、radius-md、`0 14px`；主按钮 `--dsw-alias-button-primary-fill` + 前景色（不是品牌色 + `#fff`） |
 | `.cp-tool` / `.cp-nameCell` / `.cp-stateTag` / `.cp-tokenTag` / `.cp-clear` | 宿主 `Tag` | 工具清单的定宽列：名字（含两枚标签）/描述（超宽折行，完整显示）/状态。两枚标签都用 `Tag` 胶囊：`.cp-stateTag` 按生效状态取 `success` / `warning` / `neutral` 色调并补一圈同色 inset 描边（`.cp-stateTagInner`），被组或 server 改写时用 tooltip 说明本行选择；`.cp-tokenTag` 用默认 `outline` 灰标签显示 token 估算 |
 | `.cp-row` / `.cp-rowMain` / `.cp-rowName` / `.cp-rowDesc` / `.cp-rowCount` / `.cp-rowCheck` | `.item` / `.itemIcon` / `.itemLabel` / `.check` | 两行条目 + 行尾计数 + 勾 |
@@ -162,7 +162,7 @@ div:has(> [data-slot="conversation.hero.options"]) { margin-left: 0 }
 ## 5. 验证配方
 
 ```bash
-node --check client.js
+node --check lib/client.js
 node scripts/smoke.mjs        # happy-dom 里渲染配置面板与两个 chip 并点击，断言结构与语义
 ```
 

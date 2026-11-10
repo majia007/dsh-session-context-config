@@ -7,7 +7,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { defaultState, normalizeState } from '../src/host/state.ts'
+import { SESSIONS_LIMIT } from '../src/host/constants.ts'
+import { defaultState, normalizeState, recordSession } from '../src/host/state.ts'
 import { effectiveState, groupOf, placehold, serverOf, skeleton, summaryFor } from '../src/host/tools.ts'
 import { apply, inject, name } from '../src/index.ts'
 
@@ -135,4 +136,31 @@ test('状态归一化：版本不符整份作废，重复 id 去掉，坏引用�
     baseline: { environmentFacts: false },
   }).profiles[0]
   assert.deepEqual(explicit.contexts, { 'sandbox:policy': false })
+})
+
+test('sessions 有界保留：重复写入移到最新端，超限淘汰最旧', () => {
+  const state = defaultState()
+  for (let index = 0; index < SESSIONS_LIMIT; index += 1) recordSession(state, `session-${index}`, 'none')
+  assert.equal(Object.keys(state.sessions).length, SESSIONS_LIMIT)
+  assert.equal(state.sessions['session-0'], 'none')
+  // 第一条超限写入淘汰最旧的 session-0。
+  recordSession(state, 'session-new', 'none')
+  assert.equal(Object.keys(state.sessions).length, SESSIONS_LIMIT)
+  assert.equal(state.sessions['session-0'], undefined)
+  assert.equal(state.sessions['session-1'], 'none')
+  // 已有条目重复写入移到最新端：下一条淘汰的是 session-2 而不是它。
+  recordSession(state, 'session-1', 'none')
+  recordSession(state, 'session-newer', 'none')
+  assert.equal(state.sessions['session-1'], 'none')
+  assert.equal(state.sessions['session-2'], undefined)
+})
+
+test('normalizeState：超限的旧 sessions 读入时收缩到上限（淘汰最旧）', () => {
+  const sessions = {}
+  for (let index = 0; index < SESSIONS_LIMIT + 3; index += 1) sessions[`session-${index}`] = 'none'
+  const normalized = normalizeState({ version: 4, profiles: [{ id: 'a', name: 'A' }], sessions })
+  assert.equal(Object.keys(normalized.sessions).length, SESSIONS_LIMIT)
+  assert.equal(normalized.sessions['session-0'], undefined)
+  assert.equal(normalized.sessions['session-2'], undefined)
+  assert.equal(normalized.sessions['session-3'], 'none')
 })
