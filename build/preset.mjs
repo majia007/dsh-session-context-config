@@ -128,7 +128,9 @@ function cssModulesPlugin() {
         minify: true,
       })
       const classMap = {}
-      for (const [local, exported] of Object.entries(cssExports ?? {})) classMap[local] = exported.name
+      // 类名映射按键排序:lightningcss 的 exports 键序在调用间随机,不排序会让连续两次
+      // build 的 client bundle 字节漂移(兄弟项目的 preset 同款先例)。
+      for (const local of Object.keys(cssExports ?? {}).sort()) classMap[local] = cssExports[local].name
       return styleInjectionModule(fileId, code.toString(), classMap)
     },
   }
