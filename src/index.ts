@@ -21,6 +21,7 @@ import { createEnvironmentRuntime } from './host/environment.ts'
 import { createProfileRuntime } from './host/profiles.ts'
 import { ROUTES, createRoutes } from './host/routes.ts'
 import { createSessionKit } from './host/sessions.ts'
+import { createSourceIndex } from './host/sources.ts'
 import { messageOf, recordSession } from './host/state.ts'
 import { createStateStore } from './host/state-store.ts'
 import { createTranslationRuntime } from './host/translations.ts'
@@ -41,12 +42,14 @@ export function apply(ctx: HostContext): void {
     console.warn(`[session-context-config] ${source}: ${messageOf(error)}`)
   }
 
+  // 来源拦截必须最先装:本插件装载后注册的工具才能被捕获(见 host/sources.ts)。
+  const sources = createSourceIndex(ctx, note)
   const store = createStateStore(note)
   const kit = createSessionKit(ctx, note)
   const profiles = createProfileRuntime(ctx, store, kit, note)
   const environment = createEnvironmentRuntime(ctx, kit, note)
   const translations = createTranslationRuntime(ctx, note)
-  const routes = createRoutes({ ctx, store, kit, profiles, translations, note, diagnostics })
+  const routes = createRoutes({ ctx, store, kit, profiles, sources, translations, note, diagnostics })
 
   store.load()
 
@@ -305,6 +308,7 @@ export function apply(ctx: HostContext): void {
     }
     environment.dispose()
     translations.dispose()
+    sources.dispose()
     store.flush()
     profiles.dispose()
     if (changeTimer) clearTimeout(changeTimer)

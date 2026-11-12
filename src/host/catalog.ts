@@ -1,5 +1,6 @@
 import { GROUPS, TOKEN_PER_CHAR } from './constants.ts'
 import { groupOf, serverOf } from './tools.ts'
+import type { SourceIndex, ToolSource } from './sources.ts'
 import type { HostContext } from '../types.ts'
 
 export interface CatalogTool {
@@ -10,6 +11,8 @@ export interface CatalogTool {
   chars: number
   tokens: number
   modes: string[]
+  /** 工具来源(谁注册的);解析不出时缺省,面板显示「未识别」。 */
+  source?: ToolSource
 }
 
 export interface Catalog {
@@ -20,7 +23,7 @@ export interface Catalog {
 }
 
 /** 目录构建:枚举 agent preset 组合的工具表,15 秒缓存。 */
-export function createCatalog(ctx: HostContext, note: (source: string, error: unknown) => void) {
+export function createCatalog(ctx: HostContext, note: (source: string, error: unknown) => void, sources: SourceIndex) {
   let catalogCache: { at: number; value: Catalog } | null = null
 
   function toolEntry(schema: { name?: unknown; description?: unknown; parameters?: unknown }): CatalogTool {
@@ -87,6 +90,18 @@ export function createCatalog(ctx: HostContext, note: (source: string, error: un
         if (!union.has(tool.name)) union.set(tool.name, { ...tool, modes: [] })
         union.get(tool.name)!.modes.push(preset.id)
       }
+    }
+    // 来源按工具名统一解析一次:preset 之间同名工具是同一份注册,归属也相同。
+    // 描述一并带上:同名多实现(pwsh)与动态命名的工具要靠它消歧。
+    const targets = [...union.values()].map((tool) => ({ name: tool.name, description: tool.description }))
+    try {
+      await sources.resolveMany(targets)
+    } catch (error) {
+      note('sources', error)
+    }
+    for (const tool of union.values()) tool.source = sources.resolve(tool.name)
+    for (const preset of presets) {
+      for (const tool of preset.tools) tool.source = sources.resolve(tool.name)
     }
     if (!presets.some((preset) => preset.id === defaultPreset)) defaultPreset = presets[0]?.id ?? ''
     const value: Catalog = {

@@ -52,7 +52,15 @@ for (const px of [11, 12, 13, 14]) {
 /* ── 假数据：两个档位、十五个工具（超过可视行数，验证不截断）、一个空白会话 ── */
 
 const tools = [
-  { name: 'read', description: 'Read a file', group: 'files', server: null, chars: 100, tokens: 80 },
+  {
+    name: 'read',
+    description: 'Read a file',
+    group: 'files',
+    server: null,
+    chars: 100,
+    tokens: 80,
+    source: { kind: 'plugin', label: '文件工具', detail: '插件：@deepseek-ai/dsh-tool-fs\n判定：DSH 官方工具目录', evidence: 'catalog' },
+  },
   { name: 'write', description: 'Create or fully replace a UTF-8 text file.', group: 'files', server: null, chars: 120, tokens: 90 },
   ...Array.from({ length: 13 }, (_, index) => ({
     name: `tool_${String(index + 1).padStart(2, '0')}`,
@@ -336,7 +344,9 @@ check('名字与状态标签同在一个单元格', toolRowEl?.querySelector('.c
 check('每个工具都显示最终状态标签（开启 / success）', toolRowEl?.querySelector('.cp-stateTag')?.textContent === '开启' && toolRowEl?.querySelector('.cp-stateTag [data-tone]')?.getAttribute('data-tone') === 'success')
 check('状态标签带同色描边', toolRowEl?.querySelector('.cp-stateTag .cp-stateTagInner') !== null)
 check('状态标签旁并排 token 标签（默认描边灰）', toolRowEl?.querySelector('.cp-tokenTag')?.textContent === '≈80' && toolRowEl?.querySelector('.cp-tokenTag [data-tone]')?.getAttribute('data-tone') === 'outline', toolRowEl?.querySelector('.cp-tokenTag')?.textContent)
-check('token 标签是状态标签的兄弟节点、不再有独立成本列', toolRowEl?.querySelector('.cp-nameCell > .cp-stateTag + .cp-tokenTag') !== null && toolRowEl?.querySelector('.cp-cost') === null)
+check('token 标签是状态标签的兄弟节点、不再有独立成本列', toolRowEl?.querySelector('.cp-nameLine > .cp-stateTag + .cp-tokenTag') !== null && toolRowEl?.querySelector('.cp-cost') === null)
+check('工具行显示来源短名与完整依据', toolRowEl?.querySelector('.cp-source')?.textContent === '来源 · 文件工具' && toolRowEl?.querySelector('.cp-source')?.getAttribute('title')?.includes('@deepseek-ai/dsh-tool-fs') === true)
+check('没有来源的工具显示未识别', toolByName('write')?.querySelector('.cp-source')?.textContent === '来源 · 未识别')
 check('组状态复用同一分段选择', panel.querySelector('.cp-groupHead [role="tablist"]') !== null)
 check('组标题不再有「摘要」入口与摘要输入', !panel.textContent.includes('目录摘要') && panel.querySelectorAll('.cp-groupHead .cp-link').length === 0)
 check('工具目录非空时不显示空目录告警', ![...panel.querySelectorAll('.cp-cardTitle')].some((el) => el.textContent === '工具目录'))

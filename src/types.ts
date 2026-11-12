@@ -74,6 +74,8 @@ export type RouteHandler = (request: HttpRequest, response: HttpResponse) => Pro
 
 /** cordis Host ctx 的最小面(宿主与测试桩都按此形状提供方法)。 */
 export interface HostContext {
+  /** profile 根 ctx 的模块 baseUrl(解析包目录与本地化标题用);老宿主可能没有。 */
+  baseUrl?: string
   get(service: string): unknown
   /** cordis Context.on;global:true 是收到 scopeTarget 派发(如 system-prompt/assemble)的必要条件。 */
   on(event: string, listener: (...args: never[]) => unknown, options?: { prepend?: boolean; global?: boolean }): unknown

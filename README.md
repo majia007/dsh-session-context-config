@@ -69,6 +69,7 @@ server = 隐藏     → 隐藏
 
 - **状态标签**：显示**最终生效状态**的三个值——`开启`（绿）/ `延迟`（琥珀）/ `隐藏`（中性灰）。组 / server 的选择会压过工具级选择；被改写时悬停标签可看到「生效 / 本行选择」的对照，未被改写时不带 tooltip。
 - **token 标签**：该工具定义的估算占用（`≈267`），用默认的描边灰标签，与状态标签并排；行尾不再有独立的 token 列。
+- **来源行**：名字下方一行灰字 `来源 · 会话桥`，回答「这个工具来自哪个插件」。插件包有本地化标题就用标题，否则用包短名；悬停可看完整包名、Loader 入口与判定方式（注册时捕获 / 官方工具目录 / 入口产物推断，推断结果带虚线下划线）。MCP 工具显示 `MCP · <server>`；宿主自带但当前版本定位不到实现包的显示 `DSH 内置`；证据不足时显示 `来源 · 未识别`，不猜。
 
 ## 内置档位
 
@@ -197,7 +198,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 | 路由 | 用途 |
 |---|---|
-| `GET/POST /session-context-config/api/state` | 读快照 / 保存档位 |
+| `GET/POST /session-context-config/api/state` | 读快照 / 保存档位（`tools[].source` 带来源标注，`sources` 是解析诊断计数） |
 | `GET /session-context-config/api/session?id=` | 某会话的逐工具状态（注入 / 延迟 / 隐藏 / 已取定义） |
 | `POST /session-context-config/api/session` | 为某会话选定档位（`none` = 不处理） |
 | `GET /session-context-config/api/preview?id=&profile=` | 干跑：某档位在该会话下的注入/延迟/隐藏清单 |
@@ -215,10 +216,10 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 | 占位 | 装配 50 个工具，其中 25 个占位；12,889 → 5,842 字符（-54.7%） |
 | 加载 | `tool_search` 返回完整定义；会话内 tools 数组不变 |
 | 缓存 | 加载只追加历史，不重建前缀 |
-| 上下文逐项开关 | 只关 `harness:source` 时，`contexts`/`refreshedContexts` 无该段、其余仍在；关 `working-directory:current` 时两者都无 cwd；环境事实开启时 180 字符（2026-11-09 真机） |
-| system 段逐项开关 | 2026-11-09 单测 + 冒烟：关 `harness:identity` / `tool:read` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单 |
-| 配置页结构 | 2026-11-09 冒烟：按消息四张卡（system/快照/工作区指令/时间采样）；人设 checkbox + 输入框；快照 7 段；两条通道各一行 checkbox + 说明 |
-| 通道过滤顺序 | 2026-11-09 会话 `session-f6a33b8a…` 实证（旧版 complete 语义）：Chat 档 channels 全 off、tools=0、system 为空，但仍漏一条 `time-context` user 消息。根因是 preset 的 `prepend` 监听器晚于全局过滤器注册、反包住过滤器；修复为 `agent/created` 时按 agent 再注册（回归 `tests/channels.test.mjs`） |
+| 上下文逐项开关 | 只关 `harness:source` 时，`contexts`/`refreshedContexts` 无该段、其余仍在；关 `working-directory:current` 时两者都无 cwd；环境事实开启时 180 字符（真机） |
+| system 段逐项开关 | 单测 + 冒烟：关 `harness:identity` / `tool:read` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单 |
+| 配置页结构 | 冒烟：按消息四张卡（system/快照/工作区指令/时间采样）；人设 checkbox + 输入框；快照 7 段；两条通道各一行 checkbox + 说明 |
+| 通道过滤顺序 | 会话 `session-f6a33b8a…` 真机实证：Chat 档 channels 全 off、tools=0、system 为空，但仍漏一条 `time-context` user 消息。根因是 preset 的 `prepend` 监听器晚于全局过滤器注册、反包住过滤器；修复为 `agent/created` 时按 agent 再注册（回归 `tests/channels.test.mjs`） |
 | 客户端 | bundle 已进 boot graph |
 
 未验证：会话头部下拉菜单的像素级核对（与 hero 下拉同一套组件，DOM 已核对）；卡片回执条款只做 1 次行为抽查（`present` 后只回一句确认），交付失败时仍给错误细节由契约文本保证，未单独构造失败场景。

@@ -23,12 +23,13 @@ body {
   line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
 }
 
+/* 页头几何与「Skill · Command · MCP」面板统一:14/12 内距 + 34px 图标(总高约 60px)。 */
 .head {
   flex: none;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  padding: 18px 22px 14px;
+  padding: 14px 22px 12px;
   border-bottom: 1px solid var(--dsw-alias-border-l4);
 }
 
@@ -56,8 +57,9 @@ body {
 }
 
 .sub {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -273,9 +275,37 @@ body {
 
 .tool .nameCell {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* 名字行:名字 + 状态标签 + token 标签;来源另起一行,避免挤掉名字。 */
+.tool .nameLine {
+  display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  max-width: 100%;
+}
+
+/* 来源是元信息:11px 三级文字,超宽省略,完整依据在 title 里。 */
+.tool .source {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  font-size: var(--dsh-plugin-fs-11, 11px);
+  line-height: calc(15px + var(--dsh-plugin-font-boost, 0px));
+}
+
+/* 推断来源(入口产物扫描)用虚线下划线标记,提示不是运行时事实。 */
+.tool .sourceInferred {
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
 }
 
 .tool .nm {

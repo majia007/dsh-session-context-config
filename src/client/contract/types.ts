@@ -5,6 +5,17 @@
  */
 import type { BaselineFlags } from '../../baseline.ts'
 
+/** 工具来源的判定等级:scan 是推断,其余是事实来源。 */
+export type ToolSourceEvidence = 'registry' | 'catalog' | 'scan' | 'mcp' | 'fallback'
+
+/** 工具来源(面板在工具名下显示短名,tooltip 里给完整依据)。 */
+export interface ToolSource {
+  kind: 'mcp' | 'plugin' | 'unknown'
+  label: string
+  detail: string
+  evidence: ToolSourceEvidence
+}
+
 /** 目录里的工具条目(快照 tools 数组元素)。 */
 export interface CatalogTool {
   name: string
@@ -14,6 +25,7 @@ export interface CatalogTool {
   chars: number
   tokens: number
   modes?: string[]
+  source?: ToolSource
 }
 
 /** 部署人设的一个固定槽位(prefix/suffix 各一份,独立开关与覆盖)。 */

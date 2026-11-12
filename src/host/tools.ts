@@ -91,10 +91,13 @@ export function summaryFor(profile: ContextProfile, toolName: string, descriptio
   ) || toolName
 }
 
+/** 延迟占位描述的固定前缀:既是模型看到的标记,也是来源解析识别「这不是原注册」的依据。 */
+export const DEFERRED_DESCRIPTION_PREFIX = '【延迟】'
+
 export function placehold(schema: ToolDefinitionLike, summary: string): { name: string; description: string; parameters: unknown } {
   return {
     name: schema.name,
-    description: `【延迟】${summary}（完整参数用 tool_search）`,
+    description: `${DEFERRED_DESCRIPTION_PREFIX}${summary}（完整参数用 tool_search）`,
     parameters: skeleton(schema.parameters ?? { type: 'object', properties: {} }),
   }
 }

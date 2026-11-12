@@ -13,6 +13,7 @@ import { createCatalog } from '../src/host/catalog.ts'
 
 test('catalog: acquireScope 保留 receiver，目录可用且租约被释放', async () => {
   const notes = []
+  const resolvedNames = []
   let disposed = 0
   const registry = {
     async retain(id) {
@@ -47,12 +48,23 @@ test('catalog: acquireScope 保留 receiver，目录可用且租约被释放', a
       },
     },
   }
-  const catalog = createCatalog(ctx, (source, error) => notes.push(`${source}: ${error.message}`))
+  const catalog = createCatalog(ctx, (source, error) => notes.push(`${source}: ${error.message}`), {
+    async resolveMany(tools) {
+      resolvedNames.push(...tools.map((tool) => tool.name))
+    },
+    resolve(name) {
+      return name === 'read'
+        ? { kind: 'plugin', label: '文件工具', detail: '插件：@deepseek-ai/dsh-tool-fs', evidence: 'catalog' }
+        : undefined
+    },
+  })
   const value = await catalog.buildCatalog()
 
   assert.deepEqual(notes, [])
   assert.deepEqual(scopes, [{ id: 'standard' }])
   assert.deepEqual(value.tools.map((tool) => tool.name), ['read'])
   assert.equal(value.tools[0].group, 'files')
+  assert.equal(value.tools[0].source?.label, '文件工具')
+  assert.deepEqual(resolvedNames, ['read'])
   assert.equal(disposed, 1)
 })

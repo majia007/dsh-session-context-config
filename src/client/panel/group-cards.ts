@@ -38,6 +38,19 @@ function tokenTag(tokens: number): ReactElement {
   )
 }
 
+/** 工具来源:插件标题优先,拿不到就用包短名;完整依据(包名/入口/判定)在 tooltip 里。 */
+function sourceLine(tool: CatalogTool): ReactElement {
+  const source = tool.source
+  return h(
+    'span',
+    {
+      className: `${styles.source}${source?.evidence === 'scan' ? ` ${styles.sourceInferred}` : ''}`,
+      title: source?.detail ?? '宿主不提供工具归属信息，且本插件装载前注册的工具无法回溯。',
+    },
+    `来源 · ${source?.label ?? '未识别'}`,
+  )
+}
+
 export function toolRow(tool: CatalogTool, profile: Profile, setToolState: (toolName: string, state: string) => void): ReactElement {
   const state = effective(profile, tool)
   const raw = profile.tools?.[tool.name] ?? ON
@@ -47,9 +60,14 @@ export function toolRow(tool: CatalogTool, profile: Profile, setToolState: (tool
     h(
       'span',
       { className: styles.nameCell },
-      h('span', { className: styles.nm, title: tool.name }, tool.name),
-      stateTag(state, raw),
-      tokenTag(tool.tokens),
+      h(
+        'span',
+        { className: styles.nameLine },
+        h('span', { className: styles.nm, title: tool.name }, tool.name),
+        stateTag(state, raw),
+        tokenTag(tool.tokens),
+      ),
+      sourceLine(tool),
     ),
     h(ToolDescription, { name: tool.name, text: tool.description ?? '' }),
     h(

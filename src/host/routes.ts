@@ -5,6 +5,7 @@ import { messageOf, normalizeState, recordSession, statePath, type PluginState }
 import type { StateStore } from './state-store.ts'
 import type { ProfileRuntime } from './profiles.ts'
 import type { SessionKit } from './sessions.ts'
+import type { SourceIndex } from './sources.ts'
 import type { TranslationRuntime } from './translations.ts'
 import type { AgentLike, HostContext, HttpRequest, HttpResponse, RouteHandler } from '../types.ts'
 
@@ -31,6 +32,7 @@ interface RoutesDeps {
   store: StateStore
   kit: SessionKit
   profiles: ProfileRuntime
+  sources: SourceIndex
   translations: TranslationRuntime
   note: (source: string, error: unknown) => void
   diagnostics: unknown[]
@@ -75,8 +77,8 @@ function loopbackOnly(request: HttpRequest): boolean {
 }
 
 export function createRoutes(deps: RoutesDeps): RoutesRuntime {
-  const { ctx, store, kit, profiles, translations, note, diagnostics } = deps
-  const catalog = createCatalog(ctx, note)
+  const { ctx, store, kit, profiles, sources, translations, note, diagnostics } = deps
+  const catalog = createCatalog(ctx, note, sources)
 
   /**
    * 信任栅栏:宿主 webServer 对直接 register 的路由不做任何认证,官方做法是
@@ -166,6 +168,7 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
       groups: catalogValue.groups,
       sections,
       live,
+      sources: sources.report(),
       diagnostics: diagnostics.slice(0, 8),
       statePath: statePath(),
       clientBundle: (() => {

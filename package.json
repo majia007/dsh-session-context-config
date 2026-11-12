@@ -68,6 +68,7 @@
     "prepack": "node build/build.mjs",
     "prepare": "node build/build.mjs",
     "typecheck": "tsc --noEmit",
+    "gen-known-tools": "node scripts/gen-known-tools.mjs",
     "test": "node --test --test-force-exit \"tests/**/*.test.mjs\"",
     "smoke": "node scripts/smoke.mjs"
   },
