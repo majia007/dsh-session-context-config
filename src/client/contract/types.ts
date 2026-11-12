@@ -68,6 +68,36 @@ export interface LiveSession {
  *  直接复用 Host 侧的类型,避免两边字段漂移时无人报错。 */
 export type BaselineState = BaselineFlags
 
+/** system 段目录项:正文用于面板 title(与请求里的文本同源),chars 用于体量标签。 */
+export interface PromptSectionState {
+  name: string
+  chars: number
+  text?: string
+}
+
+/** 运行时上下文目录项:被关掉的影子与条件上下文会是空 text,面板据此显示状态。 */
+export interface PromptContextState {
+  name: string
+  chars: number
+  text?: string
+}
+
+/** 已知注入通道的最新一条消息(卡片 title)。 */
+export interface ChannelPreview {
+  text: string
+  chars: number
+  truncated?: boolean
+}
+
+/** 自动发现的注入消息(source.kind + 出现次数 + 最新正文)。 */
+export interface ObservedChannel {
+  kind: string
+  count: number
+  chars: number
+  text: string
+  truncated?: boolean
+}
+
 /** 快照(GET /api/state 的返回)。 */
 export interface Snapshot {
   ok: boolean
@@ -80,8 +110,14 @@ export interface Snapshot {
   defaultPreset: string
   tools: CatalogTool[]
   groups: Array<{ id: string; title: string }>
-  /** 当前 live 会话的完整 system 段目录(名称 + 字符数,按实际装配顺序);无 live 会话时为空数组。 */
-  sections: Array<{ name: string; chars: number }>
+  /** 当前 live 会话的完整 system 段目录(名称 + 字符数 + 正文,按实际装配顺序);无 live 会话时为空数组。 */
+  sections: PromptSectionState[]
+  /** 当前 live 会话注册的全部运行时上下文(含空文本/被关掉的影子),按宿主 order 排序。 */
+  contexts?: PromptContextState[]
+  /** 按档位分组的两条已知通道最新正文:只含使用该档位的 live 根会话。 */
+  channelsByProfile?: Record<string, Record<string, ChannelPreview>>
+  /** 按档位分组的 user 消息注入来源(含第三方插件);面板只取当前档位。 */
+  observedChannelsByProfile?: Record<string, ObservedChannel[]>
   live: LiveSession[]
   diagnostics: unknown[]
 }

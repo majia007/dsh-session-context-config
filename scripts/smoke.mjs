@@ -73,7 +73,9 @@ const tools = [
 ]
 const personaSlot = () => ({ enabled: true, override: false, text: '' })
 const profile = (id, name, description) => ({
-  id, name, description, groups: {}, servers: {}, tools: {}, contexts: {}, sections: {}, channels: {},
+  // plan:policy 用来覆盖「已知、已关闭、但当前装配里没有出现」的段:它必须仍然
+  // 可重新开启,但 meta 要明确是「已关闭 · 当前未出现」。
+  id, name, description, groups: {}, servers: {}, tools: {}, contexts: {}, sections: { 'plan:policy': false }, channels: {},
   prompt: { prefix: personaSlot(), suffix: personaSlot() }, summaries: {},
 })
 const snapshot = {
@@ -88,18 +90,46 @@ const snapshot = {
   tools,
   groups: [{ id: 'files', title: '文件' }],
   sections: [
-    // 按真实装配顺序排列(identity -1000 → 宿主段 → 工具引导 → 收尾段);
-    // 空文本段不进目录(与 /api/state 的过滤一致)。
-    { name: 'harness:identity', chars: 48 },
-    { name: 'subagent-roles:catalog', chars: 420 },
-    { name: 'context:file-reference', chars: 300 },
-    { name: 'tool:read', chars: 150 },
-    { name: 'tool:write', chars: 100 },
-    { name: 'tool:subagent', chars: 400 },
-    { name: 'ui:deliverable-file-references', chars: 900 },
-    { name: 'harness:source', chars: 240 },
-    { name: 'app:web-surface', chars: 900 },
+    // 按真实装配顺序排列(identity -1000 → 人设 → 宿主段 → 工具引导 → 收尾段);
+    // 空文本段不进目录(与 /api/state 的过滤一致)。text 是面板 title 的来源。
+    { name: 'harness:identity', chars: 48, text: 'You are an AI agent powered by DeepSeek Harness.' },
+    { name: 'deployment:persona-prefix', chars: 20, text: '部署人设前缀' },
+    { name: 'subagent-roles:catalog', chars: 420, text: '子代理角色目录正文' },
+    { name: 'context:file-reference', chars: 300, text: '文件引用规则正文' },
+    { name: 'tool:read', chars: 150, text: 'read 工具引导正文' },
+    { name: 'tool:write', chars: 100, text: 'write 工具引导正文' },
+    { name: 'tool:subagent', chars: 400, text: 'subagent 工具引导正文' },
+    { name: 'ui:deliverable-file-references', chars: 900, text: '文件展示与链接规则正文' },
+    { name: 'harness:source', chars: 240, text: 'DSH 源码 checkout 说明正文' },
+    { name: 'app:web-surface', chars: 900, text: 'Web GUI 说明正文' },
+    { name: 'deployment:persona-suffix', chars: 20, text: '部署人设后缀' },
   ],
+  contexts: [
+    { name: 'working-directory:current', chars: 40, text: 'Current working directory: "D:\\\\work".' },
+    { name: 'sandbox:policy', chars: 80, text: 'Sandbox policy: danger-full-access' },
+    { name: 'approval:policy', chars: 40, text: 'Approval policy: never' },
+    { name: 'subagent:identity', chars: 60, text: 'You are the root agent. Your name is "lead".' },
+    { name: 'tool:subagent:depth', chars: 0, text: '' },
+    { name: 'tool:subagent_fork:depth', chars: 0, text: '' },
+    { name: 'session-context-config:environment', chars: 120, text: 'Environment: platform win32' },
+    { name: 'harness:source', chars: 90, text: 'Current DeepSeek Harness implementation checkout: "D:\\\\src".' },
+    { name: 'app:web-surface', chars: 60, text: 'Current DeepSeek Harness Web GUI URL: "http://127.0.0.1:26730".' },
+    { name: 'third-party:probe', chars: 30, text: '第三方插件上下文正文' },
+  ],
+  channelsByProfile: {
+    standard: {
+      workspaceInstructions: { text: '<system-reminder>\n工作区指令正文\n</system-reminder>', chars: 40 },
+      timeContext: { text: 'Time sampled while preparing turn 1, step 1: 2026-11-12T19:00:00+08:00', chars: 60 },
+    },
+  },
+  observedChannelsByProfile: {
+    standard: [
+      { kind: 'agent-instructions', count: 1, chars: 40, text: '<system-reminder>\n工作区指令正文\n</system-reminder>' },
+      { kind: 'time-context', count: 1, chars: 60, text: 'Time sampled while preparing turn 1, step 1: 2026-11-12T19:00:00+08:00' },
+      { kind: 'skill-catalog', count: 2, chars: 80, text: '- demo: 示例技能' },
+      { kind: 'plan/mode', count: 1, chars: 30, text: '计划模式提示正文' },
+    ],
+  },
   live: [{ sessionId: 's1', preset: 'standard', blank: true, profileId: 'standard', deferred: 1, hidden: 0, loaded: 0 }],
   diagnostics: [],
 }
@@ -258,6 +288,7 @@ check('卡片不再有 meta 与 footer', panel.querySelector('.cp-msgMeta') === 
 const systemNote = systemCard?.querySelector('.cp-msgNote')?.textContent ?? ''
 check('提示不再出现段计数与条件段说明', !systemNote.includes('当前会话装配到') && !systemNote.includes('条件段'))
 check('footer 的全局/档位说明已并入提示', systemNote.includes('只作用于根会话') && systemNote.includes('附加规则'))
+check('system 卡提示悬停可看注入全文', systemNote.includes('悬停各行可查看当前注入的完整文本'))
 
 const segmentRows = () => [...(systemCard?.querySelectorAll('.cp-segment') ?? [])]
 const rowByText = (text) => segmentRows().find((row) => row.querySelector('.cp-segmentLabel')?.textContent?.includes(text))
@@ -268,8 +299,21 @@ const fieldLabels = [...panel.querySelectorAll('.cp-fieldLabel')].map((el) => el
 check('档位名称/描述有可见 label', fieldLabels.join('/') === '名称/描述', fieldLabels.join('/'))
 check('前置人设默认开启', prefixRow()?.querySelector('input[type="checkbox"]')?.checked === true)
 check('前置覆盖默认关闭、文本不可用', prefixRow()?.nextElementSibling?.querySelector('input')?.checked === false && prefixRow()?.nextElementSibling?.nextElementSibling?.disabled === true)
+// 未覆盖时 title 是装配出的部署文本。
+check('人设行 title 显示部署文本', prefixRow()?.getAttribute('title') === '部署人设前缀' && suffixRow()?.getAttribute('title') === '部署人设后缀', `${prefixRow()?.getAttribute('title')} / ${suffixRow()?.getAttribute('title')}`)
+check('普通段 title 显示装配正文', rowByChip('harness:identity')?.getAttribute('title') === 'You are an AI agent powered by DeepSeek Harness.' && rowByChip('context:file-reference')?.getAttribute('title') === '文件引用规则正文')
 await click(prefixRow()?.nextElementSibling?.querySelector('.cp-segmentLabel'))
 check('勾选前置覆盖后文本可用', prefixRow()?.nextElementSibling?.nextElementSibling?.disabled === false)
+// happy-dom 对「刚从 disabled 解禁的受控 textarea」不投递 React 合成的 input 事件
+// (原生监听器能收到,但 React 的 value tracker 不触发 onChange);这里直接调用
+// 组件的 onChange 验证 title 契约,textarea 的 DOM 事件接线由自定义文本那条覆盖。
+const personaTextarea = prefixRow()?.nextElementSibling?.nextElementSibling
+const personaPropsKey = Object.keys(personaTextarea ?? {}).find((key) => key.startsWith('__reactProps'))
+await act(async () => {
+  personaTextarea?.[personaPropsKey]?.onChange({ target: { value: '新的前置人设' } })
+})
+await flush()
+check('覆盖生效后 title 用草稿文本', prefixRow()?.getAttribute('title') === '新的前置人设', prefixRow()?.getAttribute('title') ?? '')
 check('两个槽位分开配置:前置覆盖不影响后缘', suffixRow()?.nextElementSibling?.querySelector('input')?.checked === false)
 await click(suffixRow()?.querySelector('.cp-segmentLabel'))
 check('关闭后缘槽位只禁用后缘自己的覆盖', suffixRow()?.nextElementSibling?.querySelector('input')?.disabled === true && prefixRow()?.nextElementSibling?.querySelector('input')?.checked === true)
@@ -278,11 +322,12 @@ await click(suffixRow()?.querySelector('.cp-segmentLabel'))
 check('不再区分人设/宿主/工具小区域', systemCard?.querySelector('.cp-groupLabel') === null)
 check('段列表不再包滚动容器', systemCard?.querySelector('.cp-sectionList') === null)
 const orderNames = segmentRows().map((row) => row.querySelector('.cp-codeChip')?.textContent).filter(Boolean)
-check('工具引导段不在这里配置（跟随工具状态）', orderNames.every((name) => !name.startsWith('tool:')))
+check('工具引导段不出现在可配置列表（强绑定工具状态）', orderNames.every((name) => !name.startsWith('tool:')))
 const expectedOrder = [
   'harness:identity',
   'deployment:persona-prefix',
   'subagent-roles:catalog',
+  'plan:policy',
   'context:file-reference',
   'ui:deliverable-file-references',
   'harness:source',
@@ -294,6 +339,8 @@ const expectedOrder = [
   'session-context-config:custom-text',
 ]
 check('顺序=实际装配顺序（identity 最前、人设后缀收尾、附加规则最后）', orderNames.join('>') === expectedOrder.join('>'), orderNames.join('>'))
+const planRow = segmentRows().find((row) => row.textContent?.includes('plan:policy'))
+check('已关闭且当前未出现的段标明「已关闭 · 当前未出现」', planRow?.textContent?.includes('已关闭 · 当前未出现') === true, planRow?.textContent ?? '')
 const baselineHeading = [...systemCard.querySelectorAll('.cp-sectionTitle')].find((el) => el.textContent.includes('本插件附加'))
 check('附加规则上方有「本插件附加」小标题与说明', baselineHeading?.nextElementSibling?.textContent?.includes('不属于 DSH 自带') === true)
 check('每个段行都是 checkbox 前置 + 说明', segmentRows().every((row) => row.firstElementChild?.matches('input[type="checkbox"]') === true && row.querySelector('.cp-segmentDesc') !== null))
@@ -323,18 +370,46 @@ check('未勾选时输入文本生效(草稿进入未保存态)', panel.querySel
 
 const snapshotCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '运行时上下文快照')
 const snapshotRows = [...(snapshotCard?.querySelectorAll('.cp-segment') ?? [])]
-check('快照卡是 7 个段', snapshotRows.length === 7, String(snapshotRows.length))
+const contextRow = (name) => snapshotRows.find((row) => row.querySelector('.cp-codeChip')?.textContent === name)
+check('快照卡是已知 8 项 + 动态发现的 1 项', snapshotRows.length === 9, String(snapshotRows.length))
 check('快照段默认全开', snapshotRows.every((row) => row.querySelector('input[type="checkbox"]')?.checked === true))
 check('快照段标出上下文名', snapshotCard?.textContent?.includes('working-directory:current') === true)
 check('user 卡片角色标签是 role: user', snapshotCard?.querySelector('.cp-msgBadge')?.textContent === 'role: user')
+check('快照提示按实际行数动态计数', snapshotCard?.querySelector('.cp-msgNote')?.textContent?.includes('以下 9 项') === true)
+check('新增的根代理身份上下文有独立开关', contextRow('subagent:identity') !== undefined)
+check('上下文行 title 显示装配正文', contextRow('subagent:identity')?.getAttribute('title') === 'You are the root agent. Your name is "lead".' && contextRow('working-directory:current')?.getAttribute('title')?.includes('Current working directory') === true)
+check('未出现的条件上下文显示当前未出现', contextRow('tool:subagent:depth')?.textContent?.includes('当前未出现') === true)
+check('第三方上下文按原始 name 自动列入', contextRow('third-party:probe') !== undefined && contextRow('third-party:probe')?.textContent?.includes('第三方插件上下文正文') !== true && contextRow('third-party:probe')?.getAttribute('title') === '第三方插件上下文正文')
 const workspaceCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '工作区指令')
 check('工作区指令卡有 checkbox + 说明', workspaceCard?.querySelector('.cp-segment input[type="checkbox"]') !== null && workspaceCard?.textContent?.includes('AGENTS.md') === true)
 check('工作区指令卡 footer 并入提示', workspaceCard?.querySelector('.cp-msgNote')?.textContent?.includes('已写入会话记录的消息不会被删除') === true)
+check('工作区指令行 title 显示最近一次注入正文', workspaceCard?.querySelector('.cp-segment')?.getAttribute('title')?.includes('工作区指令正文') === true)
 const timeCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '时间采样')
 check('时间采样卡有 checkbox + 说明', timeCard?.querySelector('.cp-segment input[type="checkbox"]') !== null && timeCard?.textContent?.includes('10 分钟') === true)
 check('时间采样卡 footer 并入提示', timeCard?.querySelector('.cp-msgNote')?.textContent?.includes('refreshIntervalMs') === true)
+check('时间采样行 title 显示最近一次注入正文', timeCard?.querySelector('.cp-segment')?.getAttribute('title')?.includes('Time sampled') === true)
+const observedCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '其他注入消息（自动发现）')
+const observedRows = [...(observedCard?.querySelectorAll('.cp-segment') ?? [])]
+check('自动发现的注入消息卡存在', observedCard !== undefined)
+check('自动清单只统计当前档位', observedCard?.querySelector('.cp-msgNote')?.textContent?.includes('使用当前档位') === true)
+check('自动清单排除已知两条通道', observedCard?.textContent?.includes('agent-instructions') !== true && observedCard?.textContent?.includes('time-context') !== true)
+check('自动清单列出第三方 kind 与次数', observedCard?.textContent?.includes('skill-catalog') === true && observedCard?.textContent?.includes('2 次') === true)
+check('自动清单每行可按 kind 关闭', observedRows.length === 2 && observedRows.every((row) => row.querySelector('input[type="checkbox"]') !== null))
+check('自动清单行 title 显示最近一次正文', observedRows.find((row) => row.textContent?.includes('skill-catalog'))?.getAttribute('title') === '- demo: 示例技能')
+const observedSkillRow = observedRows.find((row) => row.textContent?.includes('skill-catalog'))
+await click(observedSkillRow?.querySelector('.cp-segmentLabel'))
+check('关闭 kind 后 checkbox 变灰且仍保留在清单', observedSkillRow?.querySelector('input[type="checkbox"]')?.checked === false)
+const kindInput = observedCard?.querySelector('input[aria-label="手动添加 source.kind"]')
+const kindPropsKey = Object.keys(kindInput ?? {}).find((key) => key.startsWith('__reactProps'))
+await act(async () => {
+  kindInput?.[kindPropsKey]?.onChange({ target: { value: 'manual-kind' } })
+})
+await flush()
+await click(observedCard?.querySelector('.cp-kindAddBtn'))
+const manualRow = [...(observedCard?.querySelectorAll('.cp-segment') ?? [])].find((row) => row.textContent?.includes('manual-kind'))
+check('可以手动输入 kind 并生成关闭行', manualRow !== undefined && manualRow.textContent?.includes('手动') === true && manualRow.querySelector('input[type="checkbox"]')?.checked === false)
 const catalogHeading = [...panel.querySelectorAll('.cp-sectionTitle')].find((el) => el.textContent === '工具目录')
-check('工具目录上方有分区标题与说明', catalogHeading?.nextElementSibling?.textContent?.includes('工具引导文本跟随工具状态') === true)
+check('工具目录上方有分区标题与说明', catalogHeading?.nextElementSibling?.textContent?.includes('工具引导段（tool:*）') === true)
 const toolRowEl = panel.querySelector('.cp-tool')
 const stateTabs = [...(toolRowEl?.querySelectorAll('[role="tab"]') ?? [])]
 const toolByName = (name) => [...panel.querySelectorAll('.cp-tool')].find((row) => row.querySelector('.cp-nm')?.textContent === name)

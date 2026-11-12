@@ -25,16 +25,17 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 | `src/host/catalog.ts` | agent preset 目录枚举（15s 缓存）+ 每个工具附来源标注（把整批工具交给 `host/sources.ts` 解析） |
 | `src/host/sources.ts` | 工具来源解析：`tools.register` 拦截 + 调用栈定位包名、官方工具目录、入口产物扫描、MCP 命名约定；`/api/state` 的 `sources` 是它的诊断自报告 |
 | `src/host/known-tools.ts` | **生成文件**：DSH 官方「工具名 → 提供包」，来自 checkout 的 `docs/tool-catalog.md`；宿主升级后重跑 `pnpm gen-known-tools` |
-| `src/host/routes.ts` | 五条 HTTP 路由（state/session/preview/assemble/translate，connection 栅栏 + loopback 回退）与快照/预览 |
+| `src/host/routes.ts` | 五条 HTTP 路由（state/session/preview/assemble/translate，connection 栅栏 + loopback 回退）与快照/预览；`promptCatalog` 干跑装配返回段/上下文正文，`observedChannels` 按档位汇总注入消息 |
+| `src/host/injected.ts` | 注入消息清单：`agent/pre-step` 观察 + 会话历史聚合，**按档位分桶**，按 `source.kind` 记次数与最新正文（供面板按 kind 开关） |
 | `src/client/index.ts` | 浏览器入口：只导出 inject/apply |
 | `src/client/apply.ts` | 唯一跨域装配点：四个槽位注册；hero/session 槽位以 inject face 提供 `sessionId`（组件不收 ctx） |
 | `src/client/contract/` | 域间共享类型（只有 type） |
 | `src/client/state/` | 数据层（store/订阅 hooks）与档位解析（与 Host 同规则） |
 | `src/client/menu/` | 浮层与席位原语（Popover/Seat/MenuRow/图标/复选行）+ `menu.module.css`；分段选择用宿主 ui-primitives 的 `SegmentedControl`（类型面在 `src/ambient.d.ts`） |
-| `src/client/panel/` | 配置面板（ConfigPanel/cards/group-cards/PreviewDialog/options/ToolDescription/translations）+ `panel.module.css`；`cards.ts` 按最终请求的消息分卡（系统提示词/快照/工作区指令/时间采样），`options.ts` 的 `CONTEXT_SWITCHES`、`CHANNEL_CARDS`、`SECTION_OPTIONS` 是 UI 清单，与 Host 的上下文名/段名同步；`translations.ts` 是已知工具的**内置中文**（key=原始描述文本），`ToolDescription.ts` 是「文A」原文/中文切换与按需翻译 loading |
+| `src/client/panel/` | 配置面板（ConfigPanel/cards/group-cards/PreviewDialog/options/ToolDescription/translations）+ `panel.module.css`；`cards.ts` 按最终请求的消息分卡（系统提示词/快照/工作区指令/时间采样/自动发现的其他注入消息），行的 `title` 统一放实际注入正文；`options.ts` 的 `CONTEXT_SWITCHES` 只是**已知**上下文的元数据（真正的名单由快照 `contexts` 动态补齐），`CHANNEL_CARDS`、`SECTION_OPTIONS` 同理；`translations.ts` 是已知工具的**内置中文**（key=原始描述文本），`ToolDescription.ts` 是「文A」原文/中文切换与按需翻译 loading |
 | `src/client/chips/` | 新会话 chip（`conversation.hero.options`）+ 会话头部 chip（`conversation.session.header.actions`，紧跟「模式」标签）+ 共用 picker |
 | `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-workspace-sidebar/AGENTS.md`「与官方 preset 的偏差」） |
-| `tests/` | 直读 src 的单元测试：host 纯函数、附加规则快照、环境事实（`host/environment-facts.ts`）、不可信下载规则可执行性、v2/v3→v4 状态迁移、人设开关/覆盖、system 段过滤（含 `global:true` 注册断言）、工具来源解析（`sources.test.mjs`） |
+| `tests/` | 直读 src 的单元测试：host 纯函数、附加规则快照、环境事实（`host/environment-facts.ts`）、不可信下载规则可执行性、v2/v3→v4 状态迁移、人设开关/覆盖、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏（组/单工具/复合成员/延迟）、上下文开关/影子、`/api/state` 快照的自动发现形状与按档位分组（`routes.test.mjs`）、注入消息分桶（`injected.test.mjs`）、工具来源解析（`sources.test.mjs`） |
 | `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 lib/client.js，喂假快照渲染面板与两个 chip 并点击 |
 | `scripts/gen-known-tools.mjs` | 从 DSH checkout 的 `docs/tool-catalog.md` 生成 `src/host/known-tools.ts`（`DSH_SRC` 可覆盖 checkout 路径） |
 | `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 lib/client.js，验 id/槽位注册/样式注入/inject face |
@@ -91,12 +92,13 @@ node scripts/harness.mjs
 - **四级状态解析**：组和 server 只给默认值，`force` / `off` 两个极端压过子项；工具级只有三态。解析同时存在于 Host 与 Client（Client 那份必须与 Host 同规则，改一侧必改另一侧）。
 - **延迟不是删除**：延迟工具在 tools 数组里保留「名字 + 功能摘要 + 参数类型骨架」的占位定义（每个参数的名称与类型都在，只剥说明/示例/默认值），完整 schema 由 `tool_search` 以工具结果的形式追加进历史。这样 tools 数组整场不变，加载动作不打断前缀缓存——这是整套设计的核心取舍，别顺手改成「按需注册/注销」。**类型不能从骨架里省**：只留 required 参数会把可选布尔/数字当字符串传（`plugin_manager` 的 `enabled: false` 会报 "must be a boolean"）。
 - **生效边界**：`agent/created` 时套用会话记录或 `lastUsedId`；已开始的会话不跟随配置变化，只在用户确认切换时重算；`tools/change`（可见工具集合变化）时按同一档位**增量**刷新延迟占位与隐藏面（只加新增、撤消失，未变化的工具不重注册）——整份重建会让当前 step 的延迟工具全部 `unknown tool`，见坑库。`sessions` 映射经 `recordSession` 有界保留最近 500 条：宿主 dispose 一个 agent 后同 sessionId 仍可被 resume 复用（切回已有会话 = 同 id 重新 `agent/created`），不能按事件删条目，被淘汰的会话重开时回落 `lastUsedId`。
-- **运行时上下文逐项开关**：`ContextProfile.contexts` 只存关掉的上下文名（缺省=注入）；兼容字段 `runtimeContext` / `workingDirectory` / `baseline.environmentFacts` 在 `normalizeState` / `normalizeProfile` 里一次性迁移成逐项 false。`host/profiles.ts` 对每个 false 在 agent 作用域注册同名非 required 空上下文（required 段靠它遮住 required 标志），`src/index.ts` 的全局 `system-prompt/assemble`（`prepend`）在 `next()` 之后按名字过滤；因此 `refreshContext` 不会把 required 段补回。验收：`/api/assemble` 的 `contexts` 与 `refreshedContexts` 都要遵守同一份开关。
-- **system 段逐项开关**：`ContextProfile.sections` 只存关掉的段名（缺省=包含）。同一份 `system-prompt/assemble` 过滤器在 `next()` 之后按名字删 `assembly.sections`；`refreshContext` 不重跑 sections，所以不需要影子段。**过滤器必须 `{prepend:true, global:true}` 注册**（见坑库：assemble 走 scopeTarget 过滤派发）。`deployment:persona-prefix` / `deployment:persona-suffix` 与 4 条附加规则段受保护：人设是 `prompt.prefix` / `prompt.suffix` 两个独立槽位（各自 `enabled/override/text`），附加规则走全局 baseline 开关。**工具引导段（`tool:*`）跟随工具可用性（工具被隐藏时宿主不产出文本），不落 `profile.sections`，归一化时剪掉，面板也不列**。`sccFullSections: true` 是面板列目录的私有旁路（返回未过滤名单）；真正的请求路径不带这个字段。面板段列表按 `assembly.sections` 的**实际顺序**扁平排列（不分「人设/宿主固定/工具引导」小区域），人设两个槽位按各自 order 插在列表里（prefix 紧随 identity，suffix 在 app:web-surface 之后）；附加规则 order 固定 20000+，用「本插件附加 · 全局」小标题与分割线分隔并排在最后；消息卡标题不带「system 消息 / user 消息」前缀，角色由右上角 `role:` 标签表达。
+- **运行时上下文逐项开关**：`ContextProfile.contexts` 只存关掉的上下文名（缺省=注入）；兼容字段 `runtimeContext` / `workingDirectory` / `baseline.environmentFacts` 在 `normalizeState` / `normalizeProfile` 里一次性迁移成逐项 false。`host/profiles.ts` 对每个 false 在 agent 作用域注册同名非 required 空上下文（required 段靠它遮住 required 标志），`src/index.ts` 的全局 `system-prompt/assemble`（`prepend`）在 `next()` 之后按名字过滤；因此 `refreshContext` 不会把 required 段补回。**面板的上下文名单由一次干跑装配动态发现**（快照 `contexts`，含空文本条目）：`CONTEXT_SWITCHES` 只提供已知项的中文名/说明/顺序，装配里出现的未知 name 会按原始 name 自动补行并立即可开关；`subagent:identity` 是已知项之一（order 取 `SUBAGENT_DELEGATION`）。验收：`/api/assemble` 的 `contexts` 与 `refreshedContexts` 都要遵守同一份开关。
+- **system 段逐项开关**：`ContextProfile.sections` 只存关掉的段名（缺省=包含）。同一份 `system-prompt/assemble` 过滤器在 `next()` 之后按名字删 `assembly.sections`；`refreshContext` 不重跑 sections，所以不需要影子段。**过滤器必须 `{prepend:true, global:true}` 注册**（见坑库：assemble 走 scopeTarget 过滤派发）。`deployment:persona-prefix` / `deployment:persona-suffix` 与 4 条附加规则段受保护：人设是 `prompt.prefix` / `prompt.suffix` 两个独立槽位（各自 `enabled/override/text`），附加规则走全局 baseline 开关。**`tool:*` 强绑定工具状态，不进 `profile.sections`、面板不列、不单独配置**：同一过滤器在 `hiddenToolGuide` 里按工具/组终态裁掉（复合段 jobs/goal/schedule/session-query 看成员，至少一个成员开启/延迟才保留）；`normalizeSections` 剪掉旧状态的 `tool:*` 键。`sccFullSections: true` 是面板列目录的私有旁路（返回未过滤名单），`promptCatalog` 会再剔除 `tool:*`；真正的请求路径不带这个字段。面板段列表按 `assembly.sections` 的**实际顺序**扁平排列（不分「人设/宿主固定/工具引导」小区域），人设两个槽位按各自 order 插在列表里（prefix 紧随 identity，suffix 在 app:web-surface 之后）；附加规则 order 固定 20000+，用「本插件附加 · 全局」小标题与分割线分隔并排在最后；消息卡标题不带「system 消息 / user 消息」前缀，角色由右上角 `role:` 标签表达。每行的 `title` 是当前注入正文（模板变量已按本次装配渲染；关闭的段给出关闭前文本）。**已关闭但当前装配里没有出现的已知段也会列**（让条件段关掉后仍能重新开启），meta 标「已关闭 · 当前未出现」；这是档位状态里的显式 false，不是该档位多出的注入项——段清单本身是所有 live 装配共享的，真在任一 live 会话里注入时各档位都会看到。
 - **内置档位与状态版本兼容**：`full` = 全部开启 + 编排/目标/调度/MCP/插件开发/第三方延迟；`lean` = full 再隐藏编排/目标/调度/插件开发；`minimal` = lean 再隐藏交互/技能与网络/协作/MCP/第三方，**平台（工作目录、随包依赖路径、lsp）始终开启**。组划分：`platform` = `load_workspace_dependencies|working_directory|lsp`，`devtools` = `plugin_manager|cordis_*`。`normalizeState` 接受 v2/v3/v4；v2/v3 读入时**就地替换三个内置 id 的定义**（不新增缺失的内置档位），custom-*、sessions、baseline 原样保留。
 - **工具说明翻译（只供面板显示）**：默认显示中文。已知工具走 `src/client/panel/translations.ts` 的内置字典（key=原始描述文本）；未知工具在面板挂载时自动按需翻译（串行队列，带 loading/失败重试），走 `POST /session-context-config/api/translate` → 命中 `$DSH_HOME/session-context-config-translations.json`（key 是**原始文本**）即返回，否则用 `agentDefaultModel.currentSelection()` + `llm.prepareCall`（与 dsh-web-extract 同链路）翻译并落盘。每个工具的显示语言按工具名记在 localStorage（`dsh-session-context-config:tool-lang`，默认 `zh`，切回原文会记住）。模型侧工具 schema / 延迟摘要 / `tool_search` 完全不动。
 - **附加规则与环境事实分离**：界面上的「附加规则」只保留三段固定提示词与一段自定义文本（勾选才注入，未勾选也可编辑，纯空白视同空段）；环境事实是 `contexts` 里的 `session-context-config:environment`，按档位开关。子代理没有档位，环境事实默认保留。
 - **工具来源（面板显示，只读）**：宿主 tools 注册表**不记录注册者**（`register` 只存定义与一条 `tools.register()` effect），所以来源按四级证据解析：① 装载后包一层 `tools.register`，从**调用栈**第一个业务文件帧反查包（`host/sources.ts`；`this.ctx` 是调用方 ctx，但 agent 作用域的 fiber 会指到 `agent-preset-registry`，只有栈指向真正注册方）；② 官方工具目录静态表（`known-tools.ts`，与当前真正装载的入口求交；同名多实现如 `pwsh` 用工具描述在候选包里消歧）；③ 入口产物扫描（只取「确实注册过工具」的入口，只认唯一命中，面板标为推断）；④ MCP 命名约定（`mcp__<server>__` / `mcp_connector_`，比插件归属更有信息量，优先级最高）。都不命中显示「未识别」，不猜。面板在工具名下方显示短名（包本地化标题优先，否则包短名），tooltip 给完整包名、Loader 入口和判定依据；`/api/state` 的 `tools[].source` 与 `sources`（诊断计数）同步暴露。
+- **注入内容自动发现**：面板不维护段/上下文/消息的全量名单。每次 `/api/state` 对**每种 live preset 挑一个限制最少的根会话**干跑 `assemble({ sccFullSections: true })`（上限 8 份），按 name 合并段与上下文（先出现的顺序优先，空影子不覆盖另一档位的非空正文），变量按各自 `assembly.variables` 渲染；空段不列、`tool:*` 不列（强绑定工具状态，不单独配置）、空上下文保留。user 消息来源由 `host/injected.ts` 按**根会话实际归属的档位**分组（applied 优先，回落 `sessions` 记录；无档位归 `none`），组内合并 `deriveMessages()` 历史与 `agent/pre-step` 观察（被通道关掉的消息也记录），面板只取**当前选中档位**那一组。新版本/新插件新增的段、上下文或 user kind 会自动出现；只有呈现质量（中文名/说明）才需要补 `SECTION_OPTIONS` / `CONTEXT_SWITCHES`。**消息 kind 可关**：每行写 `profile.channels[kind]='off'`，Host 的 pre-step 过滤器按同一键剔除；列表底部可手动输入任意 kind 提前关闭（写入同一 `channels` 表，未观察到的以「手动」行保留），已知通道 id/来源拒绝重复添加。运行期消息可能承载状态同步，UI 必须保留风险提示。**调用时机**：不是每请求/定时——只在页面首次挂载快照组件（面板/chip，store 为空时）、手动「重新读取」、保存、切换档位时计算（`/api/state` GET/POST 与 `/api/session` POST 都返回快照）；同一页面快照由 client store 复用。没有版本/插件键缓存；版本/插件变化等下次拉取自然生效。单次最多 8 份装配，工具目录另有 15s 缓存。
 - 切换档位会重建整个工具表与前缀缓存；面向用户的确认话术已写在菜单里，改动这段行为时同步它。
 
 ## 关键技术边界与坑
@@ -136,7 +138,7 @@ node scripts/harness.mjs
 > 正解：`inject: (sessionId) => ({ sessionId: sessionIdFrom(sessionId) })`（hero 与 header 两个 session 作用域槽位同一写法）。冒烟测试的假 ctx 不带 `sessions` 服务，且 `register` 按槽位作用域传会话 id（`scripts/smoke.mjs` 的 `SESSION_SCOPED_SLOTS` + `inject face 从槽位参数拿到 sessionId` 断言）——假 ctx 自带 `sessions` 会掩盖真实契约。验证：打开已存在会话，`[data-slot="conversation.session.header.actions"]` 内应出现 `button.cp-seat`；切换档位后 `GET /api/session?id=...` 的 tools 数随档位变化，持久化映射写回 `~/.dsh/session-context-config.json` 的 `sessions`。
 
 > ⚠️ **消息卡在 flex column 里必须 `flex:none`**
-> 症状：配置页四张消息卡只剩几条横线，内容全无；档位卡和工具卡正常。
+> 症状：配置页消息卡只剩几条横线，内容全无；档位卡和工具卡正常。
 > 根因：`.cp-scroll` 是 flex column；`.cp-msgCard` 的 `overflow:hidden` 会把 flex item 的自动最小高度变成 0，内容超过面板高度时卡片被压扁到只剩边框。
 > 正解：`.msgCard { flex: none }`（见 `panel.module.css`）。验证：headless Chrome 加载宿主主题 CSS + 插件编译 CSS，量 `.cp-msgCard` 高度；缺 `flex:none` 时只剩 46/46/16/16，正常时 528/528/171/171。
 
@@ -170,6 +172,12 @@ node scripts/harness.mjs
 > 根因：`time-context` 是 agent preset 插件，在会话创建时挂载，且用 `prepend` 注册 `agent/pre-step`；它晚于插件的全局监听器注册，unshift 后排到全局过滤器**前面**，它追加的时间消息在全局过滤器 `next()` 返回之后才出现。`agent-instructions` 用默认 push（内层），所以能滤掉——不对称由此而来。
 > 正解：`agent/created` 时在 `agent.ctx` 上再注册一次同样的过滤器（`{prepend:true}`）。宿主契约（`core/agent` 的 `CreateAgentOptions.setup` 文档）保证 setup 里挂载的预设插件与监听器先于 `agent/created`，所以此时注册才能包住 time-context。全局那份只作拿不到 `agent.ctx.on` 时的兜底。回归：`tests/channels.test.mjs`。
 
+> ⚠️ **工具引导段不是按工具可见性产出的**
+> 症状：Chat 档位把工具全部隐藏/关闭后，system 提示里仍追加 pwsh / jobs / goal / workflow 的引导文本；面板里也找不到这些开关（用户实测「全部关闭」后仍多出两段）。
+> 根因：`tool-pwsh`、`tool-jobs`、`tool-goal`、`tool-workflow` 注册的是**无条件静态 text**，不读 `context.toolSet`、也不因工具被 restrict 而变空；本插件早期又把 `tool:*` 从 `sections` 过滤与归一化里排除，导致它们既不随工具隐藏、也无法单独关闭。
+> 正解：**强绑定工具状态，不单独配置**。`host/tools.ts` 的 `hiddenToolGuide` 在同一 assemble 过滤器里按工具/组终态裁掉；复合段走 `tool-guides.ts` 的别名组与成员表（`jobs`/`goal`/`schedule`/`session-query`），成员全隐藏才隐藏，`defer` 不算隐藏。`sections` 表不收 `tool:*`，面板不列，旧状态键在 `normalizeSections` 剪掉。
+> 验证：`tests/host.test.mjs`（组/单工具/复合/延迟）、`tests/sections.test.mjs`（terminal 隐藏时 pwsh/jobs 被移除、read 保留）、`scripts/smoke.mjs`（工具段不出现在可配置列表）。
+
 - **webServer 路由不自带鉴权**：宿主 webServer 对直接 `register` 的路由不做任何认证/Origin 检查，每个 handler 必须先过 `ctx.connection` 的 `requestRejection`（官方 open-in-app 同款）；宿主无 connection 服务才回退回环 Host 校验。POST 另要求 `application/json`，掐掉 text/plain 简单请求的跨站提交。
 - **弹层定位必须先量后放**：内容高度渲染后才知道，`useLayoutEffect` 里量完再 setState，且**同值必须 bail**（返回上一个 state），否则每轮渲染都 set 新对象 → 死循环。
 - **Client 端的槽位检查工具用不了**：本版本 `cordis_inspect` 的 Client `Slots.listSubTree` 无论传什么 input 都报 `"input" must be an object`。要查槽位结构直接读宿主源码（路径表见 `docs/dsh-web-ui.md`）。
@@ -198,7 +206,8 @@ node scripts/harness.mjs
 ## 已知待优化
 
 - UI 文案硬编码中文，没走 Client locale 服务；`locale/*.json` 只有包级标题。
-- 运行时上下文只能按已知名字逐项控制；新插件带来的未知上下文默认注入，要把它加进 `CONTEXT_SWITCHES` 才能在面板里关。system 段不同：未知段会按原始 name 动态列出。
+- 段/上下文的自动发现依赖一次干跑装配：当前没出现、也没被关掉的空条件段不占行（要提前配置只能先让它在会话里出现一次）。
+- 自动发现清单的 kind 开关是档位级；关闭 `subagent-settled` / `compact-checkpoint` / `runtime-context` 这类运行期消息会让对应插件收不到自己的通知，只在明确知道作用时关。
 - 系统段开关是档位级，只作用于根会话；子代理的 system 段不受档位开关控制（附加规则是全局例外）。
 - 系统段顺序由宿主 `order` 固定，面板只能包含/排除，不能改先后。
 - 工作区指令只能整组关：宿主已把同一批 AGENTS.md/CLAUDE.md 拼成一条 `<system-reminder>`，无法按文件过滤；要排除某类文件名只能在部署级配 `instructionFileCandidates` / `maxBytes`。

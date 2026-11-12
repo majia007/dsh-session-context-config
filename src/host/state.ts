@@ -8,7 +8,6 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { normalizeBaseline, type BaselineFlags } from '../baseline.ts'
 import {
-  CHANNEL_IDS,
   DEFAULT_PROFILES,
   DEFER,
   ENVIRONMENT_CONTEXT,
@@ -98,8 +97,8 @@ function normalizeContexts(input: unknown): Record<string, boolean> {
 }
 
 /** 只存 false:缺省=包含,与 contexts 同一套「默认值不落盘」规则。
- *  tool:* 是工具引导段(跟随工具可用性,由工具目录控制),deployment:persona-* 由
- *  人设专用开关控制——两者都不进通配表,旧状态里的残留在这里剪掉。 */
+ *  deployment:persona-* 与 tool:* 都不进通配表:人设走专用开关,tool:* 强绑定工具的
+ *  启用状态(工具隐藏时自动隐藏其引导,不做单独配置),旧状态残留在这里剪掉。 */
 function normalizeSections(input: unknown): Record<string, boolean> {
   const out = normalizeContexts(input)
   for (const name of Object.keys(out)) {
@@ -108,11 +107,14 @@ function normalizeSections(input: unknown): Record<string, boolean> {
   return out
 }
 
+/** 只存 OFF:通道键是 `source.kind`,第三方插件可以随时新增,不能按白名单裁剪;
+ *  面板里已知的两条通道只是有专门文案,其余 kind 由自动清单展示。 */
 function normalizeChannels(input: unknown): Record<string, string> {
   const out: Record<string, string> = {}
   if (!input || typeof input !== 'object') return out
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    if (CHANNEL_IDS.has(key) && value === OFF) out[key] = OFF
+    if (typeof key !== 'string' || !key || key === '__proto__') continue
+    if (value === OFF) out[key] = OFF
   }
   return out
 }

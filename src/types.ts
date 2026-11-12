@@ -94,7 +94,13 @@ export interface HostContext {
   }
   systemPrompt: {
     section(section: Record<string, unknown>): () => void
-    assemble(input: { agent: unknown; scope: unknown; sccFullSections?: boolean }): Promise<{ tools?: unknown[]; sections?: unknown[]; contexts?: unknown[] }>
+    assemble(input: { agent: unknown; scope: unknown; sccFullSections?: boolean }): Promise<{
+      tools?: unknown[]
+      sections?: unknown[]
+      contexts?: unknown[]
+      /** 模板变量;面板展示段/上下文正文时按它渲染(与请求路径同一份值)。 */
+      variables?: Record<string, string | undefined>
+    }>
     /** 干跑装配后复核请求准入阶段会不会把 required 上下文补回来。 */
     refreshContext?(assembly: unknown, context?: unknown): { tools?: unknown[]; sections?: unknown[]; contexts?: unknown[] }
   }

@@ -1,5 +1,6 @@
-import { DEFER, OFF, ON, VERSION, type ContextProfile } from './constants.ts'
+import { CHANNELS, DEFER, OFF, ON, VERSION, type ContextProfile } from './constants.ts'
 import { createCatalog } from './catalog.ts'
+import { collectInjected, type InjectedChannel, type InjectedMessages } from './injected.ts'
 import { effectiveState, groupOf, serverOf } from './tools.ts'
 import { messageOf, normalizeState, recordSession, statePath, type PluginState } from './state.ts'
 import type { StateStore } from './state-store.ts'
@@ -34,8 +35,31 @@ interface RoutesDeps {
   profiles: ProfileRuntime
   sources: SourceIndex
   translations: TranslationRuntime
+  injected: InjectedMessages
   note: (source: string, error: unknown) => void
   diagnostics: unknown[]
+}
+
+/** 面板展示的段/上下文正文;chars 用于排序与体量标签,text 用于 title 全文。 */
+interface PromptEntryView {
+  name: string
+  chars: number
+  text: string
+}
+
+/** 已知通道的最新一条注入消息(供对应卡片 tooltip),其余 kind 进只读清单。 */
+interface ChannelPreview {
+  text: string
+  chars: number
+  truncated: boolean
+}
+
+interface PromptCatalog {
+  sections: PromptEntryView[]
+  contexts: PromptEntryView[]
+  /** 按档位分组:面板只展示当前选中档位自己的会话消息,不混并行会话。 */
+  channelsByProfile: Record<string, Record<string, ChannelPreview>>
+  observedChannelsByProfile: Record<string, InjectedChannel[]>
 }
 
 function readBody(request: HttpRequest): Promise<string> {
@@ -77,7 +101,7 @@ function loopbackOnly(request: HttpRequest): boolean {
 }
 
 export function createRoutes(deps: RoutesDeps): RoutesRuntime {
-  const { ctx, store, kit, profiles, sources, translations, note, diagnostics } = deps
+  const { ctx, store, kit, profiles, sources, translations, injected, note, diagnostics } = deps
   const catalog = createCatalog(ctx, note, sources)
 
   /**
@@ -111,40 +135,173 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
     return true
   }
 
-  async function sectionCatalog(): Promise<Array<{ name: string; chars: number }>> {
-    // 取第一个 live 根会话做一次干跑装配。sccFullSections 旁路掉档位的 sections 过滤,
-    // 这样被关掉的段仍在目录里,面板才能把它重新打开。
-    // 返回顺序就是宿主 order 排好的实际装配顺序(面板直接按下标排列);空文本段
-    // 不产出任何内容,不列进目录,免得"当前未出现"把列表塞满。
-    const agent = ctx.agents.list().find((candidate) => kit.isRootAgent(candidate)) ?? null
-    if (!agent) return []
+  /** 该根会话当前生效的 preset 名;拿不到返回 null(目录去重与 live 列表共用)。 */
+  function presetOf(agent: AgentLike): string | null {
+    const session = kit.sessionOf(agent)
+    if (!session) return null
     try {
-      const assembly = await ctx.systemPrompt.assemble({ agent, scope: agent, sccFullSections: true })
-      const sections = (assembly.sections ?? []) as Array<{ name?: unknown; text?: unknown }>
-      return sections
-        .map((section) => ({ name: String(section.name ?? ''), chars: String(section.text ?? '').length }))
-        .filter((section) => section.name.length > 0 && section.chars > 0)
-    } catch (error) {
-      note('sections', error)
-      return []
+      return (ctx.get('agentPresets') as { presetForSession?: (session: unknown) => string | null } | undefined)?.presetForSession?.(session) ?? null
+    } catch {
+      return null
     }
   }
 
+  /** 档位里关掉的上下文/段数量;目录优先挑限制最少的会话,让影子不要遮住正文。 */
+  function disabledCount(agent: AgentLike): number {
+    const sessionId = kit.sessionIdOf(agent)
+    const profileId = (sessionId ? profiles.applied.get(sessionId)?.profileId : undefined)
+      ?? (sessionId ? store.state.sessions[sessionId] : undefined)
+      ?? 'none'
+    const profile = profileId === 'none' ? null : profiles.profileById?.(profileId) ?? null
+    if (!profile) return 0
+    return Object.values(profile.contexts ?? {}).filter((value) => value === false).length
+      + Object.values(profile.sections ?? {}).filter((value) => value === false).length
+  }
+
+  /** 把段/上下文模板按装配变量渲染成最终正文;只用于面板展示,不改请求路径。 */
+  function renderText(entry: { text?: unknown; interpolate?: unknown }, variables: Record<string, string | undefined>): string {
+    const text = String(entry.text ?? '')
+    if (entry.interpolate === false) return text
+    return text.replace(/\{\{([a-z][a-z0-9_]*)\}\}/g, (whole: string, name: string) => {
+      const value = variables[name]
+      return typeof value === 'string' ? value : whole
+    })
+  }
+
+  /** 根会话实际归属的档位;applied 优先(切档位后立即生效),再回落会话记录。 */
+  function profileIdOfAgent(agent: AgentLike): string {
+    const sessionId = kit.sessionIdOf(agent)
+    const applied = sessionId ? profiles.applied.get(sessionId)?.profileId : undefined
+    const recorded = sessionId ? store.state.sessions[sessionId] : undefined
+    return applied ?? recorded ?? 'none'
+  }
+
+  /**
+   * 同一档位下的 live 根会话历史 + 本进程该档位的观察消息。
+   * 历史是持久真相:同 kind 的次数跨会话相加、正文取最长的一条;只有被通道开关
+   * 过滤掉、历史里没有的 kind 才用进程观察补上。反复读快照不会把计数叠加。
+   */
+  function observedChannels(agents: AgentLike[], profileId: string): InjectedChannel[] {
+    const merged = new Map<string, InjectedChannel>()
+    for (const agent of agents) {
+      const session = kit.sessionOf(agent) as { deriveMessages?: () => unknown } | null
+      if (!session || typeof session.deriveMessages !== 'function') continue
+      try {
+        for (const entry of collectInjected(session.deriveMessages())) {
+          const previous = merged.get(entry.kind)
+          if (!previous) {
+            merged.set(entry.kind, entry)
+            continue
+          }
+          merged.set(entry.kind, {
+            kind: entry.kind,
+            count: previous.count + entry.count,
+            chars: Math.max(previous.chars, entry.chars),
+            text: entry.chars >= previous.chars ? entry.text : previous.text,
+            truncated: previous.truncated || entry.truncated,
+          })
+        }
+      } catch (error) {
+        note('deriveMessages', error)
+      }
+    }
+    for (const entry of injected.list(profileId)) {
+      if (!merged.has(entry.kind)) merged.set(entry.kind, entry)
+    }
+    return [...merged.values()].sort((left, right) => left.kind.localeCompare(right.kind))
+  }
+
+  /**
+   * 面板目录:对每个 live 根会话干跑一次装配,按 name 合并段与上下文(空文本被
+   * 非空文本覆盖),再按 `source.kind` 汇总注入消息。自动发现只依赖宿主注册面,
+   * 不维护插件名单——新版本/第三方插件新增的段、上下文或消息会直接出现在面板里。
+   *
+   * 为什么要遍历所有根会话:不同 agent preset 组合出不同的插件集合,单个会话只能
+   * 看见自己那份;同一段在某个档位被影子遮成空串时,另一个档位可能仍有正文。
+   */
+  async function promptCatalog(): Promise<PromptCatalog> {
+    const roots = ctx.agents.list().filter((candidate) => kit.isRootAgent(candidate))
+    if (roots.length === 0) return { sections: [], contexts: [], channelsByProfile: {}, observedChannelsByProfile: {} }
+    // 目录只需要「每种 preset 一份」:同一 preset 的插件集合相同,多开会话只是重复装配。
+    // 选限制最少的那个会话,尽量让被别的档位影子成空串的段/上下文拿到真实正文。
+    // 上限 8 份,避免用户开着几十个会话时每次打开面板都跑几十次装配。
+    const limited = roots
+      .map((agent) => ({ agent, disabled: disabledCount(agent), preset: presetOf(agent) ?? `session:${kit.sessionIdOf(agent) ?? ''}` }))
+      .sort((left, right) => left.disabled - right.disabled)
+    const agents: AgentLike[] = []
+    const presets = new Set<string>()
+    for (const entry of limited) {
+      if (presets.has(entry.preset)) continue
+      presets.add(entry.preset)
+      agents.push(entry.agent)
+      if (agents.length >= 8) break
+    }
+    const sections = new Map<string, PromptEntryView>()
+    const contexts = new Map<string, PromptEntryView>()
+    for (const agent of agents) {
+      try {
+        const assembly = await ctx.systemPrompt.assemble({ agent, scope: agent, sccFullSections: true }) as {
+          sections?: unknown[]
+          contexts?: unknown[]
+          variables?: Record<string, string | undefined>
+        }
+        const variables = assembly.variables ?? {}
+        const merge = (target: Map<string, PromptEntryView>, entries: unknown[] | undefined): void => {
+          for (const entry of entries ?? []) {
+            const record = entry as { name?: unknown; text?: unknown; interpolate?: unknown }
+            const name = String(record.name ?? '')
+            if (!name) continue
+            const text = renderText(record, variables)
+            const view = { name, chars: text.length, text }
+            const previous = target.get(name)
+            // 先出现的顺序优先;但空影子(关掉的上下文/人设)不能把另一档位的正文挤掉。
+            if (!previous || (previous.chars === 0 && view.chars > 0)) target.set(name, view)
+          }
+        }
+        merge(sections, assembly.sections)
+        merge(contexts, assembly.contexts)
+      } catch (error) {
+        note(`prompt catalog:${kit.sessionIdOf(agent) ?? 'unknown'}`, error)
+      }
+    }
+    // 段过滤空文本(没内容就没有行);tool:* 不列:它强绑定工具状态,由 Host 自动
+    // 跟随,面板不提供单独开关。上下文保留空文本:被关掉的影子与条件上下文仍要
+    // 占据行位,客户端据 chars/开关显示「已关闭 / 当前未出现」。
+    const sectionRows = [...sections.values()]
+      .filter((entry) => entry.chars > 0 && !entry.name.startsWith('tool:'))
+    const contextRows = [...contexts.values()]
+    // 消息按档位分组:每个档位只看使用它的会话。段的并集仍跨 preset(两者目的不同)。
+    const groups = new Map<string, AgentLike[]>()
+    for (const agent of roots) {
+      const profileId = profileIdOfAgent(agent)
+      const group = groups.get(profileId)
+      if (group) group.push(agent)
+      else groups.set(profileId, [agent])
+    }
+    const observedChannelsByProfile: Record<string, InjectedChannel[]> = {}
+    const channelsByProfile: Record<string, Record<string, ChannelPreview>> = {}
+    for (const [profileId, group] of groups) {
+      const observed = observedChannels(group, profileId)
+      observedChannelsByProfile[profileId] = observed
+      const channels: Record<string, ChannelPreview> = {}
+      for (const channel of CHANNELS) {
+        const entry = observed.find((item) => item.kind === channel.source)
+        if (entry) channels[channel.id] = { text: entry.text, chars: entry.chars, truncated: entry.truncated }
+      }
+      channelsByProfile[profileId] = channels
+    }
+    return { sections: sectionRows, contexts: contextRows, channelsByProfile, observedChannelsByProfile }
+  }
+
   async function snapshot(): Promise<Record<string, unknown>> {
-    const [catalogValue, sections] = await Promise.all([catalog.buildCatalog(), sectionCatalog()])
+    const [catalogValue, prompt] = await Promise.all([catalog.buildCatalog(), promptCatalog()])
     const state = store.state
     const live = []
     for (const agent of ctx.agents.list()) {
       if (!kit.isRootAgent(agent)) continue
       const sessionId = kit.sessionIdOf(agent)
       const entry = sessionId ? profiles.applied.get(sessionId) : undefined
-      const session = kit.sessionOf(agent)
-      let preset: string | null = null
-      try {
-        preset = session ? (ctx.get('agentPresets') as { presetForSession?: (session: unknown) => string | null } | undefined)?.presetForSession?.(session) ?? null : null
-      } catch {
-        preset = null
-      }
+      const preset = presetOf(agent)
       live.push({
         sessionId,
         preset,
@@ -166,7 +323,10 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
       defaultPreset: catalogValue.defaultPreset,
       tools: catalogValue.tools,
       groups: catalogValue.groups,
-      sections,
+      sections: prompt.sections,
+      contexts: prompt.contexts,
+      channelsByProfile: prompt.channelsByProfile,
+      observedChannelsByProfile: prompt.observedChannelsByProfile,
       live,
       sources: sources.report(),
       diagnostics: diagnostics.slice(0, 8),
@@ -311,24 +471,26 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
       const agent = sessionId ? kit.agentFor(sessionId) : ctx.agents.list().find(kit.isRootAgent) ?? null
       if (!agent) return sendJson(response, 404, { ok: false, error: 'no live agent' })
       const assembly = await ctx.systemPrompt.assemble({ agent, scope: agent })
+      const variables = (assembly as { variables?: Record<string, string | undefined> }).variables ?? {}
       const tools = (assembly.tools ?? []) as Array<{ name: string; description: string; parameters: unknown }>
-      // 段/上下文的名单与体量:面板与验收都靠它确认基线段真的进了装配,而不是只写在状态里。
-      const sections = ((assembly.sections ?? []) as Array<{ name?: unknown; text?: unknown }>).map((section) => ({
-        name: section.name,
-        chars: String(section.text ?? '').length,
-      }))
-      const contexts = ((assembly.contexts ?? []) as Array<{ name?: unknown; text?: unknown }>).map((contextEntry) => ({
-        name: contextEntry.name,
-        chars: String(contextEntry.text ?? '').length,
-      }))
+      // 段/上下文的名单、体量与正文:面板与验收都靠它确认基线段真的进了装配,而不是
+      // 只写在状态里。text 与 /api/state 的目录同源(同一份变量渲染)。
+      const sections = ((assembly.sections ?? []) as Array<{ name?: unknown; text?: unknown; interpolate?: unknown }>).map((section) => {
+        const text = renderText(section, variables)
+        return { name: section.name, chars: text.length, text }
+      })
+      const contexts = ((assembly.contexts ?? []) as Array<{ name?: unknown; text?: unknown; interpolate?: unknown }>).map((contextEntry) => {
+        const text = renderText(contextEntry, variables)
+        return { name: contextEntry.name, chars: text.length, text }
+      })
       // 请求准入会走 refreshContext;required 上下文被删后会不会补回来,只能在这里复核。
       const refreshed = typeof ctx.systemPrompt.refreshContext === 'function'
         ? ctx.systemPrompt.refreshContext(assembly, { agent, scope: agent })
         : null
-      const refreshedContexts = ((refreshed?.contexts ?? []) as Array<{ name?: unknown; text?: unknown }>).map((contextEntry) => ({
-        name: contextEntry.name,
-        chars: String(contextEntry.text ?? '').length,
-      }))
+      const refreshedContexts = ((refreshed?.contexts ?? []) as Array<{ name?: unknown; text?: unknown; interpolate?: unknown }>).map((contextEntry) => {
+        const text = renderText(contextEntry, variables)
+        return { name: contextEntry.name, chars: text.length, text }
+      })
       const deferred = profiles.planOf(agent)?.plan?.deferred ?? new Map()
       const sample = tools
         .filter((tool) => deferred.has(tool.name))

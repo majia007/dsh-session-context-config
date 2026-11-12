@@ -15,18 +15,23 @@ export const TOOL_STATES: SegmentedControlOption[] = [
 ]
 
 /**
- * 运行时上下文的逐项开关。
+ * 运行时上下文的**已知**元数据。
  *
- * contexts 是宿主实际注册的上下文名,改 Host 侧 constants 时要同步;子代理两个
- * depth 上下文在 UI 上合成一个「委派深度」项。缺省=注入,档位里只存 false。
+ * 真正的名单由 `/api/state` 的 `contexts` 动态补齐(装配时注册了什么就列什么),
+ * 这张表只提供中文名、说明与 UI 顺序,并负责把「子代理身份」「委派深度」这类
+ * 名字整理成一行;新版本/第三方插件新增的上下文没有表项也会按原始 name 出现。
+ * 缺省=注入,档位里只存 false。
  */
-export const CONTEXT_SWITCHES: Array<{
+export interface ContextOption {
   id: string
   label: string
   desc: string
   order: number
+  /** 一个 UI 行可以合并多个同义上下文名(如 spawn/fork 的 depth)。 */
   contexts: string[]
-}> = [
+}
+
+export const CONTEXT_SWITCHES: ContextOption[] = [
   {
     id: 'workingDirectory',
     label: '当前工作目录',
@@ -47,6 +52,13 @@ export const CONTEXT_SWITCHES: Array<{
     desc: '审批提示是开启还是禁用。每个会话以 user 身份注入；策略变化时追加新快照。',
     order: 115,
     contexts: ['approval:policy'],
+  },
+  {
+    id: 'subagentIdentity',
+    label: '根代理身份',
+    desc: '当前 agent 的身份声明（根代理名称；有 send_message / list_agents 时附使用提示）。位于运行时上下文快照（<system-reminder> 消息）里，每个会话以 user 身份注入。',
+    order: 118,
+    contexts: ['subagent:identity'],
   },
   {
     id: 'subagentDepth',
@@ -78,9 +90,23 @@ export const CONTEXT_SWITCHES: Array<{
   },
 ]
 
+/** 动态上下文行的兜底元数据:原始 name 至少保证面板能列出来并开关。 */
+export function inferContextOption(name: string): ContextOption {
+  if (name === 'subagent:delegation') {
+    return { id: name, label: '子代理委派说明', desc: '子代理专用：说明委派关系与工具使用方式；只在子代理装配里出现。', order: 120, contexts: [name] }
+  }
+  if (name.startsWith('tool:') && name.endsWith(':depth')) {
+    const tool = name.slice(5, -6)
+    return { id: name, label: `${tool} 委派深度`, desc: '到达该委派工具最大深度时的限制提示；未到上限时为空。', order: 120, contexts: [name] }
+  }
+  return { id: name, label: name, desc: '宿主或第三方插件注册的运行时上下文；出现时生效。', order: 1000, contexts: [name] }
+}
+
 /** 消息通道卡:每条通道是独立 user 消息,卡内仍用一行 checkbox + 描述。 */
 export interface ChannelCardOption {
   key: 'workspaceInstructions' | 'timeContext'
+  /** 该通道对应的 `source.kind`;面板用它取最新正文并排除进「其他注入消息」清单。 */
+  source: 'agent-instructions' | 'time-context'
   title: string
   note: string
   label: string
@@ -90,19 +116,27 @@ export interface ChannelCardOption {
 export const CHANNEL_CARDS: ChannelCardOption[] = [
   {
     key: 'workspaceInstructions',
+    source: 'agent-instructions',
     title: '工作区指令',
-    note: '独立 user 消息；会话开始/工作区或指令变化时注入，文件变更追加增量。关闭只影响后续请求，已写入会话记录的消息不会被删除。',
+    note: '独立 user 消息；会话开始/工作区或指令变化时注入，文件变更追加增量。关闭只影响后续请求，已写入会话记录的消息不会被删除。悬停行可看最近一次注入正文。',
     label: '注入工作区指令',
     desc: '~/.dsh/AGENTS.md、项目各级 AGENTS.md/CLAUDE.md、*.local.md 与子目录指令。',
   },
   {
     key: 'timeContext',
+    source: 'time-context',
     title: '时间采样',
-    note: '每个模型请求（step）准备阶段检查一次；距上次注入不足 10 分钟则不注入。宿主默认 refreshIntervalMs = 600000（10 分钟），部署可改；设为 0 才会每个 eligible step 都注入。',
+    note: '每个模型请求（step）准备阶段检查一次；距上次注入不足 10 分钟则不注入。宿主默认 refreshIntervalMs = 600000（10 分钟），部署可改；设为 0 才会每个 eligible step 都注入。悬停行可看最近一次注入正文。',
     label: '注入时间采样',
     desc: 'Time sampled while preparing turn T, step S: 时间戳[时区]；附带与上一条模型可见消息/上次注入的间隔。',
   },
 ]
+
+/** 已知通道的 source.kind;自动清单会排除它们,避免与两张专用卡片重复。 */
+export const KNOWN_CHANNEL_SOURCES: Set<string> = new Set(CHANNEL_CARDS.map((option) => option.source))
+
+/** 已知通道的界面 id;手动输入 kind 时也排除,否则会与专用卡重复。 */
+export const KNOWN_CHANNEL_IDS: Set<string> = new Set(CHANNEL_CARDS.map((option) => option.key))
 
 export type SectionGroup = 'host' | 'tool' | 'conditional'
 
@@ -116,7 +150,8 @@ export interface SectionOption {
   persona?: 'prefix' | 'suffix'
 }
 
-/** 已知系统段目录:label/desc/order 只是呈现层信息,真正的名单由 /api/state 的 sections 动态补齐。 */
+/** 已知系统段目录:label/desc/order 只是呈现层信息,真正的名单由 /api/state 的 sections 动态补齐。
+ *  `tool:*` 不在这里:工具引导强绑定工具的启用状态,面板不提供单独开关。 */
 export const SECTION_OPTIONS: SectionOption[] = [
   { name: 'harness:identity', label: 'Harness 身份声明', desc: '固定开头：You are an AI agent powered by DeepSeek Harness.', group: 'host', order: -1000 },
   {
@@ -140,26 +175,6 @@ export const SECTION_OPTIONS: SectionOption[] = [
     order: 10200,
     persona: 'suffix',
   },
-
-  { name: 'tool:bash', label: 'Bash 工具引导', desc: 'shell 命令执行与失败处理说明。', group: 'tool', order: 1000 },
-  { name: 'tool:pwsh', label: 'PowerShell 工具引导', desc: '非零退出码、Windows 下被杀进程的判定说明。', group: 'tool', order: 1010 },
-  { name: 'tool:read', label: 'read 工具引导', desc: '用 read 而不是 cat/sed/head/tail；大文件用 offset/limit。', group: 'tool', order: 1100 },
-  { name: 'tool:write', label: 'write 工具引导', desc: '覆盖前先读；有 edit 时优先用 edit 做局部修改。', group: 'tool', order: 1200 },
-  { name: 'tool:edit', label: 'edit 工具引导', desc: '编辑前先读；本次会话刚创建/改过的文件除外。', group: 'tool', order: 1300 },
-  { name: 'tool:apply_patch', label: 'apply_patch 工具引导', desc: '跨文件/分离区域优先用 apply_patch；整份补丁先校验再应用。', group: 'tool', order: 1350 },
-  { name: 'tool:glob', label: 'glob 工具引导', desc: '按路径模式找文件，不要用 shell find。', group: 'tool', order: 1400 },
-  { name: 'tool:grep', label: 'grep 工具引导', desc: '搜内容用 grep，不要用 shell grep/rg；命中后用 read 看上下文。', group: 'tool', order: 1500 },
-  { name: 'tool:jobs', label: '后台任务工具引导', desc: '跟踪 job id、不要忙轮询、结束前收结果/杀无用 job。', group: 'tool', order: 1600 },
-  { name: 'tool:pty', label: '终端工具引导', desc: '交互式终端的使用说明。', group: 'tool', order: 1700 },
-  { name: 'tool:web_search', label: 'web_search 工具引导', desc: '搜索结果是不受信数据；需要全文时转 web_fetch，引用 URL。', group: 'tool', order: 2000 },
-  { name: 'tool:web_fetch', label: 'web_fetch 工具引导', desc: '页面内容是不受信数据；用到的内容要引用 URL。', group: 'tool', order: 2100 },
-  { name: 'tool:lsp', label: 'LSP 工具引导', desc: '语言服务的定位/诊断使用说明。', group: 'tool', order: 2200 },
-  { name: 'tool:session-query', label: '会话检索工具引导', desc: '跨会话检索的使用说明。', group: 'tool', order: 2300 },
-  { name: 'tool:goal', label: '目标工具引导', desc: 'create_goal / update_goal 的完成、blocked、resume 判定。', group: 'tool', order: 2400 },
-  { name: 'tool:schedule', label: '调度工具引导', desc: '只在用户明确要求时创建/修改定时任务。', group: 'tool', order: 2500 },
-  { name: 'tool:workflow', label: '工作流工具引导', desc: '只在用户明确要求工作流或大规模多代理编排时使用。', group: 'tool', order: 2600 },
-  { name: 'tool:ralph', label: 'Ralph 工具引导', desc: 'Ralph 循环的使用说明。', group: 'tool', order: 2700 },
-  { name: 'tool:subagent', label: '子代理工具引导', desc: '并行委派、等待结果、共享文件冲突与集成审查。', group: 'tool', order: 2800 },
 
   { name: 'tools:ptc-only', label: 'PTC 模式说明', desc: 'PTC 执行器启用时生效。', group: 'conditional', order: 800 },
   { name: 'tools:sdk', label: '工具 SDK 说明', desc: 'PTC 执行器启用时生效。', group: 'conditional', order: 5000 },

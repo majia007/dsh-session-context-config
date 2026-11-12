@@ -6,6 +6,7 @@
  * 完整 schema 由 tool_search 以工具结果的形式追加进历史。
  */
 import { DEFER, FORCE, GROUPS, OFF, ON, type ContextProfile } from './constants.ts'
+import { TOOL_GUIDE_GROUPS, TOOL_GUIDE_MEMBERS } from '../tool-guides.ts'
 
 /** 工具定义的最小面(占位与骨架只需要这三个字段)。 */
 export interface ToolDefinitionLike {
@@ -43,6 +44,30 @@ export function effectiveState(profile: ContextProfile, toolName: string): strin
   if (toolState === DEFER) return DEFER
   if (groupState === DEFER || serverState === DEFER) return DEFER
   return ON
+}
+
+/**
+ * 工具引导段是否应随工具一起隐藏。
+ *
+ * 宿主不少 tool:* 段是无条件静态文本(pwsh/jobs/goal/workflow),工具被隐藏后
+ * 仍会返回正文;这里按「段所属组隐藏」或「单个工具隐藏」两种终态自动裁掉,
+ * 不依赖段文本自己是否为空。`jobs`/`goal`/`schedule` 等复合段走别名组。
+ */
+export function hiddenToolGuide(profile: ContextProfile | null | undefined, sectionName: string): boolean {
+  if (!profile || !sectionName.startsWith('tool:')) return false
+  const toolName = sectionName.slice(5)
+  const alias = TOOL_GUIDE_GROUPS[toolName]
+  // 复合段(jobs/goal/schedule/session-query)的段名不是工具名:先看别名组终态,
+  // 再要求至少一个真实成员工具仍处于开启/延迟。
+  if (alias) {
+    if ((profile.groups?.[alias] ?? ON) === OFF) return true
+    const members = TOOL_GUIDE_MEMBERS[toolName]
+    if (members) return members.every((name) => effectiveState(profile, name) === OFF)
+    return false
+  }
+  const group = groupOf(toolName)
+  if ((profile.groups?.[group] ?? ON) === OFF) return true
+  return effectiveState(profile, toolName) === OFF
 }
 
 /**

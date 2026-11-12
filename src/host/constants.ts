@@ -85,14 +85,19 @@ export const CHANNELS = [
   { id: 'timeContext', source: 'time-context' },
 ]
 
-export const CHANNEL_IDS = new Set(CHANNELS.map((channel) => channel.id))
-
 /** 当前工作目录的运行时上下文名;宿主标了 required,关掉它必须做同名 shadow + assemble 过滤。 */
 export const WORKING_DIRECTORY_CONTEXT = 'working-directory:current'
 
 /** 本插件的环境事实上下文;注册在 host/environment.ts,由档位的 contexts 逐项控制。 */
 export const ENVIRONMENT_CONTEXT = 'session-context-config:environment'
 export const ENVIRONMENT_CONTEXT_ORDER = 130
+
+/**
+ * 根代理身份上下文(tool-subagent-control 全局注册,required):root 名称与
+ * send_message / list_agents 的使用提示。面板按普通上下文逐项开关;关掉时同
+ * 其它上下文一样注册空影子,让 refreshContext 不会把它补回来。
+ */
+export const SUBAGENT_IDENTITY_CONTEXT = 'subagent:identity'
 
 /** 旧档位 runtimeContext:false 的含义是「所有可选运行时上下文都关」;cwd 不在其中。 */
 export const OPTIONAL_CONTEXT_NAMES = [
@@ -110,6 +115,7 @@ export const CONTEXT_ORDER_NAMES: Record<string, string> = {
   [WORKING_DIRECTORY_CONTEXT]: 'WORKING_DIRECTORY',
   'sandbox:policy': 'SANDBOX_POLICY',
   'approval:policy': 'APPROVAL_POLICY',
+  [SUBAGENT_IDENTITY_CONTEXT]: 'SUBAGENT_DELEGATION',
   'tool:subagent:depth': 'SUBAGENT_DELEGATION',
   'tool:subagent_fork:depth': 'SUBAGENT_DELEGATION',
   'harness:source': 'HARNESS_SOURCE',
@@ -119,6 +125,7 @@ export const CONTEXT_ORDER_NAMES: Record<string, string> = {
 /** getContextOrder 不可用时的兜底;环境事实是本插件自己的 order,其余未知段用 0。 */
 export const CONTEXT_ORDER_FALLBACK: Record<string, number> = {
   [ENVIRONMENT_CONTEXT]: ENVIRONMENT_CONTEXT_ORDER,
+  [SUBAGENT_IDENTITY_CONTEXT]: 120,
 }
 
 const OFF_OPTIONAL_CONTEXTS = Object.fromEntries(OPTIONAL_CONTEXT_NAMES.map((name) => [name, false])) as Record<string, boolean>

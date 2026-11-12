@@ -12,7 +12,7 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
 
 桌面端 / Web 在「插件」页搜索 `@jia-tools/dsh-session-context-config` 安装。bundle 集变化需重启对应 profile 后生效；档位只作用于新会话，已有会话不回改。
 
-本地源码安装（开发）：`dsh plugin --profile <profile> add <本目录>`；改代码后 `pnpm build` 并重启宿主。
+本地源码安装（开发）：`dsh plugin --profile <profile> add <本目录>`；改代码后 `pnpm build`——client bundle 由桌面自带 HMR 自动热更（约 1s，不要刷新页面），Host 侧改动用插件页该行 disable → enable 或重启宿主。
 
 ## 档位模型
 
@@ -34,9 +34,9 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
 }
 ```
 
-`contexts` 的键是宿主实际注册的运行时上下文名，缺省=注入，只存 `false`。当前面板按 DSH 上下文逐项列出：当前工作目录、沙箱/文件策略、审批策略、子代理委派深度、环境事实、DSH 源码 checkout、DSH Web GUI 地址。旧版本读入时一次性迁移：`runtimeContext:false` → 所有可选上下文 `false`，`workingDirectory:false` → 当前工作目录 `false`，`baseline.environmentFacts:false` → 每个旧档位的环境事实 `false`；迁移后都按档位单独调整。
+`contexts` 的键是宿主实际注册的运行时上下文名，缺省=注入，只存 `false`。面板从当前会话的装配结果动态列出（`/api/state` 的 `contexts`）：当前工作目录、沙箱/文件策略、审批策略、根代理身份、子代理委派深度、环境事实、DSH 源码 checkout、DSH Web GUI 地址都会自动出现；新版本或第三方插件新增的上下文，即使没有内置中文名，也会按原始 name 自动补一行。旧版本读入时一次性迁移：`runtimeContext:false` → 所有可选上下文 `false`，`workingDirectory:false` → 当前工作目录 `false`，`baseline.environmentFacts:false` → 每个旧档位的环境事实 `false`；迁移后都按档位单独调整。
 
-`sections` 的键是宿主/插件实际注册的 system 段名，缺省=包含，只存 `false`。面板从当前会话的装配结果动态列出（`/api/state` 的 `sections`），未知新段按原始 name 显示；人设两个槽位与附加规则段由专用开关控制，**工具引导段（`tool:*`）跟随工具状态**——这三类都不参与这张通配表，历史状态里的残留会在读入归一化时剪掉。
+`sections` 的键是宿主/插件实际注册的 system 段名，缺省=包含，只存 `false`。面板从当前会话的装配结果动态列出（`/api/state` 的 `sections`），未知新段按原始 name 显示；人设两个槽位与附加规则段由专用开关控制。**工具引导段（`tool:*`）不进这张表**——它强绑定工具的启用状态，由 Host 自动隐藏/显示（复合段看成员），面板不提供单独开关；旧状态里的 `tool:*` 键读入时剪掉。
 
 解析自上而下，组与 server 只提供默认值，两个极端值压过子项：
 
@@ -85,23 +85,36 @@ server = 隐藏     → 隐藏
 - **完整**：全部能力可用，非常用能力（编排、目标、调度、MCP、第三方、插件开发）以「延迟」形式折叠，需要时由 `tool_search` 取回。
 - **精简**：在完整基础上隐藏编排与计划、调度、目标、插件开发；MCP 与第三方工具仍延迟。
 - **极简**：在精简基础上再隐藏交互、技能与网络、协作、MCP、第三方工具；只保留读写、搜索、终端与平台基础。
-- 工具引导文本跟随工具可用性；被隐藏的工具不会产出引导文本，面板也不提供这些 `tool:*` 段的开关。
+- 工具引导段强绑定工具/组状态：`pwsh` / `jobs` / `goal` / `workflow` 等静态引导在工具或组隐藏时由 Host 自动移除（复合段 jobs/goal/schedule/session-query 看成员，至少一个成员开启/延迟才保留）；工具恢复后自动恢复。**不在面板单独配置**，隐藏状态由下方工具目录控制。
 
 状态版本为 v4：旧 v2/v3 状态读入时会**就地替换** `full` / `lean` / `minimal` 三个内置档位的定义（不新增缺失的内置档位），自定义档位、会话映射与 baseline 原样保留。
 
 ## system 段开关（sections）
 
-配置页按**最终请求里的消息**分卡：`系统提示词`、`运行时上下文快照`、`工作区指令`、`时间采样`（角色由卡片右上角的 `role: developer` / `role: user` 标签表达）。每张卡里可单独配置的段都保留「checkbox + 内容说明」的统一格式。
+配置页按**最终请求里的消息**分卡：`系统提示词`、`运行时上下文快照`、`工作区指令`、`时间采样`、`其他注入消息（自动发现）`（角色由卡片右上角的 `role: developer` / `role: user` 标签表达）。每张卡里可单独配置的项都保留「checkbox + 内容说明」的统一格式；自动发现的每个 kind 也可按行关闭。
 
 `system 消息` 卡内：
 
 - **两个独立的人设槽位**：`deployment:persona-prefix`（order 0，固定身份声明之后、所有第一方指导之前，"你是谁"——角色、语气、能力边界与工作方式；改它会破坏前缀缓存）与 `deployment:persona-suffix`（order 10200，所有第一方指导之后、提示词最末，"收尾叮嘱"——环境提醒、输出格式、最后一条硬约束；改它不影响前面可复用的前缀）。两者各自一条开关 + 一条「覆盖部署文本」+ 文本域：关掉 = 不发送该槽位；不覆盖 = 沿用部署 `personaPrefix` / `personaSuffix`；覆盖且文本非空 = 替换该槽位；覆盖且为空 = 不发送该槽位。
 - 其余各段在同一个列表里按**实际装配顺序**排列（不再分「宿主固定段 / 工具使用引导」小区域）：`harness:identity`（-1000，最前）、人设前缀（0）、`context:file-reference`、`harness:source`、`app:web-surface`、人设后缘（10200）等，逐段开关。
-- **工具引导段（`tool:*`）不在这里配置**：它们的文本跟随工具可用性——工具在下方工具目录里被隐藏/延迟时，宿主不再产出该引导文本。面板不列这些行，`sections` 也不保存它们（归一化时剪掉）。
-- **条件段**：MCP 服务器指令（`mcp:<server>`）、MCP 资源服务器、PTC 模式（`tools:ptc-only` / `tools:sdk`）、计划模式（`plan:policy`）、团队协作（`team:policy`）、浏览器 / Computer Use 等，出现时才在列表里生效；未识别的新段按原始 name 自动列入。
+- **工具引导段（`tool:*`）不在这里配置**：它们强绑定工具状态——工具或组隐藏时 Host 自动从装配里移除，工具恢复（开启/延迟）时自动回来。复合段（`tool:jobs` / `tool:goal` / `tool:schedule` / `tool:session-query`）看成员工具，至少一个成员不是隐藏才保留。面板不列这些行，避免出现「段开关和工具开关打架」。
+- **条件段**：MCP 服务器指令（`mcp:<server>`）、MCP 资源服务器、PTC 模式（`tools:ptc-only` / `tools:sdk`）、计划模式（`plan:policy`）、团队协作（`team:policy`）、浏览器 / Computer Use 等，出现时才在列表里生效；未识别的新段按原始 name 自动列入。新版本/第三方插件注册段不需要改本插件即可出现。
+- **悬停看正文**：普通段、两个人设槽位与「覆盖部署文本」行都带 `title`，内容是该段当前实际注入的文本（模板变量已按本次装配渲染）；关闭的段也会给出关闭前的文本，便于确认关掉的是什么。上下文行同样如此（空文本显示「当前未出现」）。
 - **附加规则**：行为契约 / 卡片回执 / 不可信下载 / 自定义文本 4 项，全局开关（所有新会话与子代理），用「本插件附加 · 全局」小标题与分割线分隔，固定排在列表最后（提示词 order 20000+，是所有宿主段之后）；三段固定文本在面板里悬停可见注入全文（保留换行）。
 
-实现：在已有的 `system-prompt/assemble` 瀑布里按 `profile.sections` 过滤 `assembly.sections`（与过滤 contexts 同一处）；`refreshContext` 不会重跑 sections，所以不需要像 contexts 那样注册影子段。**该瀑布按 agent scope 过滤派发，监听器必须带 `global: true`**（否则真机上收不到事件，单测直接调 listener 发现不了）。`sccFullSections` 是面板列目录用的私有旁路，返回未过滤的完整段名单，不影响请求路径。段顺序由宿主 `order` 固定，本面板只控制是否包含。
+被关掉但当前装配里没有出现的已知段仍会列出来（否则条件段关掉后就找不到重新开启的入口），但 `meta` 会标成「已关闭 · 当前未出现」，tooltip 说明可能是条件未触发或提供它的插件/预设未装载。实现：在已有的 `system-prompt/assemble` 瀑布里按 `profile.sections` 过滤 `assembly.sections`（与过滤 contexts 同一处），同时按工具的生效状态裁掉 `tool:*` 引导段（`hiddenToolGuide`：组/工具隐藏即隐藏，复合段看成员）。`refreshContext` 不会重跑 sections，所以不需要像 contexts 那样注册影子段。**该瀑布按 agent scope 过滤派发，监听器必须带 `global: true`**（否则真机上收不到事件，单测直接调 listener 发现不了）。`sccFullSections` 是面板列目录用的私有旁路，返回未过滤的完整段名单，不影响请求路径；面板目录会再剔除 `tool:*`（它们不单独配置）。段顺序由宿主 `order` 固定，本面板只控制是否包含。
+
+## 注入内容的自动发现
+
+面板不维护「段 / 上下文 / 注入消息」的全量名单，每次 `/api/state` 现算：
+
+1. 对每种 live agent preset 挑一个限制最少的根会话干跑一次 `systemPrompt.assemble({ ..., sccFullSections: true })`（最多 8 份），按 name 取并集（空影子被另一档位的非空正文覆盖）。`sections` 与 `contexts` 来自宿主和所有已装载插件（含第三方）的注册面，模板变量按各自装配渲染；空段不列、`tool:*` 不列（强绑定工具状态，不单独配置），空上下文保留（面板显示「当前未出现」）。
+2. 从 live 根会话的历史消息聚合 user 角色、非人类输入的 `source.kind`（工作区指令/时间采样/技能目录/计划模式等）；**按档位分组**：每个档位只统计使用了该档位的会话，同 kind 的次数在组内相加，并行会话的 kind 不串档。组内再合并 `agent/pre-step` 运行时观察到的消息（被通道关掉、没落盘的消息也能看见，且同样按档位归属）。
+3. 工具目录枚举全部 preset 组合里的工具，第三方工具随目录出现。
+
+所以 DSH 升级或新装插件带来新的 system 段、运行时上下文、工具或注入消息时，不需要改本插件代码；重新打开面板（或点「重新读取」）就会看到。已知中文名/说明只决定呈现质量，不决定是否出现。
+
+调用时机：**不是按模型请求或定时器跑的**。快照在以下场景计算：页面首次挂载用到快照的组件（面板或 chip，store 为空时一次）、手动「重新读取」、保存（POST 响应带快照）、切换档位（`/api/session` POST 响应带快照）。同一页面内快照由 client store 复用，不轮询。单次最多 8 份装配；工具目录另有 15 秒缓存。版本/插件变化不会主动触发重算，下次拉快照时自然看到新内容。
 
 ## 工具说明中文显示
 
@@ -143,8 +156,8 @@ server = 隐藏     → 隐藏
 `prompt` / `sections` / `contexts` 分别覆盖 system 消息内的人设段、其它 system 段与 runtime-context 快照：
 
 - `prompt.prefix` / `prompt.suffix` 分别控制两个部署人设槽位，各自 `enabled/override/text`：`enabled = false` → 该槽位不发送；开启且 `override = false` → 沿用部署 `personaPrefix` / `personaSuffix`；`override = true` → 用 `text` 替换该槽位（空文本 = 不发送该槽位）。两个槽位互不影响。
-- `sections` 按段名过滤 system 消息：identity、宿主/插件段、checkout/Web 说明、MCP/PTC/计划模式等都可逐段关闭。人设两个槽位与附加规则段受保护，分别走专用开关；**工具引导段（`tool:*`）跟随工具状态，不落 `sections`，面板也不列**。段顺序由宿主 `order` 固定。
-- `contexts` 把运行时上下文逐个开关：当前工作目录、沙箱/文件策略、审批策略、子代理委派深度、环境事实、DSH 源码 checkout、DSH Web GUI 地址。缺省=注入，只记录关掉的项。
+- `sections` 按段名过滤 system 消息：identity、宿主/插件段、checkout/Web 说明、MCP/PTC/计划模式等都可逐段关闭。人设两个槽位与附加规则段受保护，分别走专用开关；**工具引导段（`tool:*`）不落 `sections`**，强绑定工具的启用状态（工具隐藏则引导隐藏），面板不提供单独开关。段顺序由宿主 `order` 固定。
+- `contexts` 把运行时上下文逐个开关：当前工作目录、沙箱/文件策略、审批策略、根代理身份、子代理委派深度、环境事实、DSH 源码 checkout、DSH Web GUI 地址；装配里出现的新 name 会自动补行。缺省=注入，只记录关掉的项。
 - 关掉的上下文在 agent 作用域注册同名非 required 空上下文遮住 required 标志，再由最外层 `system-prompt/assemble` 按名字删除；这样 `refreshContext` 不会把 required 段（如当前工作目录）补回来。关闭当前工作目录后，模型需要自己跑 `pwd` 确认目录。
 
 档位管不到、只能部署级配置的 user 消息通道（档位级的请求层拦截见下方「通道拦截」）：
@@ -174,6 +187,9 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 - **过滤发生在消息落盘之前**：被滤掉的消息不写会话记录，已记录的历史不回改。
 - 会话中途开启拦截（切换档位或改配置）会让请求前缀一次性变化，缓存从变化处重建。
 - 与 `contexts` 的运行时上下文开关互不重叠：上下文走 assembly 按名过滤，channels 只管这两条独立注入通道。
+- **自动发现清单**：面板在两张通道卡下方列出**当前档位**的 live 根会话里观察到的其它 user 消息来源（`source.kind`，含第三方插件），按 kind 聚合次数并给出最近一次正文。来源是组内会话历史 + `agent/pre-step` 运行时观察（被通道关掉的消息也会被记下），新版本/新插件开始注入后自动出现。**每行可关闭**：写 `channels[kind]='off'`，Host 的 pre-step 过滤器按同一键剔除；已知两条通道仍走上面的专用卡。列表底部还可以**手动输入一个 kind** 提前关闭（当前会话还没出现过的来源也能先拦住，会以「手动」行保留在配置里）。运行期消息可能承载插件状态同步（子代理完成、压缩检查点、目标轮次），不确定就保持开启。
+- **`kind` 与 `channels` 的区别**：`source.kind` 是消息上的来源标签（如 `agent-message`、`compact-checkpoint`、`runtime-context`、`skill-catalog`）；`profile.channels` 是开关表，键是 kind、值是 `'off'`。已知两条通道的键是界面 id（`workspaceInstructions` / `timeContext`），Host 会映射到 `agent-instructions` / `time-context`；其余键直接当作 `source.kind`。所以「关掉某个 kind」= 往 `channels` 里写这个 kind。
+- 已知通道行的 `title` 显示最近一次注入正文；通道关闭时提示「后续请求会滤掉该来源」。
 
 ## 数据
 
@@ -198,7 +214,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 | 路由 | 用途 |
 |---|---|
-| `GET/POST /session-context-config/api/state` | 读快照 / 保存档位（`tools[].source` 带来源标注，`sources` 是解析诊断计数） |
+| `GET/POST /session-context-config/api/state` | 读快照 / 保存档位（`sections[].text` 与 `contexts[].text` 是实际注入正文，`channelsByProfile` 是按档位分组的两条已知通道最新正文，`observedChannelsByProfile` 是按档位分组的注入消息清单；`tools[].source` 带来源标注，`sources` 是解析诊断计数） |
 | `GET /session-context-config/api/session?id=` | 某会话的逐工具状态（注入 / 延迟 / 隐藏 / 已取定义） |
 | `POST /session-context-config/api/session` | 为某会话选定档位（`none` = 不处理） |
 | `GET /session-context-config/api/preview?id=&profile=` | 干跑：某档位在该会话下的注入/延迟/隐藏清单 |
@@ -217,8 +233,8 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 | 加载 | `tool_search` 返回完整定义；会话内 tools 数组不变 |
 | 缓存 | 加载只追加历史，不重建前缀 |
 | 上下文逐项开关 | 只关 `harness:source` 时，`contexts`/`refreshedContexts` 无该段、其余仍在；关 `working-directory:current` 时两者都无 cwd；环境事实开启时 180 字符（真机） |
-| system 段逐项开关 | 单测 + 冒烟：关 `harness:identity` / `tool:read` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单 |
-| 配置页结构 | 冒烟：按消息四张卡（system/快照/工作区指令/时间采样）；人设 checkbox + 输入框；快照 7 段；两条通道各一行 checkbox + 说明 |
+| system 段逐项开关 | 单测 + 冒烟：关 `harness:identity` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单；`tool:*` 随工具/组隐藏自动移除，不出现在可配置列表 |
+| 配置页结构 | 冒烟：按消息五张卡（system/快照/工作区指令/时间采样/其他注入消息）；人设 checkbox + 输入框；快照已知 8 项 + 动态发现项；两条通道各一行 checkbox + 说明；自动清单每行 checkbox 可按 kind 关闭；各行 `title` 给出注入正文 |
 | 通道过滤顺序 | 会话 `session-f6a33b8a…` 真机实证：Chat 档 channels 全 off、tools=0、system 为空，但仍漏一条 `time-context` user 消息。根因是 preset 的 `prepend` 监听器晚于全局过滤器注册、反包住过滤器；修复为 `agent/created` 时按 agent 再注册（回归 `tests/channels.test.mjs`） |
 | 客户端 | bundle 已进 boot graph |
 
@@ -232,7 +248,8 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 - 同模式不同档位的会话不共享前缀缓存。
 - 系统段的顺序由宿主 `order` 固定，本面板只能包含/排除，不能改先后。
 - 系统段开关是档位级，只作用于根会话；子代理的 system 段不受档位开关控制（附加规则是全局例外）。
-- 运行时上下文只能按已知上下文名逐项控制；新插件带来的未知上下文默认注入，需要把名字加进 `CONTEXT_SWITCHES` 才能在面板里关。系统段不同：未知段会按原始 name 动态列出。
+- 运行时上下文/系统段的名字由一次干跑装配动态发现：**当前没出现、也没被关掉的空条件段不会占行**；需要提前配置一个尚未触发的条件段时，先让它在会话里出现一次。
+- 自动发现清单的 kind 开关是档位级；关闭 `subagent-settled` / `compact-checkpoint` / `runtime-context` 这类运行期消息会让对应插件收不到自己的通知，只在明确知道作用时关。
 - 工作区指令只能整组关：宿主已把同一批 AGENTS.md/CLAUDE.md 拼成一条 `<system-reminder>`，无法按文件过滤；要排除某类文件名只能在部署级配 `instructionFileCandidates` / `maxBytes`。
 
 ## 开发文档

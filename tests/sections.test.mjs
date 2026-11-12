@@ -89,7 +89,7 @@ test('v2 状态迁移:mode 映射 override,sections 默认空,inCompletePrompt �
   assert.equal(Object.hasOwn(migrated.baseline, 'inCompletePrompt'), false)
 })
 
-test('v3 状态只保留 sections=false;工具引导段与人设槽位不进通配表', () => {
+test('v3 状态只保留普通段的 sections=false;工具引导段与人设槽位不进通配表', () => {
   const current = normalizeState({
     version: 3,
     profiles: [{
@@ -103,6 +103,7 @@ test('v3 状态只保留 sections=false;工具引导段与人设槽位不进通�
       },
     }],
   })
+  // tool:* 强绑定工具状态,不接受单独配置;旧状态里的残留读入时剪掉。
   assert.deepEqual(current.profiles[0].sections, { 'harness:source': false })
 })
 
@@ -163,14 +164,14 @@ test('装配过滤:关掉的段被移除,人设/附加规则受保护,sccFullSec
       contexts: {},
       sections: {
         'harness:identity': false,
-        'tool:read': false,
         'deployment:persona-prefix': false,
         'session-context-config:contract': false,
       },
       channels: {},
       groups: {},
       servers: {},
-      tools: {},
+      // 工具引导不单独配置:read 工具隐藏后 tool:read 由 hiddenToolGuide 自动移除。
+      tools: { read: 'off' },
       summaries: {},
     }],
     sessions: { s1: 'chat' },
@@ -203,12 +204,11 @@ test('装配过滤:关掉的段被移除,人设/附加规则受保护,sccFullSec
       contexts: [{ name: 'working-directory:current', text: 'cwd' }],
     }
     const filtered = await hook.listener(assembly, { agent }, async () => assembly)
-    // tool:read / deployment:persona-prefix 的 false 在归一化时被剪掉(工具引导跟随
-    // 工具状态、人设走专用开关),所以只剩 harness:identity 被过滤。
+    // deployment:persona-prefix 的 false 在归一化时被剪掉(人设走专用开关);
+    // tool:read 因为 read 工具本身被隐藏而自动移除,tool:write 仍保留。
     assert.deepEqual(filtered.sections.map((section) => section.name), [
       'deployment:persona-prefix',
       'session-context-config:contract',
-      'tool:read',
       'tool:write',
     ])
     assert.deepEqual(filtered.contexts, assembly.contexts)
@@ -221,9 +221,10 @@ test('装配过滤:关掉的段被移除,人设/附加规则受保护,sccFullSec
   }
 })
 
-/** 记录 agent 作用域注册了哪些 systemPrompt.section。 */
+/** 记录 agent 作用域注册了哪些 systemPrompt.section / context。 */
 function recordingAgent() {
   const sections = []
+  const contexts = []
   const ctx = {
     on: () => () => {},
     tools: { restrict: () => () => {}, register: () => () => {} },
@@ -232,15 +233,18 @@ function recordingAgent() {
         sections.push(section)
         return () => {}
       },
-      context: () => () => {},
+      context(context) {
+        contexts.push(context)
+        return () => {}
+      },
       getSectionOrder: (name) => ({ DEPLOYMENT_PERSONA_PREFIX: 0, DEPLOYMENT_PERSONA_SUFFIX: 10200 })[name] ?? 0,
-      getContextOrder: () => 0,
+      getContextOrder: (name) => ({ SUBAGENT_DELEGATION: 120 })[name] ?? 0,
     },
   }
-  return { agent: { id: 's1', sessionId: 's1', session: { id: 's1', header: {} }, ctx }, sections }
+  return { agent: { id: 's1', sessionId: 's1', session: { id: 's1', header: {} }, ctx }, sections, contexts }
 }
 
-async function applyWithPrompt(prompt) {
+async function applyWithProfile(overrides) {
   const home = mkdtempSync(join(tmpdir(), 'scc-persona-'))
   writeFileSync(join(home, 'session-context-config.json'), JSON.stringify({
     version: 3,
@@ -249,7 +253,10 @@ async function applyWithPrompt(prompt) {
       id: 'chat',
       name: 'Chat',
       description: '',
-      prompt,
+      prompt: {
+        prefix: { enabled: true, override: false, text: '' },
+        suffix: { enabled: true, override: false, text: '' },
+      },
       contexts: {},
       sections: {},
       channels: {},
@@ -257,6 +264,7 @@ async function applyWithPrompt(prompt) {
       servers: {},
       tools: {},
       summaries: {},
+      ...overrides,
     }],
     sessions: { s1: 'chat' },
     baseline: { contract: true, cardReceipt: true, untrustedFiles: true },
@@ -266,15 +274,24 @@ async function applyWithPrompt(prompt) {
   try {
     const { ctx, events } = fakeHost()
     apply(ctx)
-    const { agent, sections } = recordingAgent()
-    ctx.agents.roots = () => [agent]
+    const recorded = recordingAgent()
+    ctx.agents.roots = () => [recorded.agent]
     const created = events.get('agent/created')?.[0]?.listener
-    await created({ agent })
-    return sections.filter((section) => section.name.startsWith('deployment:persona'))
+    await created({ agent: recorded.agent })
+    return { ...recorded, events }
   } finally {
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome
   }
+}
+
+async function applyWithPrompt(prompt) {
+  const { sections } = await applyWithProfile({ prompt })
+  return sections.filter((section) => section.name.startsWith('deployment:persona'))
+}
+
+async function applyWithContexts(contexts) {
+  return applyWithProfile({ contexts })
 }
 
 const slot = (patch = {}) => ({ enabled: true, override: false, text: '', ...patch })
@@ -311,4 +328,30 @@ test('两个槽位独立:前置覆盖 + 后缘关闭', async () => {
 test('都开启且不覆盖:不注册任何影子,沿用部署配置', async () => {
   const sections = await applyWithPrompt({ prefix: slot(), suffix: slot() })
   assert.deepEqual(sections, [])
+})
+
+test('工具引导强绑定工具组:terminal 隐藏时 pwsh/jobs 段自动移除,read 保留', async () => {
+  const { agent, events } = await applyWithProfile({ groups: { terminal: 'off' } })
+  const hook = events.get('system-prompt/assemble')?.[0]
+  assert.ok(hook, '没有注册 system-prompt/assemble 过滤器')
+  const assembly = {
+    sections: [
+      { name: 'tool:pwsh', text: 'pwsh guidance' },
+      { name: 'tool:jobs', text: 'jobs guidance' },
+      { name: 'tool:read', text: 'read guidance' },
+    ],
+    contexts: [],
+  }
+  const filtered = await hook.listener(assembly, { agent }, async () => assembly)
+  assert.deepEqual(filtered.sections.map((section) => section.name), ['tool:read'])
+})
+
+test('关闭根代理身份上下文:注册同名空影子,order 取 SUBAGENT_DELEGATION', async () => {
+  const { contexts } = await applyWithContexts({ 'subagent:identity': false })
+  // 名字必须与宿主 tool-subagent-control 注册的一致;空影子遮住 required 标志,
+  // 外层 assemble 过滤器再按名字删,refreshContext 就不会把它补回来。
+  // 环境事实是本插件自己的上下文,也在同一 agent 作用域注册,这里只看目标项。
+  assert.deepEqual(contexts.filter((context) => context.name === 'subagent:identity').map((context) => [context.name, context.text, context.order]), [
+    ['subagent:identity', '', 120],
+  ])
 })

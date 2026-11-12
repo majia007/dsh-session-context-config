@@ -9,7 +9,7 @@ import test from 'node:test'
 
 import { SESSIONS_LIMIT } from '../src/host/constants.ts'
 import { defaultState, normalizeState, recordSession } from '../src/host/state.ts'
-import { effectiveState, groupOf, placehold, serverOf, skeleton, summaryFor } from '../src/host/tools.ts'
+import { effectiveState, groupOf, hiddenToolGuide, placehold, serverOf, skeleton, summaryFor } from '../src/host/tools.ts'
 import { apply, inject, name } from '../src/index.ts'
 
 /** 只写与默认不同的项：状态表里「开启」不落盘。 */
@@ -55,6 +55,22 @@ test('解析优先级：终态压过子项，延迟是可被隐藏覆盖的软�
   assert.equal(effectiveState(profile({ groups: { mcp: 'defer' }, tools: { 'mcp__github__x': 'off' } }), 'mcp__github__x'), 'off')
   // 默认全开
   assert.equal(effectiveState(profile(), 'read'), 'on')
+})
+
+test('工具引导强绑定：组/工具隐藏时自动隐藏，复合段看成员，延迟不算隐藏', () => {
+  const base = { groups: {}, servers: {}, tools: {}, sections: {} }
+  const terminalOff = { ...base, groups: { terminal: 'off' } }
+  assert.equal(hiddenToolGuide(terminalOff, 'tool:pwsh'), true)
+  assert.equal(hiddenToolGuide(terminalOff, 'tool:jobs'), true)
+  assert.equal(hiddenToolGuide(terminalOff, 'tool:read'), false)
+  assert.equal(hiddenToolGuide({ ...base, groups: { goal: 'off' } }, 'tool:goal'), true)
+  assert.equal(hiddenToolGuide({ ...base, groups: { schedule: 'off' } }, 'tool:schedule'), true)
+  assert.equal(hiddenToolGuide({ ...base, tools: { read: 'off' } }, 'tool:read'), true)
+  assert.equal(hiddenToolGuide({ ...base, tools: { read: 'defer' } }, 'tool:read'), false)
+  // 复合段:目标组还开着、但三个目标工具都被单独隐藏 -> 整段隐藏。
+  assert.equal(hiddenToolGuide({ ...base, tools: { create_goal: 'off', get_goal: 'off', update_goal: 'off' } }, 'tool:goal'), true)
+  // 普通段名不受影响。
+  assert.equal(hiddenToolGuide(terminalOff, 'harness:identity'), false)
 })
 
 test('延迟占位：保留每个参数的名称与类型，只剥说明与默认值', () => {
@@ -136,6 +152,12 @@ test('状态归一化：版本不符整份作废，重复 id 去掉，坏引用�
     baseline: { environmentFacts: false },
   }).profiles[0]
   assert.deepEqual(explicit.contexts, { 'sandbox:policy': false })
+  // channels 的键就是 source.kind:已知 id 与第三方 kind 都保留,非 off 不落盘。
+  const channels = normalizeState({
+    version: 4,
+    profiles: [{ id: 'a', channels: { timeContext: 'off', 'third-party-kind': 'off', ignored: 'on' } }],
+  }).profiles[0]
+  assert.deepEqual(channels.channels, { timeContext: 'off', 'third-party-kind': 'off' })
 })
 
 test('sessions 有界保留：重复写入移到最新端，超限淘汰最旧', () => {

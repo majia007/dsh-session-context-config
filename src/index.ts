@@ -18,6 +18,7 @@
 import { BASELINE_SECTION_NAME, baselineSections, type BaselineFlags } from './baseline.ts'
 import { CHANNELS, OFF, PERSONA_SECTION, PERSONA_SUFFIX_SECTION } from './host/constants.ts'
 import { createEnvironmentRuntime } from './host/environment.ts'
+import { createInjectedMessages } from './host/injected.ts'
 import { createProfileRuntime } from './host/profiles.ts'
 import { ROUTES, createRoutes } from './host/routes.ts'
 import { createSessionKit } from './host/sessions.ts'
@@ -25,6 +26,7 @@ import { createSourceIndex } from './host/sources.ts'
 import { messageOf, recordSession } from './host/state.ts'
 import { createStateStore } from './host/state-store.ts'
 import { createTranslationRuntime } from './host/translations.ts'
+import { hiddenToolGuide } from './host/tools.ts'
 import type { AgentContext, AgentLike, HostContext } from './types.ts'
 
 export const name = 'session-context-config'
@@ -49,7 +51,9 @@ export function apply(ctx: HostContext): void {
   const profiles = createProfileRuntime(ctx, store, kit, note)
   const environment = createEnvironmentRuntime(ctx, kit, note)
   const translations = createTranslationRuntime(ctx, note)
-  const routes = createRoutes({ ctx, store, kit, profiles, sources, translations, note, diagnostics })
+  // 自动发现的注入消息清单:通道白名单之外的内容(第三方插件/未来版本)也能在面板里看到。
+  const injected = createInjectedMessages()
+  const routes = createRoutes({ ctx, store, kit, profiles, sources, translations, injected, note, diagnostics })
 
   store.load()
 
@@ -167,7 +171,8 @@ export function apply(ctx: HostContext): void {
   }
 
   /** 档位只记录关掉的系统段;缺省=包含。受保护段由人设/附加规则开关单独控制。
-   *  tool:* 是工具引导段,跟随工具可用性(工具隐藏时宿主不会再产出文本),不在这里过滤。 */
+   *  `tool:*` 强绑定工具状态,**不接受** `sections` 单独控制:隐藏逻辑统一由
+   *  host/tools.ts 的 hiddenToolGuide 按工具/组终态推导,状态里的残留也忽略。 */
   function disabledSections(profile: ReturnType<typeof profileOf>): Set<string> {
     const disabled = new Set<string>()
     for (const [name, enabled] of Object.entries(profile?.sections ?? {})) {
@@ -176,15 +181,35 @@ export function apply(ctx: HostContext): void {
     return disabled
   }
 
+  // 全局过滤器与 agent 作用域过滤器会各看一遍同一批消息,按对象身份去重,避免计数翻倍。
+  const observedMessages = new WeakSet<object>()
   const channelFilter = (async (...args: never[]) => {
     const payload = args[0] as { agent?: AgentLike; signal?: AbortSignal | undefined }
-    const next = args[1] as () => Promise<{ kind?: unknown; messages: Array<{ source?: { kind?: unknown } }> }>
+    const next = args[1] as () => Promise<{ kind?: unknown; messages: Array<{ role?: unknown; source?: { kind?: unknown }; content?: unknown }> }>
     const decision = await next()
     if (decision.kind === 'reject' || payload.signal?.aborted || !payload.agent) return decision
+    // 过滤前先记账:被关掉的通道也要能在面板清单里看到内容,否则用户不知道自己
+    // 挡掉了什么。只记根会话(档位也只作用于根会话)。
+    if (kit.isRootAgent(payload.agent) && Array.isArray(decision.messages)) {
+      const fresh = decision.messages.filter((message) => {
+        if (!message || typeof message !== 'object') return false
+        if (observedMessages.has(message)) return false
+        observedMessages.add(message)
+        return true
+      })
+      injected.observe(fresh, profileOf(payload.agent)?.id ?? 'none')
+    }
     const profile = profileOf(payload.agent)
     const blocked = new Set<unknown>()
+    const channels = (profile as { channels?: Record<string, string> } | null)?.channels ?? {}
+    // 已知两条通道的键是界面 id,映射到 source.kind;其余键本身就是 source.kind,
+    // 这样第三方插件注入的消息也能被档位关掉。
     for (const channel of CHANNELS) {
-      if ((profile as { channels?: Record<string, string> } | null)?.channels?.[channel.id] === OFF) blocked.add(channel.source)
+      if (channels[channel.id] === OFF) blocked.add(channel.source)
+    }
+    const knownIds = new Set(CHANNELS.map((channel) => channel.id))
+    for (const [kind, state] of Object.entries(channels)) {
+      if (state === OFF && !knownIds.has(kind)) blocked.add(kind)
     }
     if (blocked.size === 0) return decision
     const messages = decision.messages.filter((message) => !blocked.has(message?.source?.kind))
@@ -260,12 +285,23 @@ export function apply(ctx: HostContext): void {
     const profile = profileOf(agent)
     const disabledCtx = disabledContexts(profile)
     const disabledSec = disabledSections(profile)
-    if (disabledCtx.size === 0 && disabledSec.size === 0) return result
     if (!result) return result
+    // 工具/组隐藏时自动连带其 tool:* 引导段;复合段(jobs/goal/schedule)走别名组。
+    const hiddenGuides = new Set<string>()
+    if (Array.isArray(result.sections)) {
+      for (const entry of result.sections) {
+        const name = String(entry?.name ?? '')
+        if (name && hiddenToolGuide(profile, name)) hiddenGuides.add(name)
+      }
+    }
+    if (disabledCtx.size === 0 && disabledSec.size === 0 && hiddenGuides.size === 0) return result
     let changed = false
     let sections = result.sections
-    if (disabledSec.size > 0 && Array.isArray(result.sections)) {
-      sections = result.sections.filter((entry) => !disabledSec.has(String(entry?.name)))
+    if ((disabledSec.size > 0 || hiddenGuides.size > 0) && Array.isArray(result.sections)) {
+      sections = result.sections.filter((entry) => {
+        const name = String(entry?.name)
+        return !disabledSec.has(name) && !hiddenGuides.has(name)
+      })
       changed = sections.length !== result.sections.length
     }
     let contexts = result.contexts

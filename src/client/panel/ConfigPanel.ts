@@ -10,7 +10,7 @@ import { loadSnapshot, request, setSnapshot, emit } from '../state/store.ts'
 import { effective, formatTokens, NONE, ON, presetNames, statsFor } from '../state/resolve.ts'
 import type { CatalogTool, Profile, Snapshot } from '../contract/types.ts'
 import { GROUP_STATES, CHANNEL_CARDS } from './options.ts'
-import { ChannelCard, DEFAULT_BASELINE, SectionHeading, SnapshotCard, SystemMessageCard, type PanelDraft } from './cards.ts'
+import { ChannelCard, DEFAULT_BASELINE, ObservedMessagesCard, SectionHeading, SnapshotCard, SystemMessageCard, type PanelDraft } from './cards.ts'
 import { stateTag, toolRow } from './group-cards.ts'
 import { PreviewDialog } from './PreviewDialog.ts'
 import styles from './panel.module.css'
@@ -396,13 +396,26 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
 
       h(SystemMessageCard, { profile, draft, patch, patchBaseline, sections: snapshot.sections ?? [] }),
 
-      h(SnapshotCard, { profile, patch }),
+      h(SnapshotCard, { profile, patch, contexts: snapshot.contexts ?? [] }),
 
-      ...CHANNEL_CARDS.map((option) => h(ChannelCard, { key: option.key, profile, patch, option })),
+      ...CHANNEL_CARDS.map((option) => h(ChannelCard, {
+        key: option.key,
+        profile,
+        patch,
+        option,
+        preview: snapshot.channelsByProfile?.[profile.id]?.[option.key],
+      })),
+
+      h(ObservedMessagesCard, {
+        observed: snapshot.observedChannelsByProfile?.[profile.id] ?? [],
+        liveCount: snapshot.live?.filter((item) => item.profileId === profile.id).length ?? 0,
+        profile,
+        patch,
+      }),
 
       h(SectionHeading, {
         title: '工具目录',
-        desc: '按组 / server / 单个工具控制注入、延迟（占位折叠）与隐藏；工具引导文本跟随工具状态，不在上方逐段配置。',
+        desc: '按组 / server / 单个工具控制注入、延迟（占位折叠）与隐藏；工具引导段（tool:*）跟随这里的工具/组状态自动隐藏或恢复，不单独配置。',
       }),
 
       tools.length === 0

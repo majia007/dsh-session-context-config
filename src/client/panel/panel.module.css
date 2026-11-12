@@ -693,6 +693,28 @@ body {
   outline-offset: 2px;
 }
 
+/* 手动输入 kind 的添加行:输入框与按钮贴齐,不另起一张卡。 */
+.kindAdd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 2px 2px;
+}
+
+.kindAdd .input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+}
+
+.kindAddBtn {
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+}
+
 .segmentBody {
   min-width: 0;
   flex: 1;
