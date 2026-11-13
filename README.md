@@ -12,7 +12,7 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
 
 桌面端 / Web 在「插件」页搜索 `@jia-tools/dsh-session-context-config` 安装。首装/新增 bundle 即运行期装载（client 走 stat-poll、Host 走重组合），无需重启；只有返回 `restart-required` 才需重启。档位只作用于新会话，已有会话不回改。
 
-本地源码安装（开发）：`dsh plugin --profile <profile> add <本目录>`；改代码后 `pnpm build`——client bundle 由桌面自带 HMR 自动热更（约 1s，不要刷新页面），Host 侧改动用插件页该行 disable → enable 或重启宿主。
+本地源码安装（开发）：`dsh plugin --profile <profile> add <本目录>`；改代码后 `pnpm build`——client bundle 由桌面自带 HMR 自动热更（约 1s，不要刷新页面），Host 侧改动用插件页该行关→开（`enabled:false` 再 `true`）或重启宿主。
 
 ## 档位模型
 
