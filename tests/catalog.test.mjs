@@ -44,7 +44,11 @@ test('catalog: acquireScope 保留 receiver，目录可用且租约被释放', a
     tools: {
       schemas(scope) {
         scopes.push(scope)
-        return [{ name: 'read', description: 'Read a file', parameters: { type: 'object', properties: {} } }]
+        return [
+          { name: 'read', description: 'Read a file', parameters: { type: 'object', properties: {} } },
+          // tool_search 是自动注入的基础设施,目录/面板不列它。
+          { name: 'tool_search', description: '延迟工具检索', parameters: { type: 'object', properties: {} } },
+        ]
       },
     },
   }

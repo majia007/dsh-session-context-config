@@ -15,6 +15,7 @@ import {
   OFF,
   ON,
   OPTIONAL_CONTEXT_NAMES,
+  SEARCH_TOOL_NAME,
   SESSIONS_LIMIT,
   VERSION,
   WORKING_DIRECTORY_CONTEXT,
@@ -212,6 +213,9 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
     if (record?.workingDirectory === false) contexts[WORKING_DIRECTORY_CONTEXT] = false
     if (legacyEnvironmentFactsOff) contexts[ENVIRONMENT_CONTEXT] = false
   }
+  // tool_search 由 planFor 自动管理,旧状态里的键读入即剪掉,面板与装配都不再看到它。
+  const tools = normalizeToolStates(record?.tools, TOOL_STATES)
+  delete tools[SEARCH_TOOL_NAME]
   return {
     id,
     name: typeof record?.name === 'string' && record.name.trim() ? record.name.trim().slice(0, 60) : id,
@@ -226,7 +230,7 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
       : record?.dedupeSkillInjection !== true,
     groups: normalizeGroupStates(record?.groups),
     servers: normalizeGroupStates(record?.servers),
-    tools: normalizeToolStates(record?.tools, TOOL_STATES),
+    tools,
     summaries: normalizeSummaries(record?.summaries),
     // 新档位自带 baseline;旧档位没有时复制旧顶层 baseline(结构迁移,不改值)。
     baseline: record?.baseline === undefined

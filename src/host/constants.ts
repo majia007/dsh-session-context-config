@@ -13,6 +13,9 @@ export const DEFER = 'defer'
 export const OFF = 'off'
 export const FORCE = 'force'
 
+/** 延迟加载的基础设施工具名:由 planFor 自动注入/隐藏,不进档位表。 */
+export const SEARCH_TOOL_NAME = 'tool_search'
+
 /**
  * 部署人设的一个固定槽位(prefix 在 order 0,紧随 harness:identity;suffix 在 10200,
  * 整个提示词的末尾)。
@@ -170,7 +173,7 @@ function offBaseline(): BaselineFlags {
  * 提供;其余措辞与 Pi 的 tools/rules 结构一致。
  *
  * 身份行必须明确写「运行在 DeepSeek Harness、这是 Pi 风格预设,不是 Pi 本身」,
- * 不能伪装成 pi。MCP 是 Pi 1.0+ 的内置扩展,由档位的 MCP 组 + tool_search 近似,
+ * 不能伪装成 pi。MCP 是 Pi 1.0+ 的内置扩展,由档位的 MCP 组 + 自动注入的 tool_search 近似,
  * 不写死在这段 base prompt 里(Pi 的 mcp_servers 是动态段)。
  */
 export const PI_PROMPT = [
@@ -343,12 +346,12 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
       mcp: DEFER,
       platform: OFF,
       devtools: OFF,
-      // other 组只为让 tool_search 单独开启；其余 other 工具在 tools 里显式关掉。
+      // other 组保留默认开启;tool_search 由 planFor 自动注入,不在档位表里配置。
       other: ON,
     },
     // files / terminal 两组保持默认开启,只把 PI 没有的成员逐个关掉;read_image
-    // 是 DSH 对 Pi read 图片能力的对应实现,保留。MCP 组用 defer + tool_search
-    // 近似 Pi 1.5.x 的 codemode/deferred 暴露。
+    // 是 DSH 对 Pi read 图片能力的对应实现,保留。MCP 组用 defer 近似 Pi 1.5.x 的
+    // codemode/deferred 暴露;tool_search 由 planFor 按「是否有其它延迟工具」自动注入。
     tools: {
       apply_patch: OFF,
       job_kill: OFF,
@@ -360,7 +363,6 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
       terminal_read: OFF,
       terminal_send: OFF,
       terminal_signal: OFF,
-      tool_search: ON,
       session_recall: OFF,
       web_extract: OFF,
     },

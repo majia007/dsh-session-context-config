@@ -1,4 +1,4 @@
-import { GROUPS, TOKEN_PER_CHAR } from './constants.ts'
+import { GROUPS, SEARCH_TOOL_NAME, TOKEN_PER_CHAR } from './constants.ts'
 import { groupOf, serverOf } from './tools.ts'
 import type { SourceIndex, ToolSource } from './sources.ts'
 import type { HostContext } from '../types.ts'
@@ -68,7 +68,9 @@ export function createCatalog(ctx: HostContext, note: (source: string, error: un
           // 必须作为方法调用：宿主实现内部要用 this.retain，解构成局部函数后 receiver 丢失。
           const lease = await registry.acquireScope(preset.id)
           try {
-            tools = (ctx.tools.schemas(lease.key) as Array<{ name?: unknown; description?: unknown; parameters?: unknown }>).map(toolEntry)
+            tools = (ctx.tools.schemas(lease.key) as Array<{ name?: unknown; description?: unknown; parameters?: unknown }>)
+              .filter((schema) => schema.name !== SEARCH_TOOL_NAME)
+              .map(toolEntry)
           } finally {
             // 当前宿主用 Symbol.asyncDispose 释放租约；旧宿主可能给 dispose()，两个都兜住。
             const asyncDispose = lease[Symbol.asyncDispose]

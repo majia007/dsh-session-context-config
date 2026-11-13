@@ -284,3 +284,56 @@ test('背后实现卸载时撤掉该占位;同名工具重新注册后按新定�
     assert.deepEqual(fake.live.map((record) => record.definition.name).sort(), ['cordis_inspect_query', 'plugin_manager'])
   })
 })
+
+test('tool_search 自动注入:有其它延迟工具时完整注入,不生成占位', async () => {
+  await withHome([profile('auto-search', 's8', { other: 'defer' })], async () => {
+    const host = fakeHost()
+    // tool_search 的完整定义由 syncToolSearch 注册到根作用域;这里放进 definitions
+    // 模拟宿主 view() 能看到它。
+    host.state.definitions = [tool('other_a'), tool('tool_search')]
+    apply(host.ctx)
+
+    const fake = fakeAgent('s8', host)
+    host.ctx.agents.roots = () => [fake.agent]
+    host.ctx.agents.list = () => [fake.agent]
+    await host.events.get('agent/created')?.[0]?.listener({ agent: fake.agent })
+
+    assert.deepEqual(fake.registerCalls.map((definition) => definition.name), ['other_a'])
+    assert.equal(fake.restrictCalls.length, 0)
+    assert.equal(host.rootRegistrations.some((definition) => definition.name === 'tool_search'), true)
+  })
+})
+
+test('tool_search 无其它延迟工具时 per-agent 隐藏,也不注册根搜索工具', async () => {
+  await withHome([profile('no-defer', 's9', {})], async () => {
+    const host = fakeHost()
+    host.state.definitions = [tool('tool_search'), tool('read')]
+    apply(host.ctx)
+
+    const fake = fakeAgent('s9', host)
+    host.ctx.agents.roots = () => [fake.agent]
+    host.ctx.agents.list = () => [fake.agent]
+    await host.events.get('agent/created')?.[0]?.listener({ agent: fake.agent })
+
+    assert.equal(fake.registerCalls.length, 0)
+    assert.deepEqual(fake.restrictCalls.map((record) => record.filter.deny), [['tool_search']])
+    assert.equal(host.rootRegistrations.some((definition) => definition.name === 'tool_search'), false)
+  })
+})
+
+test('tool_search 自动规则忽略 other 的 off:只要还有其它延迟工具就注入', async () => {
+  await withHome([profile('auto-search-off-group', 's10', { mcp: 'defer', other: 'off' })], async () => {
+    const host = fakeHost()
+    host.state.definitions = [tool('mcp__srv__call'), tool('tool_search')]
+    apply(host.ctx)
+
+    const fake = fakeAgent('s10', host)
+    host.ctx.agents.roots = () => [fake.agent]
+    host.ctx.agents.list = () => [fake.agent]
+    await host.events.get('agent/created')?.[0]?.listener({ agent: fake.agent })
+
+    assert.deepEqual(fake.registerCalls.map((definition) => definition.name), ['mcp__srv__call'])
+    assert.equal(fake.restrictCalls.length, 0)
+    assert.equal(host.rootRegistrations.some((definition) => definition.name === 'tool_search'), true)
+  })
+})

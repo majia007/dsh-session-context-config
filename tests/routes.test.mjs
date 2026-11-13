@@ -67,14 +67,19 @@ function harness() {
     sessionOf: (value) => value?.session ?? null,
     sessionIdOf: () => 's1',
     isBlank: () => false,
-    visibleSchemas: () => [],
+    visibleSchemas: () => [
+      { name: 'read' },
+      { name: 'mcp__srv__call' },
+      // tool_search 是自动注入的基础设施,干跑清单不列它。
+      { name: 'tool_search' },
+    ],
     definitionsOf: () => [],
     agentFor: () => agent,
   }
   const profiles = {
     applied: new Map([['s1', { profileId: 'full' }]]),
     loadedNamesOf: () => new Set(),
-    profileById: () => null,
+    profileById: (id) => state.profiles.find((profile) => profile.id === id) ?? null,
   }
   const injected = createInjectedMessages()
   // 进程内观察到的、已被通道开关过滤掉的消息也要出现在清单里;按档位分桶。
@@ -91,7 +96,7 @@ function harness() {
     note: (source, error) => diagnostics.push({ source, error: String(error) }),
     diagnostics,
   })
-  return { routes, diagnostics }
+  return { routes, diagnostics, agent }
 }
 
 test('snapshot:内置预设来自当前插件版本,不是已安装档位', async () => {
@@ -246,4 +251,15 @@ test('snapshot:多个根会话的段/上下文取并集,空影子不覆盖另一
   assert.deepEqual(snapshot.contexts.map((entry) => [entry.name, entry.text]), [
     ['subagent:identity', 'You are the root agent.'],
   ])
+})
+
+test('preview:tool_search 不进档位作用面,清单与 total 都不列它', () => {
+  const { routes, agent } = harness()
+  // full 档位 other 组是 defer;按 effectiveState 原样分类会把 tool_search 记成延迟,
+  // 与 planFor 的自动注入(完整可见)矛盾。
+  const preview = routes.previewFor(agent, 'full')
+  assert.equal(preview.total, 2)
+  assert.deepEqual(preview.deferred, ['mcp__srv__call'])
+  assert.deepEqual(preview.visible, ['read'])
+  assert.equal(preview.hidden.includes('tool_search'), false)
 })

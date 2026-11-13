@@ -1,4 +1,4 @@
-import { CONTEXT_ORDER_FALLBACK, CONTEXT_ORDER_NAMES, DEFER, OFF, ON, PERSONA_ORDER_NAME, PERSONA_SECTION, PERSONA_SUFFIX_ORDER_NAME, PERSONA_SUFFIX_SECTION, type ContextProfile } from './constants.ts'
+import { CONTEXT_ORDER_FALLBACK, CONTEXT_ORDER_NAMES, DEFER, OFF, ON, PERSONA_ORDER_NAME, PERSONA_SECTION, PERSONA_SUFFIX_ORDER_NAME, PERSONA_SUFFIX_SECTION, SEARCH_TOOL_NAME, type ContextProfile } from './constants.ts'
 import type { StateStore } from './state-store.ts'
 import type { SessionKit } from './sessions.ts'
 import { effectiveState, placehold, serverOf, summaryFor, groupOf, type ToolDefinitionLike } from './tools.ts'
@@ -93,6 +93,15 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
         }
       }
     }
+    // tool_search 是延迟加载的基础设施,不参与档位的组/工具状态:
+    // 有其它延迟工具时完整注入(否则会生成一份自指占位),没有时隐藏
+    // (否则全局注册会让没有延迟工具的会话看到一个空转的搜索工具)。
+    const hasOtherDeferred = [...deferred.keys()].some((name) => name !== SEARCH_TOOL_NAME)
+    deferred.delete(SEARCH_TOOL_NAME)
+    originals.delete(SEARCH_TOOL_NAME)
+    const searchIndex = hidden.indexOf(SEARCH_TOOL_NAME)
+    if (searchIndex >= 0) hidden.splice(searchIndex, 1)
+    if (names.has(SEARCH_TOOL_NAME) && !hasOtherDeferred) hidden.push(SEARCH_TOOL_NAME)
     return { hidden, deferred, originals }
   }
 
@@ -394,7 +403,7 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
   }
 
   const searchTool: ToolDefinition<SearchResult> = {
-    name: 'tool_search',
+    name: SEARCH_TOOL_NAME,
     description:
       '取回被延迟加载的工具定义。工具表里名称一直在，但参数只给了骨架；用这个工具按组名、server 名、工具名或几个关键词取回完整定义，取回后按完整参数调用即可。不执行任何工具。',
     parameters: {

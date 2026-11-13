@@ -70,6 +70,7 @@ test('默认预设：Pi 保留默认五工具，MCP 延迟并由 tool_search 加
   }
   assert.equal(pi.groups.mcp, DEFER)
   assert.equal(pi.groups.other, ON)
+  assert.equal(pi.tools.tool_search, undefined, 'tool_search 由 planFor 自动注入，不进档位表')
   assert.equal(effectiveState(pi, 'mcp_connector_demo'), DEFER, 'MCP 工具应延迟')
   assert.equal(effectiveState(pi, 'tool_search'), ON, 'tool_search 应直接可用')
   assert.equal(pi.sections['mcp-resource-servers'], undefined, 'MCP 资源段不应关闭')

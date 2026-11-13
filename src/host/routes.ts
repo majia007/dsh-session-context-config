@@ -1,4 +1,4 @@
-import { CHANNELS, DEFAULT_PROFILES, DEFER, OFF, ON, VERSION, type ContextProfile } from './constants.ts'
+import { CHANNELS, DEFAULT_PROFILES, DEFER, OFF, ON, SEARCH_TOOL_NAME, VERSION, type ContextProfile } from './constants.ts'
 import { createCatalog } from './catalog.ts'
 import { collectInjected, type InjectedChannel, type InjectedMessages } from './injected.ts'
 import { effectiveState, groupOf, serverOf } from './tools.ts'
@@ -346,7 +346,8 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
 
   function previewFor(agent: AgentLike, profileId: string): Record<string, unknown> {
     const profile = profileId === 'none' ? null : profiles.profileById(profileId)
-    const schemas = kit.visibleSchemas(agent)
+    // tool_search 由 planFor 自动注入/隐藏,不属于档位作用面;干跑清单与 total 都不列它。
+    const schemas = kit.visibleSchemas(agent).filter((schema) => schema.name !== SEARCH_TOOL_NAME)
     if (!profile) {
       return {
         ok: true,
@@ -411,13 +412,15 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         const deferred = entry?.plan?.deferred ?? new Map()
         const hidden = new Set(entry?.plan?.hidden ?? [])
         const loaded = profiles.loadedNamesOf(agent)
-        const tools = kit.visibleSchemas(agent).map((schema) => ({
-          name: schema.name,
-          group: groupOf(schema.name),
-          server: serverOf(schema.name),
-          state: hidden.has(schema.name) ? OFF : deferred.has(schema.name) ? DEFER : ON,
-          loaded: loaded.has(schema.name),
-        }))
+        const tools = kit.visibleSchemas(agent)
+          .filter((schema) => schema.name !== SEARCH_TOOL_NAME)
+          .map((schema) => ({
+            name: schema.name,
+            group: groupOf(schema.name),
+            server: serverOf(schema.name),
+            state: hidden.has(schema.name) ? OFF : deferred.has(schema.name) ? DEFER : ON,
+            loaded: loaded.has(schema.name),
+          }))
         return sendJson(response, 200, {
           ok: true,
           sessionId,

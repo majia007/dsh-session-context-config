@@ -158,6 +158,12 @@ test('状态归一化：版本不符整份作废，重复 id 去掉，坏引用�
     profiles: [{ id: 'a', channels: { timeContext: 'off', 'third-party-kind': 'off', ignored: 'on' } }],
   }).profiles[0]
   assert.deepEqual(channels.channels, { timeContext: 'off', 'third-party-kind': 'off' })
+  // tool_search 由插件自动管理,旧状态里的键读入即剪掉。
+  const cleaned = normalizeState({
+    version: 4,
+    profiles: [{ id: 'a', tools: { tool_search: 'off', read: 'off' } }],
+  }).profiles[0]
+  assert.deepEqual(cleaned.tools, { read: 'off' })
 })
 
 test('sessions 有界保留：重复写入移到最新端，超限淘汰最旧', () => {
