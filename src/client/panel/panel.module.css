@@ -140,6 +140,21 @@ body {
   text-decoration: none;
 }
 
+/* 新建档位:悬停出内置预设下拉。按钮自身点击仍走「全启用」新建,
+   箭头只提示还存在预设复制入口。 */
+.newProfile {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.caret {
+  margin-left: 2px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+}
+
 .field {
   display: flex;
   flex-direction: column;

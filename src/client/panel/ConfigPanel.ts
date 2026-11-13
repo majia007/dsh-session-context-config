@@ -2,9 +2,10 @@
  * 配置面板:档位草稿(增删改名/组/server/工具状态/摘要)、系统提示词与基线开关、
  * 保存与预览。草稿干净时跟随快照镜像,脏时冻结;写成功后按响应快照重建并置干净。
  */
-import { createElement as h, useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import { createElement as h, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Glyph } from '../menu/icons.ts'
+import { Popover } from '../menu/popup.ts'
 import { useError, useSnapshot } from '../state/hooks.ts'
 import { loadSnapshot, request, setSnapshot, emit } from '../state/store.ts'
 import { effective, formatTokens, NONE, ON, presetNames, statsFor } from '../state/resolve.ts'
@@ -14,6 +15,7 @@ import { ChannelCard, DEFAULT_BASELINE, ObservedMessagesCard, SectionHeading, Sn
 import { stateTag, toolRow } from './group-cards.ts'
 import { PreviewDialog } from './PreviewDialog.ts'
 import styles from './panel.module.css'
+import menuStyles from '../menu/menu.module.css'
 
 const API_STATE = '/session-context-config/api/state'
 const LABEL = '上下文档位'
@@ -40,6 +42,57 @@ function firstDiagnostic(diagnostics: unknown[]): string | null {
   return null
 }
 
+/** 新建档位可用的下一个 custom id。 */
+function nextProfileId(profiles: Profile[]): string {
+  let index = profiles.length + 1
+  let id = `custom-${index}`
+  while (profiles.some((profile) => profile.id === id)) {
+    index += 1
+    id = `custom-${index}`
+  }
+  return id
+}
+
+/** 复制预设时避免同名:先「 副本」,再「 副本 2」。 */
+function uniqueProfileName(profiles: Profile[], base: string): string {
+  if (!profiles.some((profile) => profile.name === base)) return base
+  let candidate = `${base} 副本`
+  let copy = 2
+  while (profiles.some((profile) => profile.name === candidate)) {
+    candidate = `${base} 副本 ${copy}`
+    copy += 1
+  }
+  return candidate
+}
+
+/** 直接点「新建档位」:全启用模板(组/工具/上下文/段/通道都按默认注入)。 */
+function allOnProfile(id: string, name: string): Profile {
+  return {
+    id,
+    name,
+    description: '',
+    prompt: {
+      prefix: { enabled: true, override: false, text: '' },
+      suffix: { enabled: true, override: false, text: '' },
+    },
+    contexts: {},
+    sections: {},
+    channels: {},
+    groups: {},
+    servers: {},
+    tools: {},
+    summaries: {},
+  }
+}
+
+/** 从插件内置预设复制:换 custom id 与不撞名称,其余字段原样深拷贝。 */
+function copyOfPreset(preset: Profile, profiles: Profile[]): Profile {
+  const copy = JSON.parse(JSON.stringify(preset)) as Profile
+  copy.id = nextProfileId(profiles)
+  copy.name = uniqueProfileName(profiles, preset.name)
+  return copy
+}
+
 export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const snapshot = useSnapshot()
   const error = useError()
@@ -52,6 +105,15 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const [status, setStatus] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewMode, setPreviewMode] = useState<string | null>(null)
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false)
+  const presetAnchor = useRef<HTMLButtonElement | null>(null)
+  const presetCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 悬停下拉读的是宿主快照里的当前插件内置预设,不是 state.profiles 里的已安装档位。
+  const defaultPresets = snapshot?.defaults ?? []
+
+  useEffect(() => () => {
+    if (presetCloseTimer.current) clearTimeout(presetCloseTimer.current)
+  }, [])
 
   useEffect(() => {
     if (!snapshot) return
@@ -151,39 +213,50 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     [patch, toolsByGroup],
   )
 
+  const cancelPresetClose = useCallback(() => {
+    if (!presetCloseTimer.current) return
+    clearTimeout(presetCloseTimer.current)
+    presetCloseTimer.current = null
+  }, [])
+
+  const closePresetMenu = useCallback(() => {
+    cancelPresetClose()
+    setPresetMenuOpen(false)
+  }, [cancelPresetClose])
+
+  const openPresetMenu = useCallback(() => {
+    if (defaultPresets.length === 0) return
+    cancelPresetClose()
+    setPresetMenuOpen(true)
+  }, [defaultPresets.length, cancelPresetClose])
+
+  // 指针从触发器移到 portal 菜单要跨过 4px 间隙:延后关闭,菜单的 mouseenter 会取消。
+  const schedulePresetClose = useCallback(() => {
+    cancelPresetClose()
+    presetCloseTimer.current = setTimeout(() => {
+      presetCloseTimer.current = null
+      setPresetMenuOpen(false)
+    }, 140)
+  }, [cancelPresetClose])
+
   const addProfile = useCallback(() => {
     if (!draft) return
-    let index = draft.profiles.length + 1
-    let id = `custom-${index}`
-    while (draft.profiles.some((item) => item.id === id)) {
-      index += 1
-      id = `custom-${index}`
-    }
-    setDraft({
-      ...draft,
-      profiles: [
-        ...draft.profiles,
-        {
-          id,
-          name: `档位 ${index}`,
-          description: '',
-          prompt: {
-            prefix: { enabled: true, override: false, text: '' },
-            suffix: { enabled: true, override: false, text: '' },
-          },
-          contexts: {},
-          sections: {},
-          channels: {},
-          groups: {},
-          servers: {},
-          tools: {},
-          summaries: {},
-        },
-      ],
-    })
+    const id = nextProfileId(draft.profiles)
+    const next = allOnProfile(id, `档位 ${id.slice('custom-'.length)}`)
+    setDraft({ ...draft, profiles: [...draft.profiles, next] })
     setSelectedId(id)
     setStatus(null)
-  }, [draft])
+    closePresetMenu()
+  }, [draft, closePresetMenu])
+
+  const addProfileFromPreset = useCallback((preset: Profile) => {
+    if (!draft) return
+    const next = copyOfPreset(preset, draft.profiles)
+    setDraft({ ...draft, profiles: [...draft.profiles, next] })
+    setSelectedId(next.id)
+    setStatus(null)
+    closePresetMenu()
+  }, [draft, closePresetMenu])
 
   const removeProfile = useCallback(() => {
     if (!draft || draft.profiles.length <= 1) return
@@ -337,7 +410,64 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
               label: '档位',
             }),
           ),
-          h('button', { className: styles.link, type: 'button', onClick: addProfile }, '+ 新建档位'),
+          h(
+            'div',
+            {
+              className: styles.newProfile,
+              onMouseEnter: openPresetMenu,
+              onMouseLeave: schedulePresetClose,
+            },
+            h(
+              'button',
+              {
+                ref: presetAnchor,
+                className: styles.link,
+                type: 'button',
+                onClick: addProfile,
+                'aria-haspopup': defaultPresets.length > 0 ? 'menu' : undefined,
+                'aria-expanded': presetMenuOpen,
+                title: defaultPresets.length > 0 ? '点击新建全启用档位；悬停选择插件内置预设' : '新建全启用档位',
+              },
+              '+ 新建档位',
+              defaultPresets.length > 0 ? h('span', { className: styles.caret, 'aria-hidden': 'true' }, '▾') : null,
+            ),
+            presetMenuOpen && defaultPresets.length > 0
+              ? h(
+                  Popover,
+                  {
+                    anchor: presetAnchor,
+                    onClose: closePresetMenu,
+                    onMouseEnter: cancelPresetClose,
+                    onMouseLeave: schedulePresetClose,
+                    label: '从插件内置预设新建档位',
+                  },
+                  h(
+                    'div',
+                    { className: menuStyles.menuHead },
+                    '从插件内置预设新建',
+                    h('span', { className: menuStyles.menuNote }, '复制为新档位'),
+                  ),
+                  ...defaultPresets.map((preset) => h(
+                    'button',
+                    {
+                      key: preset.id,
+                      className: menuStyles.row,
+                      type: 'button',
+                      role: 'menuitem',
+                      title: preset.description || preset.name,
+                      onClick: () => addProfileFromPreset(preset),
+                    },
+                    h(
+                      'span',
+                      { className: menuStyles.rowMain },
+                      h('span', { className: menuStyles.rowName }, preset.name),
+                      h('span', { className: menuStyles.rowDesc }, preset.description || '（无描述）'),
+                    ),
+                    h('span', { className: menuStyles.rowCount }, '内置'),
+                  )),
+                )
+              : null,
+          ),
           h('button', { className: styles.link, type: 'button', onClick: removeProfile, disabled: draft.profiles.length <= 1 }, '删除当前'),
         ),
         h(

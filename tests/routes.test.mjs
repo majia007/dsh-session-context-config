@@ -94,6 +94,14 @@ function harness() {
   return { routes, diagnostics }
 }
 
+test('snapshot:内置预设来自当前插件版本,不是已安装档位', async () => {
+  const { routes } = harness()
+  const snapshot = await routes.snapshot()
+  assert.deepEqual(snapshot.defaults.map((profile) => profile.id), ['full', 'lean', 'minimal', 'chat', 'pi'])
+  // 新建下拉复制的是这份模板,已安装 profiles 是另一条线。
+  assert.equal(snapshot.defaults.some((profile) => profile.prompt?.prefix?.override === true), true)
+})
+
 test('snapshot:段目录渲染模板、过滤空段与工具引导段', async () => {
   const { routes, diagnostics } = harness()
   const snapshot = await routes.snapshot()

@@ -115,7 +115,7 @@ test('占位定义带延迟标记，参数保留类型', () => {
 test('状态归一化：版本不符整份作废，重复 id 去掉，坏引用回落', () => {
   const base = defaultState()
   assert.equal(base.lastUsedId, 'none')
-  assert.equal(base.profiles.length, 3)
+  assert.equal(base.profiles.length, 5)
 
   assert.deepEqual(normalizeState({ version: 1, profiles: [{ id: 'x' }] }), base)
 

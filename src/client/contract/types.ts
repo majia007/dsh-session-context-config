@@ -103,6 +103,8 @@ export interface Snapshot {
   ok: boolean
   version: number
   profiles: Profile[]
+  /** 当前插件版本内置的默认预设(新建档位模板);旧宿主可能不返回。 */
+  defaults?: Profile[]
   lastUsedId: string
   sessions: Record<string, string>
   baseline: BaselineState

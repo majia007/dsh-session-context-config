@@ -1,4 +1,4 @@
-import { CHANNELS, DEFER, OFF, ON, VERSION, type ContextProfile } from './constants.ts'
+import { CHANNELS, DEFAULT_PROFILES, DEFER, OFF, ON, VERSION, type ContextProfile } from './constants.ts'
 import { createCatalog } from './catalog.ts'
 import { collectInjected, type InjectedChannel, type InjectedMessages } from './injected.ts'
 import { effectiveState, groupOf, serverOf } from './tools.ts'
@@ -316,6 +316,9 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
       ok: true,
       version: VERSION,
       profiles: state.profiles,
+      // 插件内置预设只作「新建档位」模板,不是已安装 state 的来源;面板悬停下拉
+      // 直接读这份当前插件版本的值,选中后复制成 custom-*。
+      defaults: DEFAULT_PROFILES,
       lastUsedId: state.lastUsedId,
       sessions: state.sessions,
       baseline: state.baseline,

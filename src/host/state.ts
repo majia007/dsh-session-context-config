@@ -240,10 +240,13 @@ export function normalizeState(raw: unknown): PluginState {
     seen.add(profile.id)
     return true
   })
-  // v2/v3 → v4:内置三档就地换新定义;自定义档位原样保留(不新增内置档位,
-  // 用户若删过某个内置档位,保持删除状态)。
+  // v2/v3 → v4:只替换旧版就有的内置三档;chat/pi 是新增的模板,只进首次安装
+  // 与面板「新建档位」下拉,不能注入旧状态(否则自建的同名 chat 会被顶掉)。
   if (record.version !== VERSION) {
-    const defaults = new Map(DEFAULT_PROFILES.map((profile) => [profile.id, profile]))
+    const legacyBuiltinIds = new Set(['full', 'lean', 'minimal'])
+    const defaults = new Map(DEFAULT_PROFILES
+      .filter((profile) => legacyBuiltinIds.has(profile.id))
+      .map((profile) => [profile.id, profile]))
     unique = unique.map((profile) => {
       const replacement = defaults.get(profile.id)
       return replacement === undefined ? profile : JSON.parse(JSON.stringify(replacement)) as ContextProfile

@@ -82,6 +82,8 @@ const snapshot = {
   ok: true,
   version: 4,
   profiles: [profile('standard', '完整', '标准档位，处理代码和资料'), profile('lean', '精简', '只留必要工具')],
+  // 新建档位下拉的模板来源:Host 快照里的当前插件内置预设,与已安装 profiles 分线。
+  defaults: [profile('pi', 'PI', '模拟 Pi'), profile('chat', 'Chat', '仅聊天')],
   lastUsedId: 'standard',
   sessions: { s1: 'standard' },
   baseline: { contract: true, cardReceipt: true, untrustedFiles: true, custom: false, customText: '' },
@@ -464,6 +466,29 @@ check('再切中文不重复请求', readRow?.querySelector('.cp-zhText')?.textC
 
 await click(baselineRows()[0]?.querySelector('.cp-segmentLabel'))
 check('关掉行为契约后按钮进入未保存态', panel.querySelector('.cp-footNote')?.textContent?.includes('未保存') === true)
+
+console.log('\n[panel] 新建档位下拉')
+const panelMenu = await mount('main')
+const newProfileButton = [...panelMenu.querySelectorAll('button')].find((button) => button.textContent?.includes('+ 新建档位'))
+check('新建按钮带下拉提示', newProfileButton?.getAttribute('aria-haspopup') === 'menu' && newProfileButton?.textContent?.includes('▾') === true, newProfileButton?.textContent)
+const tabsBeforeMenu = panelMenu.querySelectorAll('.cp-chipRow [role="tab"]').length
+// React 从 mouseover 合成 onMouseEnter,与 header chip 的悬停测试同一手法。
+await act(async () => { newProfileButton?.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true })) })
+await flush()
+const presetMenu = lastMenu()
+check('悬停展开内置预设菜单', presetMenu?.textContent?.includes('从插件内置预设新建') === true)
+const presetRows = [...(presetMenu?.querySelectorAll('.cp-row') ?? [])]
+check('菜单列出插件内置预设', presetRows.length === 2 && presetRows.map((row) => row.querySelector('.cp-rowName')?.textContent).join('/') === 'PI/Chat', presetRows.map((row) => row.querySelector('.cp-rowName')?.textContent).join('/'))
+await click(presetRows.find((row) => row.querySelector('.cp-rowName')?.textContent === 'PI'))
+const tabsAfterCopy = [...panelMenu.querySelectorAll('.cp-chipRow [role="tab"]')]
+check('选中预设后复制为新档位并选中', tabsAfterCopy.length === tabsBeforeMenu + 1 && tabsAfterCopy.some((tab) => tab.textContent === 'PI'), tabsAfterCopy.map((tab) => tab.textContent).join('/'))
+check('复制只改草稿,保存前不碰已安装档位', panelMenu.querySelector('.cp-footNote')?.textContent?.includes('未保存') === true)
+
+const panelBlank = await mount('main')
+const blankButton = [...panelBlank.querySelectorAll('button')].find((button) => button.textContent?.includes('+ 新建档位'))
+await click(blankButton)
+const blankTabs = [...panelBlank.querySelectorAll('.cp-chipRow [role="tab"]')]
+check('直接点击按钮 = 全启用预设新建', blankTabs.length === 3 && blankTabs.some((tab) => tab.textContent === '档位 3'), blankTabs.map((tab) => tab.textContent).join('/'))
 
 console.log('\n[session header] 会话头部 chip')
 // 回归守卫:sessionId 只能来自槽位渲染器传入的位置参数,不能依赖 ctx.sessions

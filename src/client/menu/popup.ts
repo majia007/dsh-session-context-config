@@ -3,11 +3,14 @@ import { createElement as h, useEffect, useLayoutEffect, useRef, useState, type 
 import { createPortal } from 'react-dom'
 import styles from './menu.module.css'
 
-export function Popover({ anchor, onClose, label, children }: {
+export function Popover({ anchor, onClose, label, children, onMouseEnter, onMouseLeave }: {
   anchor: { current: HTMLElement | null }
   onClose(): void
   label: string
   children?: ReactNode
+  /** 悬停型菜单用:指针进入/离开浮层时取消或重排关闭计时。 */
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
 }): ReactElement {
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
   const ref = useRef<HTMLDivElement | null>(null)
@@ -45,6 +48,8 @@ export function Popover({ anchor, onClose, label, children }: {
         ref,
         role: 'menu',
         'aria-label': label,
+        onMouseEnter,
+        onMouseLeave,
         style: pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999, visibility: 'hidden' },
       },
       children,

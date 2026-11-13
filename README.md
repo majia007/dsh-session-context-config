@@ -71,23 +71,24 @@ server = 隐藏     → 隐藏
 - **token 标签**：该工具定义的估算占用（`≈267`），用默认的描边灰标签，与状态标签并排；行尾不再有独立的 token 列。
 - **来源行**：名字下方一行灰字 `来源 · 会话桥`，回答「这个工具来自哪个插件」。插件包有本地化标题就用标题，否则用包短名；悬停可看完整包名、Loader 入口与判定方式（注册时捕获 / 官方工具目录 / 入口产物推断，推断结果带虚线下划线）。MCP 工具显示 `MCP · <server>`；宿主自带但当前版本定位不到实现包的显示 `DSH 内置`；证据不足时显示 `来源 · 未识别`，不猜。
 
-## 内置档位
+## 内置预设
 
-| 组 | 完整 | 精简 | 极简 |
-|---|---|---|---|
-| 文件 / 搜索 / 终端与任务 | 开启 | 开启 | 开启 |
-| 平台（工作目录、随包依赖路径、lsp） | 开启 | 开启 | **开启** |
-| 交互 / 技能与网络 / 协作 | 开启 | 开启 | 隐藏 |
-| 编排与计划 / 调度 / 目标 | 延迟 | 隐藏 | 隐藏 |
-| MCP / 其他（第三方工具） | 延迟 | 延迟 | 隐藏 |
-| 插件开发（`plugin_manager` / `cordis_*`） | 延迟 | 隐藏 | 隐藏 |
+`DEFAULT_PROFILES` 里有 5 个**新建档位模板**。它们只在首次安装（没有状态文件）时成为默认档位，以及通过配置页「+ 新建档位」悬停下拉复制成新档位；**已安装的 `session-context-config.json` 不会被这些常量自动改写**。v2/v3 旧状态迁移时也只替换旧版就有的 `full` / `lean` / `minimal`，不会把 `chat` / `pi` 塞进旧状态。
 
-- **完整**：全部能力可用，非常用能力（编排、目标、调度、MCP、第三方、插件开发）以「延迟」形式折叠，需要时由 `tool_search` 取回。
-- **精简**：在完整基础上隐藏编排与计划、调度、目标、插件开发；MCP 与第三方工具仍延迟。
-- **极简**：在精简基础上再隐藏交互、技能与网络、协作、MCP、第三方工具；只保留读写、搜索、终端与平台基础。
-- 工具引导段强绑定工具/组状态：`pwsh` / `jobs` / `goal` / `workflow` 等静态引导在工具或组隐藏时由 Host 自动移除（复合段 jobs/goal/schedule/session-query 看成员，至少一个成员开启/延迟才保留）；工具恢复后自动恢复。**不在面板单独配置**，隐藏状态由下方工具目录控制。
+| 预设 | 工具面 | 提示词 / 上下文 |
+|---|---|---|
+| 完整 | 文件、搜索、终端、交互、技能、平台开启；编排/目标/调度/MCP/第三方/插件开发/协作延迟 | 人设后缀为「工具与输出纪律」；全部上下文与段默认注入 |
+| 精简 | 在完整基础上隐藏调度与插件开发；编排/目标/协作延迟；MCP/第三方延迟 | 额外关闭 `app:web-surface` 与 `harness:source` 的上下文和段 |
+| 极简 | 文件、搜索、终端、技能、平台开启；交互/协作/编排/目标/调度/插件开发隐藏；MCP/第三方延迟 | 关闭沙箱/审批/子代理深度/环境事实/源码/Web 上下文，以及源码/Web 段 |
+| Chat | 全部组、工具、上下文、段隐藏 | 双人设槽关闭；工作区指令与时间采样两个通道关闭 |
+| PI | 只留 `read` / `write` / `edit` / `pwsh` / `read_image`，其余工具与组隐藏 | 用当前 Pi 短版初始提示词；关闭 DSH 身份、源码、Web、文件引用、MCP 资源等段；保留当前工作目录上下文 |
 
-状态版本为 v4：旧 v2/v3 状态读入时会**就地替换** `full` / `lean` / `minimal` 三个内置档位的定义（不新增缺失的内置档位），自定义档位、会话映射与 baseline 原样保留。
+- **完整 / 精简 / 极简** 的收尾纪律来自插件默认后缀，和档位本身一样可以在面板里改。
+- **Chat** 是「只聊天」模板：所有工具与运行时上下文关闭，适合纯对话。
+- **PI** 是 Pi 风格模拟，不是真正的 Pi：提示词按 Pi 当前 main 的短版冻结，工具名与参数改成了 DSH 的 `pwsh` 与 `old_string`；Pi 自指的文档段已去掉。DSH 仍会为保留的四个工具注入 `tool:*` 引导段（这些段强绑定工具状态，不能按档位单独关），沙箱/审批也仍然生效。Pi 的 `read` 内建图片能力在 DSH 拆成独立的 `read_image`，因此保留。
+- **新建档位**：直接点按钮使用「全启用」模板（所有组/工具/上下文/段默认注入）；悬停按钮出现下拉，列出当前插件版本的 5 个内置预设，选中后复制成 `custom-*` 新档位。两种方式都只改面板草稿，保存前不写状态文件，也不会切换当前会话的档位。
+
+状态版本为 v4：旧 v2/v3 状态读入时会**就地替换**旧版内置的 `full` / `lean` / `minimal`，自定义档位、会话映射与 baseline 原样保留。
 
 ## system 段开关（sections）
 
@@ -206,7 +207,9 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 `sessions` 是**一次性恢复记录**：写入后用于重开旧会话时恢复档位；`none` 表示“不处理”。映射有界保留最近 500 条，更旧的会话重开时回落 `lastUsedId`。
 
-版本 2/3 读入时自动迁移到 4：`prompt.mode` 的 `inherit` → `override:false`，`replace`/`complete` → `override:true`（文本保留；complete 的整段独占语义已移除），`sections` 默认空，`baseline.inCompletePrompt` 丢弃。人设从单个 `prompt.{enabled,override,text}` 扩成 `prompt.prefix` / `prompt.suffix` 两个槽位时，旧扁平字段整体迁到 `prefix`，`suffix` 默认 `{enabled:true, override:false, text:''}`（沿用部署）。v3→v4 还会**就地替换**三个内置档位的定义（新的分组拆分与默认延迟策略），自定义档位与 `sessions` 映射保留。
+`profiles` 是**已安装状态**；`DEFAULT_PROFILES` 只是首次安装与新建下拉的模板。两者是分开的：更新插件、重新安装 bundle、甚至升级包版本，都不会改写 `profiles`；只有 v2/v3 旧状态迁移会替换旧版内置的 `full` / `lean` / `minimal`，`chat` / `pi` 不会自动注入旧状态。要使用 Chat/PI 模板，请在配置页「+ 新建档位」的悬停下拉里选。
+
+版本 2/3 读入时自动迁移到 4：`prompt.mode` 的 `inherit` → `override:false`，`replace`/`complete` → `override:true`（文本保留；complete 的整段独占语义已移除），`sections` 默认空，`baseline.inCompletePrompt` 丢弃。人设从单个 `prompt.{enabled,override,text}` 扩成 `prompt.prefix` / `prompt.suffix` 两个槽位时，旧扁平字段整体迁到 `prefix`，`suffix` 默认 `{enabled:true, override:false, text:''}`（沿用部署）。v3→v4 还会**就地替换**旧版三个内置档位的定义（新的分组拆分与默认延迟策略），自定义档位与 `sessions` 映射保留。
 
 改名前这份文件叫 `context-profile.json`。首次启动会读旧文件、写新文件，然后把旧文件改名成 `context-profile.json.migrated`；已有档位与会话记录不会丢。要回滚旧版本，把 `.migrated` 改回原名即可。
 
@@ -214,7 +217,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 | 路由 | 用途 |
 |---|---|
-| `GET/POST /session-context-config/api/state` | 读快照 / 保存档位（`sections[].text` 与 `contexts[].text` 是实际注入正文，`channelsByProfile` 是按档位分组的两条已知通道最新正文，`observedChannelsByProfile` 是按档位分组的注入消息清单；`tools[].source` 带来源标注，`sources` 是解析诊断计数） |
+| `GET/POST /session-context-config/api/state` | 读快照 / 保存档位（`sections[].text` 与 `contexts[].text` 是实际注入正文，`defaults` 是当前插件版本的内置预设模板，`channelsByProfile` 是按档位分组的两条已知通道最新正文，`observedChannelsByProfile` 是按档位分组的注入消息清单；`tools[].source` 带来源标注，`sources` 是解析诊断计数） |
 | `GET /session-context-config/api/session?id=` | 某会话的逐工具状态（注入 / 延迟 / 隐藏 / 已取定义） |
 | `POST /session-context-config/api/session` | 为某会话选定档位（`none` = 不处理） |
 | `GET /session-context-config/api/preview?id=&profile=` | 干跑：某档位在该会话下的注入/延迟/隐藏清单 |
@@ -235,6 +238,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 | 上下文逐项开关 | 只关 `harness:source` 时，`contexts`/`refreshedContexts` 无该段、其余仍在；关 `working-directory:current` 时两者都无 cwd；环境事实开启时 180 字符（真机） |
 | system 段逐项开关 | 单测 + 冒烟：关 `harness:identity` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单；`tool:*` 随工具/组隐藏自动移除，不出现在可配置列表 |
 | 配置页结构 | 冒烟：按消息五张卡（system/快照/工作区指令/时间采样/其他注入消息）；人设 checkbox + 输入框；快照已知 8 项 + 动态发现项；两条通道各一行 checkbox + 说明；自动清单每行 checkbox 可按 kind 关闭；各行 `title` 给出注入正文 |
+| 新建档位下拉 | 真机 + 冒烟：悬停列出 full/lean/minimal/chat/pi；选中 PI 复制为 `custom-*`，面板显示注入 5 / 隐藏 45；保存前状态文件与 `lastUsedId` 不变 |
 | 通道过滤顺序 | 会话 `session-f6a33b8a…` 真机实证：Chat 档 channels 全 off、tools=0、system 为空，但仍漏一条 `time-context` user 消息。根因是 preset 的 `prepend` 监听器晚于全局过滤器注册、反包住过滤器；修复为 `agent/created` 时按 agent 再注册（回归 `tests/channels.test.mjs`） |
 | 客户端 | bundle 已进 boot graph |
 
@@ -251,6 +255,8 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 - 运行时上下文/系统段的名字由一次干跑装配动态发现：**当前没出现、也没被关掉的空条件段不会占行**；需要提前配置一个尚未触发的条件段时，先让它在会话里出现一次。
 - 自动发现清单的 kind 开关是档位级；关闭 `subagent-settled` / `compact-checkpoint` / `runtime-context` 这类运行期消息会让对应插件收不到自己的通知，只在明确知道作用时关。
 - 工作区指令只能整组关：宿主已把同一批 AGENTS.md/CLAUDE.md 拼成一条 `<system-reminder>`，无法按文件过滤；要排除某类文件名只能在部署级配 `instructionFileCandidates` / `maxBytes`。
+- PI 是**模拟档位**，不是真正的 Pi：`read/write/edit/pwsh/read_image` 之外的 DSH 工具会被隐藏，但 DSH 仍会为保留的工具注入 `tool:*` 引导段（这些段强绑定工具状态，不能按档位单独关）；沙箱/审批策略也仍然生效，只是对应的运行时上下文可以被关掉。
+- 新建下拉的预设来自 `/api/state` 的 `defaults`（当前插件版本），不是 state 里的已安装档位；复制结果是 `custom-*` 新档位，保存前只存在于面板草稿，不会改当前会话或已安装状态。
 
 ## 开发文档
 

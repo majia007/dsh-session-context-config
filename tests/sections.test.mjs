@@ -122,10 +122,27 @@ test('v3 → v4:内置三档换新定义,自定义档位与会话保留', () => 
   })
   assert.equal(state.version, 4)
   assert.deepEqual(state.profiles.map((profile) => profile.id), ['full', 'lean', 'minimal', 'custom-1'])
-  assert.deepEqual(state.profiles[0].groups, { workflow: 'defer', goal: 'defer', schedule: 'defer', mcp: 'defer', devtools: 'defer', other: 'defer' })
+  // 迁移只替换已存在的内置三档,不凭空补 chat/pi;两者是新建下拉的模板。
+  assert.equal(state.profiles.some((profile) => profile.id === 'chat'), false)
+  assert.equal(state.profiles.some((profile) => profile.id === 'pi'), false)
+  assert.deepEqual(state.profiles[0].groups, {
+    workflow: 'defer',
+    goal: 'defer',
+    schedule: 'defer',
+    mcp: 'defer',
+    devtools: 'defer',
+    other: 'defer',
+    delegation: 'defer',
+  })
   assert.deepEqual(state.profiles[2].groups, {
-    interaction: 'off', skill: 'off', delegation: 'off', workflow: 'off', goal: 'off',
-    schedule: 'off', mcp: 'off', devtools: 'off', other: 'off',
+    delegation: 'off',
+    workflow: 'off',
+    goal: 'off',
+    schedule: 'off',
+    mcp: 'defer',
+    devtools: 'off',
+    other: 'defer',
+    interaction: 'off',
   })
   assert.equal(state.profiles[3].name, 'Chat')
   assert.equal(state.sessions.s1, 'custom-1')
