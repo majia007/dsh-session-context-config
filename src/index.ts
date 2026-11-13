@@ -188,6 +188,44 @@ export function apply(ctx: HostContext): void {
 
   // 全局过滤器与 agent 作用域过滤器会各看一遍同一批消息,按对象身份去重,避免计数翻倍。
   const observedMessages = new WeakSet<object>()
+
+  /** 消息里的文本块;技能注入只有一块,工具结果也可能带正文。 */
+  function textBlocks(message: unknown): string[] {
+    const content = (message as { content?: unknown } | null)?.content
+    if (!Array.isArray(content)) return []
+    const texts: string[] = []
+    for (const block of content) {
+      const item = block as { type?: unknown; text?: unknown }
+      if (item?.type === 'text' && typeof item.text === 'string' && item.text.length > 0) texts.push(item.text)
+    }
+    return texts
+  }
+
+  /**
+   * 本会话「将要发送」的历史里出现过的文本块,供技能注入去重比对。
+   *
+   * 必须用 `session.deriveMessages()` 而不是会话日志:它只走 surface 派生,压缩/替换掉的
+   * 节点不在结果里——正文已被压缩掉时这里就查不到,注入照旧补上(绝不丢指令)。
+   * 拿不到会话或派生失败时返回 null(= 不做去重):宁可重复,不误删。
+   * 原样经 `call` 调用,避免方法解构后丢 this。
+   */
+  function visibleTexts(agent: AgentLike): Set<string> | null {
+    const session = agent.session
+    const derive = session?.deriveMessages
+    if (typeof derive !== 'function') return null
+    let messages: unknown
+    try {
+      messages = derive.call(session)
+    } catch (error) {
+      note('deriveMessages', error)
+      return null
+    }
+    if (!Array.isArray(messages)) return null
+    const texts = new Set<string>()
+    for (const message of messages) for (const text of textBlocks(message)) texts.add(text)
+    return texts
+  }
+
   const channelFilter = (async (...args: never[]) => {
     const payload = args[0] as { agent?: AgentLike; signal?: AbortSignal | undefined }
     const next = args[1] as () => Promise<{ kind?: unknown; messages: Array<{ role?: unknown; source?: { kind?: unknown }; content?: unknown }> }>
@@ -216,8 +254,20 @@ export function apply(ctx: HostContext): void {
     for (const [kind, state] of Object.entries(channels)) {
       if (state === OFF && !knownIds.has(kind)) blocked.add(kind)
     }
-    if (blocked.size === 0) return decision
-    const messages = decision.messages.filter((message) => !blocked.has(message?.source?.kind))
+    let messages = blocked.size === 0
+      ? decision.messages
+      : decision.messages.filter((message) => !blocked.has(message?.source?.kind))
+    // 技能注入去重(档位开关,默认注入):injectDuplicateSkills=false 时,同正文已在可见
+    // 历史里就跳过这次注入。判据是正文逐字相等——skill 工具结果与手势注入共用
+    // renderSkillContent,同一技能就是同一串文本。
+    const injectDuplicates = (profile as { injectDuplicateSkills?: unknown } | null)?.injectDuplicateSkills !== false
+    if (!injectDuplicates && messages.some((message) => message?.source?.kind === 'skill-invocation')) {
+      const visible = visibleTexts(payload.agent)
+      if (visible) {
+        messages = messages.filter((message) => message?.source?.kind !== 'skill-invocation'
+          || !textBlocks(message).some((text) => visible.has(text)))
+      }
+    }
     return messages.length === decision.messages.length ? decision : { ...decision, messages }
   }) as unknown as (...args: never[]) => unknown
 

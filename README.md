@@ -31,6 +31,7 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
   sections: { 'harness:source': false },                    // system 段逐项开关：只记关掉的项
   baseline: { contract: true, cardReceipt: true, untrustedFiles: true, custom: false, customText: '' }, // 本档位的附加规则
   channels: { timeContext: 'off' },                         // 可选：请求层拦截注入通道
+  injectDuplicateSkills: true,                              // 可选：注入重复触发的 skill；false = 同一份正文不再重复注入
   summaries: { mcp: '…' }                                   // 兼容保留：面板不再编辑，Host 仍按它生成延迟占位摘要
 }
 ```
@@ -96,7 +97,7 @@ server = 隐藏     → 隐藏
 
 ## system 段开关（sections）
 
-配置页按**最终请求里的消息**分卡：`系统提示词`、`运行时上下文快照`、`工作区指令`、`时间采样`、`其他注入消息（自动发现）`（角色由卡片右上角的 `role: developer` / `role: user` 标签表达）。每张卡里可单独配置的项都保留「checkbox + 内容说明」的统一格式；自动发现的每个 kind 也可按行关闭。
+配置页按**最终请求里的消息**分卡：`系统提示词`、`运行时上下文快照`、`工作区指令`、`时间采样`、`注入去重`、`其他注入消息（自动发现）`（角色由卡片右上角的 `role: developer` / `role: user` 标签表达）。每张卡里可单独配置的项都保留「checkbox + 内容说明」的统一格式；自动发现的每个 kind 也可按行关闭。
 
 `system 消息` 卡内：
 
@@ -119,7 +120,7 @@ server = 隐藏     → 隐藏
 
 所以 DSH 升级或新装插件带来新的 system 段、运行时上下文、工具或注入消息时，不需要改本插件代码；重新打开面板（或点「重新读取」）就会看到。已知中文名/说明只决定呈现质量，不决定是否出现。
 
-调用时机：**不是按模型请求或定时器跑的**。快照在以下场景计算：页面首次挂载用到快照的组件（面板或 chip，store 为空时一次）、手动「重新读取」、保存（POST 响应带快照）、切换档位（`/api/session` POST 响应带快照）。同一页面内快照由 client store 复用，不轮询。单次最多 8 份装配；工具目录另有 15 秒缓存。版本/插件变化不会主动触发重算，下次拉快照时自然看到新内容。
+调用时机：**不是按模型请求或定时器跑的**。快照在以下场景计算：页面首次挂载用到快照的组件（面板或 chip，store 为空时一次）、手动「重新读取」、保存（POST 响应带快照）、切换档位（`/api/session` POST 响应带快照）。「重新读取」会丢弃面板里所有未保存改动，按最新快照重建草稿；其它外部快照更新（如 chip 切档位）不会覆盖有未保存改动的草稿。同一页面内快照由 client store 复用，不轮询。单次最多 8 份装配；工具目录另有 15 秒缓存。版本/插件变化不会主动触发重算，下次拉快照时自然看到新内容。
 
 ## 工具说明中文显示
 
@@ -197,6 +198,19 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 - **自动发现清单**：面板在两张通道卡下方列出**当前档位**的 live 根会话里观察到的其它 user 消息来源（`source.kind`，含第三方插件），按 kind 聚合次数并给出最近一次正文。来源是组内会话历史 + `agent/pre-step` 运行时观察（被通道关掉的消息也会被记下），新版本/新插件开始注入后自动出现。**每行可关闭**：写 `channels[kind]='off'`，Host 的 pre-step 过滤器按同一键剔除；已知两条通道仍走上面的专用卡。列表底部还可以**手动输入一个 kind** 提前关闭（当前会话还没出现过的来源也能先拦住，会以「手动」行保留在配置里）。运行期消息可能承载插件状态同步（子代理完成、压缩检查点、目标轮次），不确定就保持开启。
 - **`kind` 与 `channels` 的区别**：`source.kind` 是消息上的来源标签（如 `agent-message`、`compact-checkpoint`、`runtime-context`、`skill-catalog`）；`profile.channels` 是开关表，键是 kind、值是 `'off'`。已知两条通道的键是界面 id（`workspaceInstructions` / `timeContext`），Host 会映射到 `agent-instructions` / `time-context`；其余键直接当作 `source.kind`。所以「关掉某个 kind」= 往 `channels` 里写这个 kind。
 - 已知通道行的 `title` 显示最近一次注入正文；通道关闭时提示「后续请求会滤掉该来源」。
+
+## 技能注入去重（injectDuplicateSkills）
+
+模型已经用 `skill` 工具加载过某个技能后，如果你又在消息里写了 `/技能名`，宿主的用户手势会再注入一整份同样的正文——上下文里就出现两份。默认保持宿主行为（照常注入）；取消勾选后，重复的那一份不再追加：
+
+```js
+injectDuplicateSkills: false   // 默认 true
+```
+
+- 只去掉重复的那一份：模型已经能看到同一份正文时，用户手势注入的那份跳过；历史里没有（例如已被上下文压缩掉）就照常注入，不会少指令。
+- 只影响用户 `/技能名` 手势注入；模型自己调 `skill` 工具的结果、以及只能由用户触发的技能不受影响。
+- 与 `channels` 按来源关闭互不冲突，可以同时使用。
+- 配置页在「注入去重」卡里，开关名「注入重复触发的 skill」且默认勾选：勾选=按宿主默认注入，取消=不重复注入；属于档位配置，子代理不套用。旧状态里的 `dedupeSkillInjection: true` 读入时按相反语义迁移成 `injectDuplicateSkills: false`。
 
 ## 数据
 

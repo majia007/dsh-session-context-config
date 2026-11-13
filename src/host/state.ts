@@ -161,6 +161,10 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
     /** 旧字段:workingDirectory:false = 当前工作目录关闭。 */
     workingDirectory?: unknown
     channels?: unknown
+    /** 是否注入重复触发的 skill;缺省=true(与宿主默认一致)。 */
+    injectDuplicateSkills?: unknown
+    /** 旧字段(语义相反):dedupeSkillInjection=true 表示不重复注入。 */
+    dedupeSkillInjection?: unknown
     groups?: unknown
     servers?: unknown
     tools?: unknown
@@ -216,6 +220,10 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
     contexts,
     sections: normalizeSections(record?.sections),
     channels: normalizeChannels(record?.channels),
+    // 旧字段语义相反:dedupeSkillInjection=true 迁移成「不注入重复正文」,其余按默认注入。
+    injectDuplicateSkills: typeof record?.injectDuplicateSkills === 'boolean'
+      ? record.injectDuplicateSkills
+      : record?.dedupeSkillInjection !== true,
     groups: normalizeGroupStates(record?.groups),
     servers: normalizeGroupStates(record?.servers),
     tools: normalizeToolStates(record?.tools, TOOL_STATES),

@@ -11,7 +11,7 @@ import { loadSnapshot, request, setSnapshot, emit } from '../state/store.ts'
 import { effective, formatTokens, NONE, ON, presetNames, statsFor } from '../state/resolve.ts'
 import type { CatalogTool, Profile, Snapshot } from '../contract/types.ts'
 import { GROUP_STATES, CHANNEL_CARDS } from './options.ts'
-import { ChannelCard, ObservedMessagesCard, SectionHeading, SnapshotCard, SystemMessageCard } from './cards.ts'
+import { ChannelCard, ObservedMessagesCard, SectionHeading, SkillDedupeCard, SnapshotCard, SystemMessageCard } from './cards.ts'
 import { DEFAULT_BASELINE, draftOf, type PanelDraft } from './draft.ts'
 import { stateTag, toolRow } from './group-cards.ts'
 import { PreviewDialog } from './PreviewDialog.ts'
@@ -92,7 +92,8 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const error = useError()
   const [draft, setDraft] = useState<PanelDraft | null>(null)
   // 「干净锚点」:草稿最近一次从快照派生(或保存成功)时的序列化镜像。
-  // 草稿与锚点一致 = 干净,快照更新时跟随重建;不一致 = 用户改过,冻结等保存(「重新读取」也不丢弃未保存改动)。
+  // 草稿与锚点一致 = 干净,快照更新时跟随重建;不一致 = 用户改过,冻结等保存。
+  // 「重新读取」不走这条冻结路径:它是显式丢弃入口,见 reload。
   const [anchor, setAnchor] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -286,6 +287,27 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     }
   }, [draft])
 
+  // 「重新读取」= 放弃草稿:所有未保存修改一律丢弃,按最新快照重建。外部快照更新(如
+  // chip 切档位)不经过这里,仍由上面的 effect 冻结脏草稿。
+  const reload = useCallback(async () => {
+    setBusy(true)
+    try {
+      const fresh = await loadSnapshot(true)
+      const next = draftOf(fresh)
+      setAnchor(JSON.stringify(next))
+      setDraft(next)
+      setSelectedId((current) => {
+        const ids = next.profiles.map((item) => item.id)
+        return current && ids.includes(current) ? current : (ids[0] ?? null)
+      })
+      setStatus(null)
+    } catch {
+      // 读取失败时 store 的错误会让面板切到错误卡;草稿留在组件里,不让读失败顺带清掉。
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
   if (error) {
     return h(
       'div',
@@ -293,7 +315,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
       h(
         'div',
         { className: styles.scroll },
-        h('div', { className: styles.card }, h('p', { className: styles.error }, error), h('button', { className: styles.btn, onClick: () => loadSnapshot(true), style: { marginTop: 10 } }, '重试')),
+        h('div', { className: styles.card }, h('p', { className: styles.error }, error), h('button', { className: styles.btn, onClick: reload, style: { marginTop: 10 } }, '重试')),
       ),
     )
   }
@@ -538,6 +560,8 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         preview: snapshot.channelsByProfile?.[profile.id]?.[option.key],
       })),
 
+      h(SkillDedupeCard, { profile, patch }),
+
       h(ObservedMessagesCard, {
         observed: snapshot.observedChannelsByProfile?.[profile.id] ?? [],
         liveCount: snapshot.live?.filter((item) => item.profileId === profile.id).length ?? 0,
@@ -563,7 +587,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
                 ? '上面的诊断来自宿主工具目录枚举；修复后点「重新读取」。'
                 : '宿主没有返回工具表；确认已配置 agent preset 后点「重新读取」。',
             ),
-            h('button', { className: `${styles.btn} ${styles.cardAction}`, type: 'button', onClick: () => loadSnapshot(true) }, '重新读取'),
+            h('button', { className: `${styles.btn} ${styles.cardAction}`, type: 'button', onClick: reload }, '重新读取'),
           )
         : null,
 
@@ -581,7 +605,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
       'footer',
       { className: styles.foot },
       h('div', { className: styles.footNote }, status ?? (dirty ? '有未保存的改动' : '已保存')),
-      h('button', { className: styles.btn, type: 'button', onClick: () => loadSnapshot(true), disabled: busy }, '重新读取'),
+      h('button', { className: styles.btn, type: 'button', onClick: reload, disabled: busy }, '重新读取'),
       h('button', { className: styles.btn, 'data-kind': 'primary', type: 'button', onClick: save, disabled: busy || !dirty }, busy ? '保存中…' : '保存'),
     ),
     previewOpen ? h(PreviewDialog, { profile, snapshot, onClose: () => setPreviewOpen(false) }) : null,

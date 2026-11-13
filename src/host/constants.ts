@@ -40,6 +40,8 @@ export interface ContextProfile {
   /** 本档位的附加规则(四段);子代理跟随所属根会话的档位。 */
   baseline: BaselineFlags
   channels: Record<string, string>
+  /** 是否注入用户 `/技能名` 手势触发的重复技能正文:默认 true(与宿主行为一致);false 时同一份正文已在可见历史里就不再追加。 */
+  injectDuplicateSkills: boolean
   groups: Record<string, string>
   servers: Record<string, string>
   tools: Record<string, string>
@@ -207,6 +209,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     sections: {},
     baseline: defaultBaseline(),
     channels: {},
+    injectDuplicateSkills: true,
     groups: { workflow: DEFER, goal: DEFER, schedule: DEFER, mcp: DEFER, devtools: DEFER, other: DEFER },
     servers: {},
     tools: {},
@@ -221,6 +224,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     sections: {},
     baseline: defaultBaseline(),
     channels: {},
+    injectDuplicateSkills: true,
     groups: { workflow: OFF, goal: OFF, schedule: OFF, mcp: DEFER, devtools: OFF, other: DEFER },
     servers: {},
     tools: {},
@@ -235,6 +239,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     sections: {},
     baseline: defaultBaseline(),
     channels: {},
+    injectDuplicateSkills: true,
     groups: {
       interaction: OFF,
       skill: OFF,
@@ -267,6 +272,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
       'subagent:identity': false,
     },
     channels: { workspaceInstructions: OFF, timeContext: OFF },
+    injectDuplicateSkills: true,
     sections: {
       'harness:source': false,
       'app:web-surface': false,
@@ -320,6 +326,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     },
     baseline: offBaseline(),
     channels: { 'skill-catalog': OFF },
+    injectDuplicateSkills: true,
     groups: {
       search: OFF,
       interaction: OFF,

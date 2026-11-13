@@ -535,3 +535,32 @@ export function ObservedMessagesCard({ observed, liveCount, profile, patch }: {
     ),
   )
 }
+
+/**
+ * 跨来源技能注入去重:用户消息里写 `/技能名` 会无条件注入整份技能正文(宿主 tool-skill
+ * 的 pre-step 手势),模型此前若已用 `skill` 工具加载过同一技能,正文就会出现两次。
+ *
+ * 开关按档位保存,只作用于该档位的根会话;Host 按「可见历史」判定,压缩掉的不算。
+ * 勾选语义与其它开关一致:勾选=注入(默认,与宿主行为一致),取消=不再重复注入。
+ */
+export function SkillDedupeCard({ profile, patch }: { profile: Profile; patch: Patch }): ReactElement {
+  const on = profile.injectDuplicateSkills !== false
+  return h(
+    MessageCard,
+    {
+      role: 'user',
+      title: '注入去重',
+      note: '用户消息里出现 /技能名 时宿主会无条件注入整份正文；若模型此前已用 skill 工具加载过同一技能，这份正文就会在上下文里出现两次。默认保持宿主的注入行为；取消勾选后，正文已在本会话可见历史里时跳过这次注入，被压缩或替换掉的正文不算，会重新注入。只对当前档位生效。',
+    },
+    h(SegmentRow, {
+      checked: on,
+      onChange: (checked) => patch((target) => {
+        target.injectDuplicateSkills = checked
+      }),
+      title: h('span', { className: styles.segmentLabel }, '注入重复触发的 skill'),
+      desc: '勾选时按宿主默认行为注入（可能与已加载的正文重复）；取消后同一份技能正文只留一份。只拦用户 /技能名 手势注入的那一份；模型自己调 skill 工具的结果不受影响，只能由用户触发的技能也不会被误删。',
+      meta: on ? '默认行为' : '不重复注入',
+      tooltip: '判定依据是本会话将要发送的历史（deriveMessages）：压缩或替换掉的正文不在其中，所以被压缩后会重新注入；拿不到历史时不去重（宁可重复，不丢指令）。',
+    }),
+  )
+}

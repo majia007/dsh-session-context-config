@@ -49,6 +49,8 @@ export interface Profile {
   /** 本档位的附加规则;旧宿主快照可能没有。 */
   baseline?: BaselineState
   channels: Record<string, string>
+  /** 本档位是否注入重复触发的 skill;缺省(旧宿主快照)按注入处理,false=不重复注入。 */
+  injectDuplicateSkills?: boolean
   groups: Record<string, string>
   servers: Record<string, string>
   tools: Record<string, string>

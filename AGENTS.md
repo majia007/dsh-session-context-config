@@ -10,7 +10,7 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 | 文件 | 职责 |
 |---|---|
-| `src/index.ts` | Host 半边插件面：name/inject/apply + 装配（附加规则 per-agent 注册、webServer 路由、agent/created·disposed、tools/change、通道拦截 pre-step、运行时上下文与 system 段逐项过滤、重装载补、teardown） |
+| `src/index.ts` | Host 半边插件面：name/inject/apply + 装配（附加规则 per-agent 注册、webServer 路由、agent/created·disposed、tools/change、通道拦截 pre-step、技能注入去重、运行时上下文与 system 段逐项过滤、重装载补、teardown） |
 | `src/types.ts` | 宿主服务面最小结构声明（镜像 checkout 形状，未验证字段不写） |
 | `src/baseline.ts` | 附加规则层（界面名；代码沿用 baseline）：行为契约/卡片回执/不可信下载三段固定提示词 + 可勾选的自定义文本；默认值/归一化/文本快照 |
 | `src/host/baseline-runtime.ts` | 附加规则的 per-agent 注册面：四段注册进 agent scope 遮住全局兜底；根会话读所属档位，子代理沿 `header.parentSession` 跟随根档位 |
@@ -36,7 +36,7 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 | `src/client/panel/` | 配置面板（ConfigPanel/cards/draft/group-cards/PreviewDialog/options/ToolDescription/translations）+ `panel.module.css`；「+ 新建档位」直接点击建全启用档位、悬停出下拉从 `snapshot.defaults` 复制内置预设；`draft.ts` 从快照派生草稿，旧快照缺 `profile.baseline` 时用顶层 `baseline` 兜底（不用模板默认值）；`cards.ts` 按最终请求的消息分卡（系统提示词/快照/工作区指令/时间采样/自动发现的其他注入消息），行的 `title` 统一放实际注入正文；`options.ts` 的 `CONTEXT_SWITCHES` 只是**已知**上下文的元数据（真正的名单由快照 `contexts` 动态补齐），`CHANNEL_CARDS`、`SECTION_OPTIONS` 同理；`translations.ts` 是已知工具的**内置中文**（key=原始描述文本），`ToolDescription.ts` 是「文A」原文/中文切换与按需翻译 loading |
 | `src/client/chips/` | 新会话 chip（`conversation.hero.options`）+ 会话头部 chip（`conversation.session.header.actions`，紧跟「模式」标签）+ 共用 picker |
 | `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-workspace-sidebar/AGENTS.md`「与官方 preset 的偏差」） |
-| `tests/` | 直读 src 的单元测试：host 纯函数、附加规则快照、环境事实（`host/environment-facts.ts`）、不可信下载规则可执行性、v2/v3→v4 结构迁移（不改档位值）、5 个默认预设的字段与 PI 工具面（`defaults.test.mjs`）、附加规则按档位与子代理跟随（`baseline-runtime.test.mjs`）、面板草稿的旧快照 baseline 兜底（`draft.test.mjs`）、人设开关/覆盖、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏（组/单工具/复合成员/延迟）、上下文开关/影子、`/api/state` 快照的 `defaults`/自动发现形状与按档位分组（`routes.test.mjs`）、注入消息分桶（`injected.test.mjs`）、工具来源解析（`sources.test.mjs`） |
+| `tests/` | 直读 src 的单元测试：host 纯函数、附加规则快照、环境事实（`host/environment-facts.ts`）、不可信下载规则可执行性、v2/v3→v4 结构迁移（不改档位值）、5 个默认预设的字段与 PI 工具面（`defaults.test.mjs`）、附加规则按档位与子代理跟随（`baseline-runtime.test.mjs`）、面板草稿的旧快照 baseline 兜底（`draft.test.mjs`）、人设开关/覆盖、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏（组/单工具/复合成员/延迟）、上下文开关/影子、`/api/state` 快照的 `defaults`/自动发现形状与按档位分组（`routes.test.mjs`）、注入消息分桶（`injected.test.mjs`）、工具来源解析（`sources.test.mjs`）、技能注入去重（`dedupe.test.mjs`） |
 | `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 lib/client.js，喂假快照渲染面板与两个 chip 并点击；覆盖「+ 新建档位」悬停下拉与预设复制 |
 | `scripts/gen-known-tools.mjs` | 从 DSH checkout 的 `docs/tool-catalog.md` 生成 `src/host/known-tools.ts`（`DSH_SRC` 可覆盖 checkout 路径） |
 | `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 lib/client.js，验 id/槽位注册/样式注入/inject face |
@@ -87,6 +87,7 @@ node scripts/harness.mjs
 - **代码注释规范**：类/函数级注释写「职责 + 为什么这么设计」；行内只写这一处代码读不出的单点约束和取舍；不写逐行翻译、不写「从哪拆来的/以前怎样」这类过程记录。注释过时比没有更糟——读到与代码矛盾的注释当场以代码为准修或删。行内注释同样用中文。
 - 单点约束写进注释，跨文件规则写进本文档并互留锚点，同一约束不双份维护。
 - 本目录已是 git 仓库（origin 指向 GitHub）；提交时机是「阶段成果自验通过」时，而不是改完就提。不要自行 push。
+- **开关与默认值一律挂在档位（`ContextProfile`）下，不做全局配置**：面板编辑的是档位草稿，Host 按会话所属档位解析（`profileOf(agent)`）；顶层 state 只保留 `lastUsedId` / `sessions` / 顶层 `baseline` 兜底这些既有结构。新增开关（如 `injectDuplicateSkills`）照此办理——档位是用户唯一可见的配置面，全局开关既没有归属、也无法按会话区分。
 
 ## 核心机制要点
 
@@ -100,6 +101,8 @@ node scripts/harness.mjs
 - **附加规则与环境事实分离**：界面上的「附加规则」只保留三段固定提示词与一段自定义文本（勾选才注入，未勾选也可编辑，纯空白视同空段）；它按档位存 `profile.baseline`，根会话用自己档位，子代理沿 `parentSession` 跟随根档位（解析不到时用顶层 baseline 兜底）。环境事实是 `contexts` 里的 `session-context-config:environment`，按档位开关；子代理没有档位，环境事实默认保留。
 - **工具来源（面板显示，只读）**：宿主 tools 注册表**不记录注册者**（`register` 只存定义与一条 `tools.register()` effect），所以来源按四级证据解析：① 装载后包一层 `tools.register`，从**调用栈**第一个业务文件帧反查包（`host/sources.ts`；`this.ctx` 是调用方 ctx，但 agent 作用域的 fiber 会指到 `agent-preset-registry`，只有栈指向真正注册方）；② 官方工具目录静态表（`known-tools.ts`，与当前真正装载的入口求交；同名多实现如 `pwsh` 用工具描述在候选包里消歧）；③ 入口产物扫描（只取「确实注册过工具」的入口，只认唯一命中，面板标为推断）；④ MCP 命名约定（`mcp__<server>__` / `mcp_connector_`，比插件归属更有信息量，优先级最高）。都不命中显示「未识别」，不猜。面板在工具名下方显示短名（包本地化标题优先，否则包短名），tooltip 给完整包名、Loader 入口和判定依据；`/api/state` 的 `tools[].source` 与 `sources`（诊断计数）同步暴露。
 - **注入内容自动发现**：面板不维护段/上下文/消息的全量名单。每次 `/api/state` 对**每种 live preset 挑一个限制最少的根会话**干跑 `assemble({ sccFullSections: true })`（上限 8 份），按 name 合并段与上下文（先出现的顺序优先，空影子不覆盖另一档位的非空正文），变量按各自 `assembly.variables` 渲染；空段不列、`tool:*` 不列（强绑定工具状态，不单独配置）、空上下文保留。user 消息来源由 `host/injected.ts` 按**根会话实际归属的档位**分组（applied 优先，回落 `sessions` 记录；无档位归 `none`），组内合并 `deriveMessages()` 历史与 `agent/pre-step` 观察（被通道关掉的消息也记录），面板只取**当前选中档位**那一组。新版本/新插件新增的段、上下文或 user kind 会自动出现；只有呈现质量（中文名/说明）才需要补 `SECTION_OPTIONS` / `CONTEXT_SWITCHES`。**消息 kind 可关**：每行写 `profile.channels[kind]='off'`，Host 的 pre-step 过滤器按同一键剔除；列表底部可手动输入任意 kind 提前关闭（写入同一 `channels` 表，未观察到的以「手动」行保留），已知通道 id/来源拒绝重复添加。运行期消息可能承载状态同步，UI 必须保留风险提示。**调用时机**：不是每请求/定时——只在页面首次挂载快照组件（面板/chip，store 为空时）、手动「重新读取」、保存、切换档位时计算（`/api/state` GET/POST 与 `/api/session` POST 都返回快照）；同一页面快照由 client store 复用。没有版本/插件键缓存；版本/插件变化等下次拉取自然生效。单次最多 8 份装配，工具目录另有 15s 缓存。
+- **面板草稿与「重新读取」**：草稿干净时跟随快照重建；有未保存改动时冻结（chip 切档位、外部快照更新都不得覆盖）。「重新读取」是显式丢弃入口：重新拉快照后按最新响应重建草稿并置干净；读取失败时草稿留在组件里，重试成功后按同一路径重建。
+- **技能注入去重（档位开关 `injectDuplicateSkills`，默认开=注入重复触发的 skill）**：用户消息里任意空白边界的 `/name` 会让宿主 tool-skill **无条件**注入整份技能正文；模型此前若已用 `skill` 工具加载过同一技能，同一串文本就会在上下文里出现两次（实测同一会话 `tool/result` 与 `skill-invocation` 两份正文 sha1 相同）。开关语义与面板其它选项一致（勾选=注入，默认勾选）：`false` 时本插件在同一个 `agent/pre-step` 过滤器里按**逐字相等**剔除重复的那一份：判据取 `session.deriveMessages()`（只走 surface 派生，压缩/替换掉的正文查不到 → 保留注入，不丢指令），拿不到会话或派生失败时不去重。只作用于当前档位的根会话，不改模型可见内容。旧状态字段 `dedupeSkillInjection: true` 读入时按相反语义迁移成 `false`。**不要**改成「本会话加载过就跳过」的记账式判定：那条路径在压缩后会把指令永久删掉。回归 `tests/dedupe.test.mjs`。
 - 切换档位会重建整个工具表与前缀缓存；面向用户的确认话术已写在菜单里，改动这段行为时同步它。
 
 ## 关键技术边界与坑
@@ -238,6 +241,7 @@ node scripts/harness.mjs
 ## 本文档维护规则
 
 - **核心判据**：只记代码、git log、README 里读不出的东西——为什么这么设计、踩过什么坑、哪些约束不可违反。**过时的条目比缺失更糟**：读到与代码矛盾的断言，当场以代码为准修正。删留只看判据，长度不是标尺。
+- **README 与 AGENTS.md 分工**：README 面向使用者（能力、怎么开、数据格式、接口）；AGENTS.md 面向开发（机制取舍、坑、硬约束）。新机制先写 AGENTS.md；只有使用者会直接接触的行为、配置或接口才写 README，且 README 不展开内部判据（如 `deriveMessages` 的 surface 语义）。
 - **记**：设计决策的「为什么」（含被否决的方案）、回归坑（症状→根因→正解+验证指针）、跨端契约的同步要求、仓库不可复现的资源与前置。**不记**：方法名与行号、数值与协议标识（归代码常量与定义处注释）、流水账与 git log 可查的元数据、进行中的临时状态。
 - **坑条目格式**：一句话断言根因（高发的硬约束用 ⚠️ 块），下面写「症状 → 根因 → 正解 → 验证」；验证指针能补就补。
 - **锚点三性**：新增的组件/子系统名必须可 grep、唯一、稳定，写进文档前先 grep 验证。

@@ -13,6 +13,8 @@ export interface AgentLike {
     id?: unknown
     sessionId?: unknown
     header?: Record<string, unknown> | null
+    /** 即将发送的历史(只走 surface 派生);技能注入去重按它判定。老宿主可能没有。 */
+    deriveMessages?: () => unknown
   } | null
   ctx?: AgentContext | null
 }
