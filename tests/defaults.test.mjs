@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DEFAULT_PROFILES, MINIMAL_PROMPT, OFF, PI_PROMPT } from '../src/host/constants.ts'
+import { DEFAULT_PROFILES, DEFER, MINIMAL_PROMPT, OFF, ON, PI_PROMPT } from '../src/host/constants.ts'
 import { effectiveState } from '../src/host/tools.ts'
 
 function profileById(id) {
@@ -63,11 +63,16 @@ test('默认预设：Chat 保持全关', () => {
   assert.equal(chat.baseline.custom, false)
 })
 
-test('默认预设：PI 只留 read/write/edit/pwsh/read_image', () => {
+test('默认预设：Pi 保留默认五工具，MCP 延迟并由 tool_search 加载', () => {
   const pi = profileById('pi')
   for (const name of ['read', 'write', 'edit', 'pwsh', 'read_image']) {
-    assert.equal(effectiveState(pi, name), 'on', `${name} 应注入`)
+    assert.equal(effectiveState(pi, name), ON, `${name} 应注入`)
   }
+  assert.equal(pi.groups.mcp, DEFER)
+  assert.equal(pi.groups.other, ON)
+  assert.equal(effectiveState(pi, 'mcp_connector_demo'), DEFER, 'MCP 工具应延迟')
+  assert.equal(effectiveState(pi, 'tool_search'), ON, 'tool_search 应直接可用')
+  assert.equal(pi.sections['mcp-resource-servers'], undefined, 'MCP 资源段不应关闭')
   for (const name of [
     'apply_patch',
     'job_kill',
@@ -88,17 +93,15 @@ test('默认预设：PI 只留 read/write/edit/pwsh/read_image', () => {
     'exit_plan_mode',
     'create_goal',
     'schedule_create',
-    'mcp_connector_demo',
     'plugin_manager',
     'cordis_inspect_list',
     'load_workspace_dependencies',
     'working_directory',
     'lsp',
-    'tool_search',
     'session_recall',
     'web_extract',
   ]) {
-    assert.equal(effectiveState(pi, name), 'off', `${name} 应隐藏`)
+    assert.equal(effectiveState(pi, name), OFF, `${name} 应隐藏`)
   }
   assert.equal(pi.prompt.prefix.enabled, true)
   assert.equal(pi.prompt.prefix.override, true)
@@ -110,13 +113,14 @@ test('默认预设：PI 只留 read/write/edit/pwsh/read_image', () => {
   assert.equal(pi.baseline.untrustedFiles, false)
 })
 
-test('默认预设：PI 提示词是当前 Pi 短版，工具名已改成 DSH', () => {
-  assert.match(PI_PROMPT, /^You are a coding assistant running inside pi, a coding agent harness\./)
+test('默认预设：Pi 提示词是 Pi 风格，但明确运行在 DeepSeek Harness，不冒充 Pi', () => {
+  assert.match(PI_PROMPT, /^You are a coding assistant running inside DeepSeek Harness with a Pi-like configuration\./)
+  assert.match(PI_PROMPT, /This is a Pi-style preset adapted to DSH, not Pi itself\./)
   assert.match(PI_PROMPT, /<tools>/)
   assert.match(PI_PROMPT, /<rules>/)
   assert.match(PI_PROMPT, /- pwsh: /)
   assert.match(PI_PROMPT, /- read_image: /)
   assert.match(PI_PROMPT, /old_string must match exactly/)
-  assert.doesNotMatch(PI_PROMPT, /DeepSeek Harness/)
+  assert.doesNotMatch(PI_PROMPT, /running inside pi, a coding agent harness/)
   assert.doesNotMatch(PI_PROMPT, /\bbash\b/)
 })
