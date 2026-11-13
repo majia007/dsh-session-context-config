@@ -89,7 +89,6 @@ export interface HostContext {
   }
   agents: {
     list(): AgentLike[]
-    roots(): unknown[]
     turnBoundaryOf(session: unknown): { openTurnStartSeq?: unknown; lastTurn?: unknown; lastStepStartSeq?: unknown } | null
   }
   systemPrompt: {

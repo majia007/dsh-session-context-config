@@ -47,16 +47,16 @@ export function createSessionKit(ctx: HostContext, note: (source: string, error:
     return false
   }
 
+  /**
+   * 根会话判定。宿主没有 `ctx.agents.roots()`(rc.1 / rc.2 的 AgentRegistry 都只有
+   * list / turnBoundaryOf / initiator 面),旧实现每次调用都抛 TypeError、被吞后恒返回
+   * true,档位与通道过滤于是套到了子代理头上。唯一可靠的信号是会话头:子代理带
+   * `origin: 'subagent'`;fork 会话虽带 `parentSession` 但没有 origin,仍是根会话。
+   */
   function isRootAgent(agent: AgentLike | undefined | null): boolean {
-    try {
-      const roots = ctx.agents.roots()
-      if (!Array.isArray(roots)) return true
-      const sessionId = sessionIdOf(agent)
-      return roots.some((root: unknown) => root === agent || sessionIdOf(root as AgentLike) === sessionId)
-    } catch (error) {
-      note('roots', error)
-      return true
-    }
+    const header = sessionOf(agent)?.header
+    if (header === null || header === undefined) return true
+    return header.origin !== 'subagent'
   }
 
   function visibleSchemas(agent: AgentLike | undefined | null) {

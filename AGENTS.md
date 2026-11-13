@@ -103,6 +103,12 @@ node scripts/harness.mjs
 
 ## 关键技术边界与坑
 
+> ⚠️ **宿主没有 `ctx.agents.roots()`，根会话判定必须看会话头**
+> 症状：宿主日志刷 `[session-context-config] roots: ctx.agents.roots is not a function`（单次宿主运行里 792 条），而「档位只作用于根会话」实际失效——子代理也被套上了档位与通道过滤。
+> 根因：AgentRegistry（rc.1 / rc.2 均如此）只有 `list` / `turnBoundaryOf` / initiator 面，没有 `roots`；旧实现每次调用都抛 TypeError，被 catch 吞掉后恒返回 `true`，错误只留在日志里。
+> 正解：`isRootAgent` 按会话头判——子代理 `header.origin === 'subagent'`；fork 会话带 `parentSession` 但没有 origin，仍是根会话；拿不到会话信息时保守按根处理。回归：`tests/sessions.test.mjs`（假 ctx 的 `agents.roots` 直接抛，断言一次都不碰）。
+> 教训：宿主服务面按名字猜会静默降级——`catch` 后回退一个「看起来安全」的默认值比抛错更难发现；新增服务调用先对 checkout 的类定义核方法名。
+
 > **client 产物必须单文件，源码可多模块**：浏览器只服务 `dsh.client` 声明的入口（`/plugins/<pkg>/client.js`），但构建形态下源码在 `src/client/` 拆成多模块（contract/state/menu/panel/chips + apply.ts），由 tsdown 打成单文件 `lib/client.js`。改客户端源码后 `pnpm build` 即可，桌面自带 client HMR 会在约 1s 内自动重挂该 entry（见「构建、安装与验证」）；不要刷新页面。
 
 > ⚠️ **DSH 的 CSS Module 类名带哈希，不能当选择器/样式契约**
