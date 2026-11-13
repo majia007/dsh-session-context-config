@@ -474,9 +474,9 @@ check('再切中文不重复请求', readRow?.querySelector('.cp-zhText')?.textC
 await click(baselineRows()[0]?.querySelector('.cp-segmentLabel'))
 check('关掉行为契约后按钮进入未保存态', panel.querySelector('.cp-footNote')?.textContent?.includes('未保存') === true)
 
-const dedupeCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '注入去重')
+const dedupeCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '注入控制')
 const dedupeCheckbox = () => dedupeCard?.querySelector('.cp-segment input[type="checkbox"]')
-check('注入去重默认勾选（勾选=按宿主默认注入）', dedupeCheckbox()?.checked === true && dedupeCard?.textContent?.includes('注入重复触发的 skill') === true)
+check('注入控制卡默认勾选（勾选=按宿主默认注入）', dedupeCheckbox()?.checked === true && dedupeCard?.textContent?.includes('注入重复触发的 skill') === true)
 await click(dedupeCard?.querySelector('.cp-segmentLabel'))
 check('取消勾选后改为不重复注入', dedupeCheckbox()?.checked === false && dedupeCard?.textContent?.includes('不重复注入') === true)
 

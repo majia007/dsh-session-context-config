@@ -549,7 +549,7 @@ export function SkillDedupeCard({ profile, patch }: { profile: Profile; patch: P
     MessageCard,
     {
       role: 'user',
-      title: '注入去重',
+      title: '注入控制',
       note: '用户消息里出现 /技能名 时宿主会无条件注入整份正文；若模型此前已用 skill 工具加载过同一技能，这份正文就会在上下文里出现两次。默认保持宿主的注入行为；取消勾选后，正文已在本会话可见历史里时跳过这次注入，被压缩或替换掉的正文不算，会重新注入。只对当前档位生效。',
     },
     h(SegmentRow, {
