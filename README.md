@@ -10,7 +10,7 @@
 dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
 ```
 
-桌面端 / Web 在「插件」页搜索 `@jia-tools/dsh-session-context-config` 安装。bundle 集变化需重启对应 profile 后生效；档位只作用于新会话，已有会话不回改。
+桌面端 / Web 在「插件」页搜索 `@jia-tools/dsh-session-context-config` 安装。首装/新增 bundle 即运行期装载（client 走 stat-poll、Host 走重组合），无需重启；只有返回 `restart-required` 才需重启。档位只作用于新会话，已有会话不回改。
 
 本地源码安装（开发）：`dsh plugin --profile <profile> add <本目录>`；改代码后 `pnpm build`——client bundle 由桌面自带 HMR 自动热更（约 1s，不要刷新页面），Host 侧改动用插件页该行 disable → enable 或重启宿主。
 
@@ -28,7 +28,8 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
     suffix: { enabled: true, override: false, text: '' },   // order 10200，提示词最末
   },
   contexts: { 'harness:source': false },                    // 运行时上下文逐项开关：只记关掉的项
-  sections: { 'tool:read': false },                         // system 段逐项开关：只记关掉的项
+  sections: { 'harness:source': false },                    // system 段逐项开关：只记关掉的项
+  baseline: { contract: true, cardReceipt: true, untrustedFiles: true, custom: false, customText: '' }, // 本档位的附加规则
   channels: { timeContext: 'off' },                         // 可选：请求层拦截注入通道
   summaries: { mcp: '…' }                                   // 兼容保留：面板不再编辑，Host 仍按它生成延迟占位摘要
 }
@@ -61,7 +62,7 @@ server = 隐藏     → 隐藏
 | 延迟 | 在 agent 作用域重新注册一份瘦身定义，遮住继承来的完整定义 | tools 数组里保留名字 + 功能摘要 + **参数类型骨架**（每个参数的名称与类型都在，只剥说明/示例/默认值）；完整定义由 `tool_search` 以工具结果追加进历史 |
 | 注入 | 不动 | — |
 
-延迟采用**占位折叠**而非删除：tools 数组在整个会话里不变，`tool_search` 只往历史里追加定义，因此加载动作**不打断前缀缓存**。占位里的参数只留必需项，可选参数交给 `tool_search`——实测 25 个 MCP 工具从 12,889 字符降到 5,842 字符（-54.7%）。
+延迟采用**占位折叠**而非删除：tools 数组在整个会话里不变，`tool_search` 只往历史里追加定义，因此加载动作**不打断前缀缓存**。占位保留每个参数的名称与类型、只剥说明/示例/默认值，完整定义由 `tool_search` 追加——实测 25 个 MCP 工具从 12,889 字符降到 5,842 字符（-54.7%）。
 
 `tool_search` 只在档位里存在延迟工具时才注册；它只返回定义，不执行工具。
 
@@ -86,6 +87,7 @@ server = 隐藏     → 隐藏
 | PI | 只留 `read` / `write` / `edit` / `pwsh` / `read_image`，其余工具与组隐藏 | 用当前 Pi 短版初始提示词；关闭 DSH 身份、源码、Web、文件引用、MCP 资源等段；保留当前工作目录上下文 |
 
 - **完整 / 精简** 沿用部署人设；**极简** 使用 `MINIMAL_PROMPT`；**Chat** 两个槽位都关闭；**PI** 使用 Pi 提示词。
+- **baseline**：完整/精简/极简默认三段固定提示词开、自定义文本关；Chat/PI 默认全关。这是模板值，已安装档位以状态文件里的 `baseline` 为准。
 - **Chat** 是「只聊天」模板：所有工具与运行时上下文关闭，适合纯对话。
 - **PI** 是 Pi 风格模拟，不是真正的 Pi：提示词按 Pi 当前 main 的短版冻结，工具名与参数改成了 DSH 的 `pwsh` 与 `old_string`；Pi 自指的文档段已去掉。DSH 仍会为保留的四个工具注入 `tool:*` 引导段（这些段强绑定工具状态，不能按档位单独关），沙箱/审批也仍然生效。Pi 的 `read` 内建图片能力在 DSH 拆成独立的 `read_image`，因此保留。
 - **新建档位**：直接点按钮使用「全启用」模板（所有组/工具/上下文/段默认注入）；悬停按钮出现下拉，列出当前插件版本的 5 个内置预设，选中后复制成 `custom-*` 新档位。两种方式都只改面板草稿，保存前不写状态文件，也不会切换当前会话的档位。
@@ -103,7 +105,7 @@ server = 隐藏     → 隐藏
 - **工具引导段（`tool:*`）不在这里配置**：它们强绑定工具状态——工具或组隐藏时 Host 自动从装配里移除，工具恢复（开启/延迟）时自动回来。复合段（`tool:jobs` / `tool:goal` / `tool:schedule` / `tool:session-query`）看成员工具，至少一个成员不是隐藏才保留。面板不列这些行，避免出现「段开关和工具开关打架」。
 - **条件段**：MCP 服务器指令（`mcp:<server>`）、MCP 资源服务器、PTC 模式（`tools:ptc-only` / `tools:sdk`）、计划模式（`plan:policy`）、团队协作（`team:policy`）、浏览器 / Computer Use 等，出现时才在列表里生效；未识别的新段按原始 name 自动列入。新版本/第三方插件注册段不需要改本插件即可出现。
 - **悬停看正文**：普通段、两个人设槽位与「覆盖部署文本」行都带 `title`，内容是该段当前实际注入的文本（模板变量已按本次装配渲染）；关闭的段也会给出关闭前的文本，便于确认关掉的是什么。上下文行同样如此（空文本显示「当前未出现」）。
-- **附加规则**：行为契约 / 卡片回执 / 不可信下载 / 自定义文本 4 项，全局开关（所有新会话与子代理），用「本插件附加 · 全局」小标题与分割线分隔，固定排在列表最后（提示词 order 20000+，是所有宿主段之后）；三段固定文本在面板里悬停可见注入全文（保留换行）。
+- **附加规则**：行为契约 / 卡片回执 / 不可信下载 / 自定义文本 4 项，按当前档位的 `profile.baseline` 开关（子代理跟随所属根会话的档位），用「本插件附加 · 本档位」小标题与分割线分隔，固定排在列表最后（提示词 order 20000+，是所有宿主段之后）；三段固定文本在面板里悬停可见注入全文（保留换行）。
 
 被关掉但当前装配里没有出现的已知段仍会列出来（否则条件段关掉后就找不到重新开启的入口），但 `meta` 会标成「已关闭 · 当前未出现」，tooltip 说明可能是条件未触发或提供它的插件/预设未装载。实现：在已有的 `system-prompt/assemble` 瀑布里按 `profile.sections` 过滤 `assembly.sections`（与过滤 contexts 同一处），同时按工具的生效状态裁掉 `tool:*` 引导段（`hiddenToolGuide`：组/工具隐藏即隐藏，复合段看成员）。`refreshContext` 不会重跑 sections，所以不需要像 contexts 那样注册影子段。**该瀑布按 agent scope 过滤派发，监听器必须带 `global: true`**（否则真机上收不到事件，单测直接调 listener 发现不了）。`sccFullSections` 是面板列目录用的私有旁路，返回未过滤的完整段名单，不影响请求路径；面板目录会再剔除 `tool:*`（它们不单独配置）。段顺序由宿主 `order` 固定，本面板只控制是否包含。
 
@@ -135,23 +137,25 @@ server = 隐藏     → 隐藏
 - **新会话**：`agent/created` 时按会话记录或“上次用过的档位”应用。
 - **已开始的会话**：不自动跟随配置改动；在会话头部确认切换档位时才重算。
 - **工具表变化（新连上的 MCP、插件热重载）**：监听 `tools/change`，可见集合变化时就地按同一档位**增量**刷新延迟占位与隐藏面——只注册新增的、撤销消失的，未变化的工具保持原注册对象。不能整份重建：宿主每个 step 按「定义 + 注册」的对象身份校验准入集，整份重建会让该 step 内所有延迟工具立刻报 `unknown tool`（实测插件重载后必现，下一个 step 自愈）。插件被停用、工具从工具表消失时，对应占位也会撤销，不会留下仍可调用的旧工具。
-- 子代理不套用档位，只作用于根会话；附加规则段例外（对所有 agent 生效）。环境事实是运行时上下文：根会话按档位 `contexts` 过滤，子代理没有档位，默认保留。
+- 子代理不套用档位，只作用于根会话；附加规则不是全局例外：根会话用自己档位的 `profile.baseline`，子代理沿会话头 `parentSession` 跟随所属根会话的档位；解析不到根档位时才回落顶层 `baseline` 兜底。环境事实是运行时上下文：根会话按档位 `contexts` 过滤，子代理没有档位，默认保留。
 
-## 附加规则（所有新会话）
+## 附加规则（按档位）
 
-与档位无关的一层：新会话总会收到的三段固定提示词，外加一段可自由编辑的自定义文本。三段默认全开；自定义文本默认关闭且为空。在配置面板 system 消息卡的最下方（所有段之后）逐项调整，改动保存后从下一场新会话起生效。
+附加规则现在跟着档位走：每个档位持有自己的 `baseline`（三段固定提示词 + 一段自定义文本）。三段默认全开；自定义文本默认关闭且为空。在配置面板「本插件附加 · 本档位」里逐项调整，保存后对新会话生效；子代理跟随所属根会话的档位。
+
+旧状态里只有顶层 `baseline` 的，加载时复制到每个缺 `baseline` 的档位（只做结构迁移，不替换值）；顶层字段仅保留为「解析不到根档位」时的兜底。从旧 Host 快照升级时，面板同样用顶层 `baseline` 兜底（不是模板默认值），避免把已关闭的开关误显示成开启。
 
 | 开关 | 内容 | 落点 |
 |---|---|---|
-| 行为契约 | 不可逆动作先确认、如实汇报、信息足够就行动、跟随周边风格、不回读刚改的文件、声明 `<system-reminder>` 来源 | 全局 system 段，order 20000 |
-| 卡片回执 | UI 已渲染卡片时只回一句、不复述字段；失败仍给错误细节 | 全局 system 段，order 20010 |
-| 不可信下载 | 隔离空目录、以参数传路径、`python -I`（< 3.11 再补 `-P` 或换安全 cwd） | 全局 system 段，order 20020 |
-| 自定义文本 | 自由输入（支持多行，≤20000 字符）；勾选才注入，未勾选也可先编辑，留空不发送 | 全局 system 段，order 20030 |
+| 行为契约 | 不可逆动作先确认、如实汇报、信息足够就行动、跟随周边风格、不回读刚改的文件、声明 `<system-reminder>` 来源 | 当前档位的 system 段，order 20000 |
+| 卡片回执 | UI 已渲染卡片时只回一句、不复述字段；失败仍给错误细节 | 当前档位的 system 段，order 20010 |
+| 不可信下载 | 隔离空目录、以参数传路径、`python -I`（< 3.11 再补 `-P` 或换安全 cwd） | 当前档位的 system 段，order 20020 |
+| 自定义文本 | 自由输入（支持多行，≤20000 字符）；勾选才注入，未勾选也可先编辑，留空不发送 | 当前档位的 system 段，order 20030 |
 
 - 前三段在面板里悬停任意一行，可看到原样注入 system 的完整文本（tooltip 保留换行）；自定义文本行悬停显示当前输入的内容。
 - 三段固定文本合计 573 字符（契约段单独 253 字符），内容固定、不随会话变化。中文正文的字符数与 token 数不是 4:1 的关系，面板里那个 0.28 token/字符 系数是为 JSON schema 标定的，不要拿它折算这三段。
-- 四项是全局 system 段，与其它段按 order 拼接；order 取 20000+，排在所有宿主段（最大 10200）之后，成为 system 消息的收尾。没有 complete 整段独占模式，也没有「极简提示词也保留附加规则」开关（随 complete 移除）。
-- 附加规则段对**所有 agent**（含子代理）生效；档位仍只作用于根会话。
+- 四项按 agent 作用域注册，同名段遮住全局兜底；order 取 20000+，排在所有宿主段（最大 10200）之后，成为 system 消息的收尾。没有 complete 整段独占模式，也没有「极简提示词也保留附加规则」开关（随 complete 移除）。
+- 根会话用自己的档位；子代理沿 `header.parentSession` 找所属根会话的档位。工具/上下文仍只作用于根会话，但附加规则不是「全局对所有 agent」——只有解析不到根档位时才用顶层 `baseline` 兜底。
 - **环境事实不再属于附加规则**：它是 `contexts` 里的 `session-context-config:environment`，在「运行时上下文快照」卡里按档位开关；每会话探测一次并固定，`git status` 单次调用、600ms 上限、同目录 60s 缓存，缺失/超时降级为 `unknown`，不抛出、不阻塞会话。
 
 ## 提示词与运行时上下文的边界
@@ -202,14 +206,17 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 {
   "version": 4,
   "lastUsedId": "none",
-  "profiles": [{ "id": "lean", "...": "..." }],
-  "sessions": { "<sessionId>": "lean" }
+  "profiles": [{ "id": "lean", "baseline": { "contract": true, "..." : "..." }, "...": "..." }],
+  "sessions": { "<sessionId>": "lean" },
+  "baseline": { "contract": true, "cardReceipt": true, "untrustedFiles": true, "custom": false, "customText": "" }
 }
 ```
 
+`profiles[].baseline` 是档位级附加规则。顶层 `baseline` 只保留为**兜底**：子代理沿 `parentSession` 找不到根档位时用它；面板不再编辑顶层值。旧状态只有顶层 `baseline` 的，加载时复制到每个缺 `baseline` 的档位（只做结构迁移，不替换值）。
+
 `sessions` 是**一次性恢复记录**：写入后用于重开旧会话时恢复档位；`none` 表示“不处理”。映射有界保留最近 500 条，更旧的会话重开时回落 `lastUsedId`。
 
-`profiles` 是**用户配置**；`DEFAULT_PROFILES` 是插件自带的通用模板，只用于首次安装与新建下拉。两者是分开的：更新插件、重新安装 bundle、甚至升级包版本，都不会改写 `profiles`；v2/v3 旧状态迁移只做结构转换，不替换任何档位的名称、组、提示词或开关，也不会把 `chat` / `pi` 自动注入旧状态。要使用 Chat/PI 模板，请在配置页「+ 新建档位」的悬停下拉里选。
+`profiles` 是**用户配置**；`DEFAULT_PROFILES` 是插件自带的通用模板，只用于首次安装与新建下拉。两者是分开的：更新插件、重新安装 bundle、甚至升级包版本，都不会改写 `profiles`；v2/v3 旧状态迁移只做结构转换，不替换任何档位的名称、组、提示词、开关或 `baseline`，也不会把 `chat` / `pi` 自动注入旧状态。要使用 Chat/PI 模板，请在配置页「+ 新建档位」的悬停下拉里选。
 
 版本 2/3 读入时自动迁移到 4：`prompt.mode` 的 `inherit` → `override:false`，`replace`/`complete` → `override:true`（文本保留；complete 的整段独占语义已移除），`sections` 默认空，`baseline.inCompletePrompt` 丢弃。人设从单个 `prompt.{enabled,override,text}` 扩成 `prompt.prefix` / `prompt.suffix` 两个槽位时，旧扁平字段整体迁到 `prefix`，`suffix` 默认 `{enabled:true, override:false, text:''}`（沿用部署）。v3→v4 只补新字段与结构，不替换已有档位的值。
 
@@ -228,7 +235,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 全部先过宿主 connection 信任栅栏（Host/Origin/浏览器会话认证，与官方 open-in-app 路由同款；宿主无该服务时回退回环 Host 校验）；POST 只接受 application/json。
 
-## 验证记录（DSH Desktop 0.2.2-rc.1 / profile desktop）
+## 验证记录（DSH Desktop 0.2.2-rc.1 实测，rc.2 未复测 / profile desktop）
 
 | 项 | 结果 |
 |---|---|
@@ -253,7 +260,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 - MCP 业务工具若在会话内未激活（连接器的 `session_tools` 那层），加载 schema 也不等于激活。
 - 同模式不同档位的会话不共享前缀缓存。
 - 系统段的顺序由宿主 `order` 固定，本面板只能包含/排除，不能改先后。
-- 系统段开关是档位级，只作用于根会话；子代理的 system 段不受档位开关控制（附加规则是全局例外）。
+- 系统段开关是档位级，只作用于根会话；附加规则也按档位，子代理沿 `parentSession` 跟随所属根会话的档位；解析不到根档位时用顶层 `baseline` 兜底。
 - 运行时上下文/系统段的名字由一次干跑装配动态发现：**当前没出现、也没被关掉的空条件段不会占行**；需要提前配置一个尚未触发的条件段时，先让它在会话里出现一次。
 - 自动发现清单的 kind 开关是档位级；关闭 `subagent-settled` / `compact-checkpoint` / `runtime-context` 这类运行期消息会让对应插件收不到自己的通知，只在明确知道作用时关。
 - 工作区指令只能整组关：宿主已把同一批 AGENTS.md/CLAUDE.md 拼成一条 `<system-reminder>`，无法按文件过滤；要排除某类文件名只能在部署级配 `instructionFileCandidates` / `maxBytes`。

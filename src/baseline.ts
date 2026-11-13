@@ -8,9 +8,10 @@
  * 为什么单独成文件:这段文本要在没有运行时的情况下做快照测试(tests/baseline.test.mjs),
  * 也要能被 index.ts 与文档共同引用;放进装配层只会被档位逻辑淹没。
  *
- * 生效方式(与档位解耦):
- * - 各段注册为**全局**系统提示段,每个 agent 装配时出现且只出现一次;开关关闭或
- *   文本为空时返回空串,装配层会丢掉空段(core/system-prompt/src/index.ts:342)。
+ * 生效方式(按档位):
+ * - 四段由 `host/baseline-runtime.ts` 注册进每个 agent 的作用域,文本按该 agent
+ *   所属根会话的档位 `profile.baseline` 取;同名 scoped 段遮住 index.ts 里的全局兜底。
+ * - 子代理沿会话头 parentSession 跟随根档位;拿不到根档位时才回落旧顶层 baseline。
  */
 /** 附加规则开关的默认值:三段固定提示词默认全开;自定义文本默认关闭且为空。 */
 export const BASELINE_DEFAULTS = {

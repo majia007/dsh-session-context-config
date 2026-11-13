@@ -11,7 +11,8 @@ import { loadSnapshot, request, setSnapshot, emit } from '../state/store.ts'
 import { effective, formatTokens, NONE, ON, presetNames, statsFor } from '../state/resolve.ts'
 import type { CatalogTool, Profile, Snapshot } from '../contract/types.ts'
 import { GROUP_STATES, CHANNEL_CARDS } from './options.ts'
-import { ChannelCard, DEFAULT_BASELINE, ObservedMessagesCard, SectionHeading, SnapshotCard, SystemMessageCard, type PanelDraft } from './cards.ts'
+import { ChannelCard, ObservedMessagesCard, SectionHeading, SnapshotCard, SystemMessageCard } from './cards.ts'
+import { DEFAULT_BASELINE, draftOf, type PanelDraft } from './draft.ts'
 import { stateTag, toolRow } from './group-cards.ts'
 import { PreviewDialog } from './PreviewDialog.ts'
 import styles from './panel.module.css'
@@ -21,15 +22,6 @@ const API_STATE = '/session-context-config/api/state'
 const LABEL = '上下文档位'
 
 type Patch = (mutate: (target: Profile) => void) => void
-
-/** 从快照派生面板草稿(profiles/lastUsedId/baseline 的深拷贝)。 */
-function draftOf(value: Snapshot): PanelDraft {
-  return JSON.parse(JSON.stringify({
-    profiles: value.profiles,
-    lastUsedId: value.lastUsedId,
-    baseline: value.baseline ?? DEFAULT_BASELINE,
-  }))
-}
 
 /** 取快照诊断里的第一条可读消息;工具目录为空时给面板一个自报告入口,而不是静默少一块。 */
 function firstDiagnostic(diagnostics: unknown[]): string | null {
@@ -77,6 +69,7 @@ function allOnProfile(id: string, name: string): Profile {
     },
     contexts: {},
     sections: {},
+    baseline: { ...DEFAULT_BASELINE, customText: '' },
     channels: {},
     groups: {},
     servers: {},
@@ -90,6 +83,7 @@ function copyOfPreset(preset: Profile, profiles: Profile[]): Profile {
   const copy = JSON.parse(JSON.stringify(preset)) as Profile
   copy.id = nextProfileId(profiles)
   copy.name = uniqueProfileName(profiles, preset.name)
+  if (!copy.baseline) copy.baseline = { ...DEFAULT_BASELINE, customText: '' }
   return copy
 }
 
@@ -155,9 +149,17 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   }, [snapshot, draft, anchor])
 
   const patchBaseline = useCallback((key: string, value: boolean | string) => {
-    setDraft((current) => (current ? { ...current, baseline: { ...current.baseline, [key]: value } } : current))
+    setDraft((current) => {
+      if (!current) return current
+      const next = JSON.parse(JSON.stringify(current)) as PanelDraft
+      const target = next.profiles.find((item) => item.id === selectedId)
+      if (!target) return current
+      const baseline = target.baseline ?? { ...DEFAULT_BASELINE, customText: '' }
+      target.baseline = { ...baseline, [key]: value }
+      return next
+    })
     setStatus(null)
-  }, [])
+  }, [selectedId])
 
   const patch: Patch = useCallback(
     (mutate) => {
@@ -524,7 +526,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         ),
       ),
 
-      h(SystemMessageCard, { profile, draft, patch, patchBaseline, sections: snapshot.sections ?? [] }),
+      h(SystemMessageCard, { profile, patch, patchBaseline, sections: snapshot.sections ?? [] }),
 
       h(SnapshotCard, { profile, patch, contexts: snapshot.contexts ?? [] }),
 

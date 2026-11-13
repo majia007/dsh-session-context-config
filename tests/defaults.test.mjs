@@ -40,6 +40,12 @@ test('默认预设：完整/精简/极简使用插件通用值，不是用户当
   assert.equal(minimal.groups.mcp, OFF)
   assert.equal(minimal.contexts['sandbox:policy'], false)
   assert.equal(minimal.contexts['working-directory:current'], undefined)
+  for (const profile of [full, lean, minimal]) {
+    assert.equal(profile.baseline.contract, true)
+    assert.equal(profile.baseline.cardReceipt, true)
+    assert.equal(profile.baseline.untrustedFiles, true)
+    assert.equal(profile.baseline.custom, false)
+  }
 })
 
 test('默认预设：Chat 保持全关', () => {
@@ -53,6 +59,8 @@ test('默认预设：Chat 保持全关', () => {
   assert.equal(chat.sections['harness:identity'], false)
   assert.equal(chat.channels.workspaceInstructions, OFF)
   assert.equal(chat.channels.timeContext, OFF)
+  assert.equal(chat.baseline.contract, false)
+  assert.equal(chat.baseline.custom, false)
 })
 
 test('默认预设：PI 只留 read/write/edit/pwsh/read_image', () => {
@@ -97,6 +105,9 @@ test('默认预设：PI 只留 read/write/edit/pwsh/read_image', () => {
   assert.equal(pi.prompt.prefix.text, PI_PROMPT)
   assert.equal(pi.prompt.suffix.override, true)
   assert.equal(pi.prompt.suffix.text, '')
+  assert.equal(pi.baseline.contract, false)
+  assert.equal(pi.baseline.cardReceipt, false)
+  assert.equal(pi.baseline.untrustedFiles, false)
 })
 
 test('默认预设：PI 提示词是当前 Pi 短版，工具名已改成 DSH', () => {

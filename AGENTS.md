@@ -2,7 +2,7 @@
 
 DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪段系统提示词。Host 做档位解析与装配，Client 在 Web UI 里出一个配置面板和两个切换 chip。
 
-**权限与作用边界**：所有 HTTP 路由先过宿主 connection 信任栅栏（Host/Origin/浏览器会话认证；宿主无该服务时回退回环 Host 校验）；状态落 `~/.dsh/session-context-config.json`（新文件不存在时，首次启动把 `context-profile.json` 迁入并留成 `.migrated`；`DSH_HOME` 存在时以它为准）；档位只作用于根会话，子代理不受影响。
+**权限与作用边界**：所有 HTTP 路由先过宿主 connection 信任栅栏（Host/Origin/浏览器会话认证；宿主无该服务时回退回环 Host 校验）；状态落 `~/.dsh/session-context-config.json`（新文件不存在时，首次启动把 `context-profile.json` 迁入并留成 `.migrated`；`DSH_HOME` 存在时以它为准）；工具/上下文/系统段档位只作用于根会话，子代理不套用；附加规则例外——子代理沿 `parentSession` 跟随所属根会话的 `profile.baseline`。
 
 档位模型（三级状态表 + 四态解析）、三态怎么落地、数据与接口格式，都已写在 `README.md`，本文不重复；本文只记代码与 git log 里读不出的约束和坑。
 
@@ -10,9 +10,10 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 | 文件 | 职责 |
 |---|---|
-| `src/index.ts` | Host 半边插件面：name/inject/apply + 装配（附加规则段注册、webServer 路由、agent/created·disposed、tools/change、通道拦截 pre-step、运行时上下文与 system 段逐项过滤、重装载补、teardown） |
+| `src/index.ts` | Host 半边插件面：name/inject/apply + 装配（附加规则 per-agent 注册、webServer 路由、agent/created·disposed、tools/change、通道拦截 pre-step、运行时上下文与 system 段逐项过滤、重装载补、teardown） |
 | `src/types.ts` | 宿主服务面最小结构声明（镜像 checkout 形状，未验证字段不写） |
-| `src/baseline.ts` | 附加规则层（界面名；代码沿用 baseline）：行为契约/卡片回执/不可信下载三段固定提示词 + 可勾选的自定义文本 |
+| `src/baseline.ts` | 附加规则层（界面名；代码沿用 baseline）：行为契约/卡片回执/不可信下载三段固定提示词 + 可勾选的自定义文本；默认值/归一化/文本快照 |
+| `src/host/baseline-runtime.ts` | 附加规则的 per-agent 注册面：四段注册进 agent scope 遮住全局兜底；根会话读所属档位，子代理沿 `header.parentSession` 跟随根档位 |
 | `src/host/constants.ts` | 状态字面量、组表(含 platform/devtools 拆分)、通道表、运行时上下文清单/order 映射、人设段常量、5 个插件通用默认预设（full/lean/minimal/chat/pi，不是用户当前配置）、token 估算系数 |
 | `src/host/translations.ts` | 工具说明按需翻译:默认模型(agentDefaultModel→llm.prepareCall)+ 以原始文本为 key 的缓存(独立文件),只供面板显示 |
 | `src/host/state.ts` | 状态文件路径、默认值、**读入归一化**（坏字段静默丢弃，面板与装配不必各自防御） |
@@ -32,10 +33,10 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 | `src/client/contract/` | 域间共享类型（只有 type） |
 | `src/client/state/` | 数据层（store/订阅 hooks）与档位解析（与 Host 同规则） |
 | `src/client/menu/` | 浮层与席位原语（Popover/Seat/MenuRow/图标/复选行）+ `menu.module.css`；分段选择用宿主 ui-primitives 的 `SegmentedControl`（类型面在 `src/ambient.d.ts`） |
-| `src/client/panel/` | 配置面板（ConfigPanel/cards/group-cards/PreviewDialog/options/ToolDescription/translations）+ `panel.module.css`；「+ 新建档位」直接点击建全启用档位、悬停出下拉从 `snapshot.defaults` 复制内置预设；`cards.ts` 按最终请求的消息分卡（系统提示词/快照/工作区指令/时间采样/自动发现的其他注入消息），行的 `title` 统一放实际注入正文；`options.ts` 的 `CONTEXT_SWITCHES` 只是**已知**上下文的元数据（真正的名单由快照 `contexts` 动态补齐），`CHANNEL_CARDS`、`SECTION_OPTIONS` 同理；`translations.ts` 是已知工具的**内置中文**（key=原始描述文本），`ToolDescription.ts` 是「文A」原文/中文切换与按需翻译 loading |
+| `src/client/panel/` | 配置面板（ConfigPanel/cards/draft/group-cards/PreviewDialog/options/ToolDescription/translations）+ `panel.module.css`；「+ 新建档位」直接点击建全启用档位、悬停出下拉从 `snapshot.defaults` 复制内置预设；`draft.ts` 从快照派生草稿，旧快照缺 `profile.baseline` 时用顶层 `baseline` 兜底（不用模板默认值）；`cards.ts` 按最终请求的消息分卡（系统提示词/快照/工作区指令/时间采样/自动发现的其他注入消息），行的 `title` 统一放实际注入正文；`options.ts` 的 `CONTEXT_SWITCHES` 只是**已知**上下文的元数据（真正的名单由快照 `contexts` 动态补齐），`CHANNEL_CARDS`、`SECTION_OPTIONS` 同理；`translations.ts` 是已知工具的**内置中文**（key=原始描述文本），`ToolDescription.ts` 是「文A」原文/中文切换与按需翻译 loading |
 | `src/client/chips/` | 新会话 chip（`conversation.hero.options`）+ 会话头部 chip（`conversation.session.header.actions`，紧跟「模式」标签）+ 共用 picker |
 | `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-workspace-sidebar/AGENTS.md`「与官方 preset 的偏差」） |
-| `tests/` | 直读 src 的单元测试：host 纯函数、附加规则快照、环境事实（`host/environment-facts.ts`）、不可信下载规则可执行性、v2/v3→v4 结构迁移（不改档位值）、5 个默认预设的字段与 PI 工具面（`defaults.test.mjs`）、人设开关/覆盖、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏（组/单工具/复合成员/延迟）、上下文开关/影子、`/api/state` 快照的 `defaults`/自动发现形状与按档位分组（`routes.test.mjs`）、注入消息分桶（`injected.test.mjs`）、工具来源解析（`sources.test.mjs`） |
+| `tests/` | 直读 src 的单元测试：host 纯函数、附加规则快照、环境事实（`host/environment-facts.ts`）、不可信下载规则可执行性、v2/v3→v4 结构迁移（不改档位值）、5 个默认预设的字段与 PI 工具面（`defaults.test.mjs`）、附加规则按档位与子代理跟随（`baseline-runtime.test.mjs`）、面板草稿的旧快照 baseline 兜底（`draft.test.mjs`）、人设开关/覆盖、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏（组/单工具/复合成员/延迟）、上下文开关/影子、`/api/state` 快照的 `defaults`/自动发现形状与按档位分组（`routes.test.mjs`）、注入消息分桶（`injected.test.mjs`）、工具来源解析（`sources.test.mjs`） |
 | `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 lib/client.js，喂假快照渲染面板与两个 chip 并点击；覆盖「+ 新建档位」悬停下拉与预设复制 |
 | `scripts/gen-known-tools.mjs` | 从 DSH checkout 的 `docs/tool-catalog.md` 生成 `src/host/known-tools.ts`（`DSH_SRC` 可覆盖 checkout 路径） |
 | `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 lib/client.js，验 id/槽位注册/样式注入/inject face |
@@ -65,9 +66,9 @@ node scripts/harness.mjs
 
 `scripts/smoke.mjs` 的依赖（react/react-dom/happy-dom）来自本项目 devDependencies；它断言：触发器是 seat 结构、菜单行带 `aria-checked`、只有选中行有勾、会话头部菜单含状态块与确认块。CSS Modules 类名编译后带 `cp-` 前缀（确定性，见 build/preset.mjs），smoke 的类选择器与真机一致。
 
-**装到 profile**：`plugin_manager` 的 `install_bundle` 指向本目录。profile 里装成 `link:`，所以改文件即时生效、不需要重装。**client bundle 有自动热更**：桌面 boot 图里有 `@deepseek-ai/dsh-client-hmr`（HMR 事件走 `/plugins/events` SSE），Host 每 500ms stat-poll `lib/client.js` 的 mtime/ctime/size，变化即推 `rebuilt` 帧重挂该 entry——`pnpm build` 后约 1s 新前端自动出现，**不需要刷新或重启**（改动期间本插件的主面板会因 entry 重挂而关闭，重新打开即可）。**Host 侧不会自动更新**：Host HMR 的 chokidar watch 忽略 `**/node_modules`，link: 安装的源码目录不被 watch，`lib/index.js` 改动要走下面的 disable→enable 或重启。**不要刷新页面**：刷新属未定义行为，会刷崩 DSH（偶尔能加载新 bundle）。崩溃恢复用错误对话框的「重启」（会重新 collect 快照），**不要点「禁用第三方插件、备份 profile patch 并重启」**（会停用全部第三方插件并改写 patch）。同版本重复安装会返回 `already-installed`，要更新得先 `remove_bundle` 再 `install_bundle`（或先改 `package.json` 的 version）。安装结果以返回里的 `application: applied` 为准。
+**装到 profile**：`plugin_manager` 的 `install_bundle` 指向本目录。profile 里装成 `link:`，所以改文件即时生效、不需要重装。**client bundle 有自动热更**：桌面 boot 图里有 `@deepseek-ai/dsh-client-hmr`（HMR 事件走 `/plugins/events` SSE），Host 按固定间隔 stat-poll `lib/client.js` 的 mtime/ctime/size，变化即推 `rebuilt` 帧重挂该 entry——`pnpm build` 后约 1s 新前端自动出现，**不需要刷新或重启**（改动期间本插件的主面板会因 entry 重挂而关闭，重新打开即可）。**Host 侧不会自动更新**：Host HMR 的 chokidar watch 忽略 `**/node_modules`，link: 安装的源码目录不被 watch，`lib/index.js` 改动要走下面的 `set_plugin` 关→开或重启。**不要刷新页面**：刷新属未定义行为，会刷崩 DSH（偶尔能加载新 bundle）。崩溃恢复用错误对话框的「重启」（会重新 collect 快照），**不要点「禁用第三方插件、备份 profile patch 并重启」**（会停用全部第三方插件并改写 patch）。同版本重复安装会返回 `already-installed`，要更新得先 `remove_bundle` 再 `install_bundle`（或先改 `package.json` 的 version）。安装结果以返回里的 `application: applied` 为准。
 
-**Host 侧热重载（不重启 app）**：`plugin_manager` 对运行中的行执行 disable → enable；target 必须是 exact entryId `include:session-context-config`（用行 id 本身会得 `unknown-plugin`），返回 `application: applied` 且 `list_plugins` 里 fiberPhase 回 `active` 即新 Host 已加载。**Windows pnpm junction 坑**：link: 安装后 profile node_modules 里的 junction 目标可能被拼坏（`profileDir\D:\...`），bundle 解析报错；修法与验证脚本在 `../dsh-model-efforts/install-to-dsh.ps1`。不要手动往 profile 的 node_modules 拷文件，也不要改 profile 的 `package.json` / `cordis.patch.yml`。
+**Host 侧热重载（不重启 app）**：`plugin_manager` 的 `set_plugin` 对运行中的行执行关→开（`enabled:false` 再 `true`）；target 必须是 exact entryId `include:session-context-config`（用行 id 本身会得 `unknown-plugin`），返回 `application: applied` 且 `list_plugins` 里 fiberPhase 回 `active` 即新 Host 已加载。**Windows pnpm junction 坑**：link: 安装后 profile node_modules 里的 junction 目标可能被拼坏（`profileDir\D:\...`），bundle 解析报错；修法与验证脚本在 `../dsh-model-efforts/install-to-dsh.ps1`。不要手动往 profile 的 node_modules 拷文件，也不要改 profile 的 `package.json` / `cordis.patch.yml`。
 
 **看真实效果**：桌面端默认不开放调试端口；以 `--remote-debugging-port=9202` 启动后可用 `use-chrome` 技能直连（CDP 端口 9202，`node cdp.mjs eval/screenshot --port=9202`），比系统级鼠标/键盘自动化可靠。不带调试参数时退回截桌面窗口的图核对；**不要用系统级鼠标/键盘自动化**去点用户界面：会打断用户操作、留下文字选中，而且验证价值不如一次截图。
 
@@ -93,10 +94,10 @@ node scripts/harness.mjs
 - **延迟不是删除**：延迟工具在 tools 数组里保留「名字 + 功能摘要 + 参数类型骨架」的占位定义（每个参数的名称与类型都在，只剥说明/示例/默认值），完整 schema 由 `tool_search` 以工具结果的形式追加进历史。这样 tools 数组整场不变，加载动作不打断前缀缓存——这是整套设计的核心取舍，别顺手改成「按需注册/注销」。**类型不能从骨架里省**：只留 required 参数会把可选布尔/数字当字符串传（`plugin_manager` 的 `enabled: false` 会报 "must be a boolean"）。
 - **生效边界**：`agent/created` 时套用会话记录或 `lastUsedId`；已开始的会话不跟随配置变化，只在用户确认切换时重算；`tools/change`（可见工具集合变化）时按同一档位**增量**刷新延迟占位与隐藏面（只加新增、撤消失，未变化的工具不重注册）——整份重建会让当前 step 的延迟工具全部 `unknown tool`，见坑库。`sessions` 映射经 `recordSession` 有界保留最近 500 条：宿主 dispose 一个 agent 后同 sessionId 仍可被 resume 复用（切回已有会话 = 同 id 重新 `agent/created`），不能按事件删条目，被淘汰的会话重开时回落 `lastUsedId`。
 - **运行时上下文逐项开关**：`ContextProfile.contexts` 只存关掉的上下文名（缺省=注入）；兼容字段 `runtimeContext` / `workingDirectory` / `baseline.environmentFacts` 在 `normalizeState` / `normalizeProfile` 里一次性迁移成逐项 false。`host/profiles.ts` 对每个 false 在 agent 作用域注册同名非 required 空上下文（required 段靠它遮住 required 标志），`src/index.ts` 的全局 `system-prompt/assemble`（`prepend`）在 `next()` 之后按名字过滤；因此 `refreshContext` 不会把 required 段补回。**面板的上下文名单由一次干跑装配动态发现**（快照 `contexts`，含空文本条目）：`CONTEXT_SWITCHES` 只提供已知项的中文名/说明/顺序，装配里出现的未知 name 会按原始 name 自动补行并立即可开关；`subagent:identity` 是已知项之一（order 取 `SUBAGENT_DELEGATION`）。验收：`/api/assemble` 的 `contexts` 与 `refreshedContexts` 都要遵守同一份开关。
-- **system 段逐项开关**：`ContextProfile.sections` 只存关掉的段名（缺省=包含）。同一份 `system-prompt/assemble` 过滤器在 `next()` 之后按名字删 `assembly.sections`；`refreshContext` 不重跑 sections，所以不需要影子段。**过滤器必须 `{prepend:true, global:true}` 注册**（见坑库：assemble 走 scopeTarget 过滤派发）。`deployment:persona-prefix` / `deployment:persona-suffix` 与 4 条附加规则段受保护：人设是 `prompt.prefix` / `prompt.suffix` 两个独立槽位（各自 `enabled/override/text`），附加规则走全局 baseline 开关。**`tool:*` 强绑定工具状态，不进 `profile.sections`、面板不列、不单独配置**：同一过滤器在 `hiddenToolGuide` 里按工具/组终态裁掉（复合段 jobs/goal/schedule/session-query 看成员，至少一个成员开启/延迟才保留）；`normalizeSections` 剪掉旧状态的 `tool:*` 键。`sccFullSections: true` 是面板列目录的私有旁路（返回未过滤名单），`promptCatalog` 会再剔除 `tool:*`；真正的请求路径不带这个字段。面板段列表按 `assembly.sections` 的**实际顺序**扁平排列（不分「人设/宿主固定/工具引导」小区域），人设两个槽位按各自 order 插在列表里（prefix 紧随 identity，suffix 在 app:web-surface 之后）；附加规则 order 固定 20000+，用「本插件附加 · 全局」小标题与分割线分隔并排在最后；消息卡标题不带「system 消息 / user 消息」前缀，角色由右上角 `role:` 标签表达。每行的 `title` 是当前注入正文（模板变量已按本次装配渲染；关闭的段给出关闭前文本）。**已关闭但当前装配里没有出现的已知段也会列**（让条件段关掉后仍能重新开启），meta 标「已关闭 · 当前未出现」；这是档位状态里的显式 false，不是该档位多出的注入项——段清单本身是所有 live 装配共享的，真在任一 live 会话里注入时各档位都会看到。
+- **system 段逐项开关**：`ContextProfile.sections` 只存关掉的段名（缺省=包含）。同一份 `system-prompt/assemble` 过滤器在 `next()` 之后按名字删 `assembly.sections`；`refreshContext` 不重跑 sections，所以不需要影子段。**过滤器必须 `{prepend:true, global:true}` 注册**（见坑库：assemble 走 scopeTarget 过滤派发）。`deployment:persona-prefix` / `deployment:persona-suffix` 与 4 条附加规则段受保护：人设是 `prompt.prefix` / `prompt.suffix` 两个独立槽位（各自 `enabled/override/text`），附加规则走 `profile.baseline`（`host/baseline-runtime.ts` 的 per-agent scoped 段）。**`tool:*` 强绑定工具状态，不进 `profile.sections`、面板不列、不单独配置**：同一过滤器在 `hiddenToolGuide` 里按工具/组终态裁掉（复合段 jobs/goal/schedule/session-query 看成员，至少一个成员开启/延迟才保留）；`normalizeSections` 剪掉旧状态的 `tool:*` 键。`sccFullSections: true` 是面板列目录的私有旁路（返回未过滤名单），`promptCatalog` 会再剔除 `tool:*`；真正的请求路径不带这个字段。面板段列表按 `assembly.sections` 的**实际顺序**扁平排列（不分「人设/宿主固定/工具引导」小区域），人设两个槽位按各自 order 插在列表里（prefix 紧随 identity，suffix 在 app:web-surface 之后）；附加规则 order 固定 20000+，用「本插件附加 · 本档位」小标题与分割线分隔并排在最后；消息卡标题不带「system 消息 / user 消息」前缀，角色由右上角 `role:` 标签表达。每行的 `title` 是当前注入正文（模板变量已按本次装配渲染；关闭的段给出关闭前文本）。**已关闭但当前装配里没有出现的已知段也会列**（让条件段关掉后仍能重新开启），meta 标「已关闭 · 当前未出现」；这是档位状态里的显式 false，不是该档位多出的注入项——段清单本身是所有 live 装配共享的，真在任一 live 会话里注入时各档位都会看到。
 - **默认预设与状态版本兼容**：`DEFAULT_PROFILES` 有 5 个**插件通用**模板：`full`（全部开启；编排/目标/调度/插件开发/MCP/第三方延迟）、`lean`（隐藏编排/目标/调度/插件开发；MCP/第三方延迟）、`minimal`（交互/技能/协作/编排/目标/调度/MCP/插件开发/第三方全关；人设用 `MINIMAL_PROMPT`）、`chat`（全关）、`pi`（只留 read/write/edit/pwsh/read_image，Pi 短版提示词）。**它们不是用户当前配置的副本**：首次安装由 `defaultState` 克隆；新建下拉通过 `/api/state` 的 `defaults` 读当前插件版本，复制成 `custom-*`。`normalizeState` 的 v2/v3→v4 **只做结构迁移**（prompt 双槽位、contexts/sections 旧字段、缺失的新字段、version），**不替换任何档位的名称/组/提示词/开关，也不新增 chat/pi**。组划分：`platform` = `load_workspace_dependencies|working_directory|lsp`，`devtools` = `plugin_manager|cordis_*`。`normalizeState` 接受 v2/v3/v4；custom-*、sessions、baseline 原样保留。
 - **工具说明翻译（只供面板显示）**：默认显示中文。已知工具走 `src/client/panel/translations.ts` 的内置字典（key=原始描述文本）；未知工具在面板挂载时自动按需翻译（串行队列，带 loading/失败重试），走 `POST /session-context-config/api/translate` → 命中 `$DSH_HOME/session-context-config-translations.json`（key 是**原始文本**）即返回，否则用 `agentDefaultModel.currentSelection()` + `llm.prepareCall`（与 dsh-web-extract 同链路）翻译并落盘。每个工具的显示语言按工具名记在 localStorage（`dsh-session-context-config:tool-lang`，默认 `zh`，切回原文会记住）。模型侧工具 schema / 延迟摘要 / `tool_search` 完全不动。
-- **附加规则与环境事实分离**：界面上的「附加规则」只保留三段固定提示词与一段自定义文本（勾选才注入，未勾选也可编辑，纯空白视同空段）；环境事实是 `contexts` 里的 `session-context-config:environment`，按档位开关。子代理没有档位，环境事实默认保留。
+- **附加规则与环境事实分离**：界面上的「附加规则」只保留三段固定提示词与一段自定义文本（勾选才注入，未勾选也可编辑，纯空白视同空段）；它按档位存 `profile.baseline`，根会话用自己档位，子代理沿 `parentSession` 跟随根档位（解析不到时用顶层 baseline 兜底）。环境事实是 `contexts` 里的 `session-context-config:environment`，按档位开关；子代理没有档位，环境事实默认保留。
 - **工具来源（面板显示，只读）**：宿主 tools 注册表**不记录注册者**（`register` 只存定义与一条 `tools.register()` effect），所以来源按四级证据解析：① 装载后包一层 `tools.register`，从**调用栈**第一个业务文件帧反查包（`host/sources.ts`；`this.ctx` 是调用方 ctx，但 agent 作用域的 fiber 会指到 `agent-preset-registry`，只有栈指向真正注册方）；② 官方工具目录静态表（`known-tools.ts`，与当前真正装载的入口求交；同名多实现如 `pwsh` 用工具描述在候选包里消歧）；③ 入口产物扫描（只取「确实注册过工具」的入口，只认唯一命中，面板标为推断）；④ MCP 命名约定（`mcp__<server>__` / `mcp_connector_`，比插件归属更有信息量，优先级最高）。都不命中显示「未识别」，不猜。面板在工具名下方显示短名（包本地化标题优先，否则包短名），tooltip 给完整包名、Loader 入口和判定依据；`/api/state` 的 `tools[].source` 与 `sources`（诊断计数）同步暴露。
 - **注入内容自动发现**：面板不维护段/上下文/消息的全量名单。每次 `/api/state` 对**每种 live preset 挑一个限制最少的根会话**干跑 `assemble({ sccFullSections: true })`（上限 8 份），按 name 合并段与上下文（先出现的顺序优先，空影子不覆盖另一档位的非空正文），变量按各自 `assembly.variables` 渲染；空段不列、`tool:*` 不列（强绑定工具状态，不单独配置）、空上下文保留。user 消息来源由 `host/injected.ts` 按**根会话实际归属的档位**分组（applied 优先，回落 `sessions` 记录；无档位归 `none`），组内合并 `deriveMessages()` 历史与 `agent/pre-step` 观察（被通道关掉的消息也记录），面板只取**当前选中档位**那一组。新版本/新插件新增的段、上下文或 user kind 会自动出现；只有呈现质量（中文名/说明）才需要补 `SECTION_OPTIONS` / `CONTEXT_SWITCHES`。**消息 kind 可关**：每行写 `profile.channels[kind]='off'`，Host 的 pre-step 过滤器按同一键剔除；列表底部可手动输入任意 kind 提前关闭（写入同一 `channels` 表，未观察到的以「手动」行保留），已知通道 id/来源拒绝重复添加。运行期消息可能承载状态同步，UI 必须保留风险提示。**调用时机**：不是每请求/定时——只在页面首次挂载快照组件（面板/chip，store 为空时）、手动「重新读取」、保存、切换档位时计算（`/api/state` GET/POST 与 `/api/session` POST 都返回快照）；同一页面快照由 client store 复用。没有版本/插件键缓存；版本/插件变化等下次拉取自然生效。单次最多 8 份装配，工具目录另有 15s 缓存。
 - 切换档位会重建整个工具表与前缀缓存；面向用户的确认话术已写在菜单里，改动这段行为时同步它。
@@ -115,7 +116,7 @@ node scripts/harness.mjs
 > 正解：默认预设只作为新建下拉的模板，更新插件不改用户配置；不要为了同步预设去改迁移、升 state VERSION 或写用户 state。旧状态迁移的验收口径是「用户值原样保留」，不是「换成新内置值」。
 > 验证：`tests/sections.test.mjs` 的 v3→v4 用例断言自定义 `full` / `chat` 的名称、组、提示词原样保留；`GET /api/state` 的 `defaults` 是 5 档，`profiles` 是用户档位。
 
-> **client 产物必须单文件，源码可多模块**：浏览器只服务 `dsh.client` 声明的入口（`/plugins/<pkg>/client.js`），但构建形态下源码在 `src/client/` 拆成多模块（contract/state/menu/panel/chips + apply.ts），由 tsdown 打成单文件 `lib/client.js`。改客户端源码后 `pnpm build` 即可，桌面自带 client HMR 会在约 1s 内自动重挂该 entry（见「构建、安装与验证」）；不要刷新页面。
+> **client 产物必须单文件，源码可多模块**：浏览器只服务 `dsh.client` 声明的入口（批量资源 URL `plugins/??<id>/client.js,…&rev=<hash>` 中的资源名），但构建形态下源码在 `src/client/` 拆成多模块（contract/state/menu/panel/chips + apply.ts），由 tsdown 打成单文件 `lib/client.js`。改客户端源码后 `pnpm build` 即可，桌面自带 client HMR 会在约 1s 内自动重挂该 entry（见「构建、安装与验证」）；不要刷新页面。
 
 > ⚠️ **DSH 的 CSS Module 类名带哈希，不能当选择器/样式契约**
 > 症状：照源码写的 `.heroOptions{...}` 完全不生效，编译产物里类名是 `an3WzG_heroOptions`。
@@ -128,11 +129,11 @@ node scripts/harness.mjs
 > 正解：用槽位锚点选中「装着该槽的那一层」再覆盖——`client.js` 里的 `div:has(> [data-slot="conversation.hero.options"]){margin-left:0}`。注意锚点自身是 `display:contents`，对它设 margin 无效。
 
 > **宿主 `ui-primitives` 是平台种子词，client bundle 的 `require` 直接可用**
-> 依据：tag `dsh-v0.2.2-rc.1` 的 `packages/client/web/src/platform.ts` 里 `PLATFORM_MODULES`（11 项）含 `@deepseek-ai/dsh-client-ui-primitives`；require 解析第一跳是种子表（`packages/client/modules/src/client/system.ts` 的 `makeRequire`），与插件自己的 `dsh.client.inject` 无关，手写 bundle 同样命中。`Menu`/`MenuSurface`/`Checkbox`/`SegmentedControl`/`Input`/`Toast`/图标都在包导出面（`ui-primitives/src/index.ts`）。
+> 依据：tag `dsh-v0.2.2-rc.2` 的 `packages/client/web/src/platform.ts` 里 `PLATFORM_MODULES`（11 项）含 `@deepseek-ai/dsh-client-ui-primitives`；require 解析第一跳是种子表（`packages/client/modules/src/client/system.ts` 的 `makeRequire`），与插件自己的 `dsh.client.inject` 无关，手写 bundle 同样命中。`Menu`/`MenuSurface`/`Checkbox`/`SegmentedControl`/`Input`/`Toast`/图标都在包导出面（`ui-primitives/src/index.ts`）。
 > 真正 require 不到的是表外 specifier：宿主包自己的依赖（如 `clsx`）与包内子路径——require 这些才会报 `missed the module table`。
 > 本项目组件保持自绘（设计选择，不是拿不到）：几何已对齐并有 smoke/截图验证，不为对齐重写；新写组件可直接 import primitives。
 
-- **模块表三层与 `dsh.client` 四字段（本地副本，对应 tag `dsh-v0.2.2-rc.1`）**：① 平台种子表 `PLATFORM_MODULES`（11 项，所有 bundle 共享，require 第一跳命中，与 `dsh.client` 声明无关）→ ② graph 行（声明 `dsh.client` + `exports["./client"]` 的包，`<pkg>` 与 `<pkg>/client` 同键；要稳定 require 另一个包就列进 `dsh.client.external`，Host 据此拓扑排序让依赖 factory 先到，自指与环报错，未到达抛 `missed the module table`）→ ③ 包内 `require.async` 局部 chunk。`dsh.client` 四字段：`platform` 只认 `'web'`；`inject` = 所列包组合进 entry + factory 先到；`external` 只管模块表请求、不做 cordis 组合；`immediately` 启动期预取（本项目用了 `immediately: true`）。
+- **模块表三层与 `dsh.client` 四字段（本地副本，对应 tag `dsh-v0.2.2-rc.2`）**：① 平台种子表 `PLATFORM_MODULES`（11 项，所有 bundle 共享，require 第一跳命中，与 `dsh.client` 声明无关）→ ② graph 行（声明 `dsh.client` + `exports["./client"]` 的包，`<pkg>` 与 `<pkg>/client` 同键；要稳定 require 另一个包就列进 `dsh.client.external`，Host 据此拓扑排序让依赖 factory 先到，自指与环报错，未到达抛 `missed the module table`）→ ③ 包内 `require.async` 局部 chunk。`dsh.client` 四字段：`platform` 只认 `'web'`；`inject` = 包名边（informational），只驱动所列包 factory 的到达/预取顺序，不做 cordis 组合、不提供服务注入；服务注入看 client 入口自己导出的 `inject`（服务名）；`external` 只管模块表请求、不做 cordis 组合；`immediately` 启动期预取（本项目用了 `immediately: true`）。
 
 > ⚠️ **宿主服务方法解构后再调用会丢 `this`**
 > 症状：配置面板下方的工具分组整块消失；`GET /api/state` 里 `tools: 0`，每个 preset 的诊断都是 `Cannot read properties of undefined (reading 'retain')`。
@@ -154,9 +155,9 @@ node scripts/harness.mjs
 > 根因：`.cp-scroll` 是 flex column；`.cp-msgCard` 的 `overflow:hidden` 会把 flex item 的自动最小高度变成 0，内容超过面板高度时卡片被压扁到只剩边框。
 > 正解：`.msgCard { flex: none }`（见 `panel.module.css`）。验证：headless Chrome 加载宿主主题 CSS + 插件编译 CSS，量 `.cp-msgCard` 高度；缺 `flex:none` 时只剩 46/46/16/16，正常时 528/528/171/171。
 
-> ⚠️ **`system-prompt/assemble` 监听器必须 `{global: true}`，否则真机上根本不触发**
+> ⚠️ **`system-prompt/assemble` 监听器必须 `{global: true}`，跨 scope 稳定触发**
 > 症状：段开关/上下文开关只写状态，装配结果毫无变化；单测全绿。
-> 根因：宿主在 `core/system-prompt` 用 `scopeTarget(this, scope)` 派发这个 waterfall，Cordis 的 context filter 只放行 `hook.global`、无 filter、或 scope 链上的监听器（`vendor/cordis/src/events.ts` 的 `_resolve`）；插件的根 ctx 监听器在真机上被挡掉。
+> 根因：宿主在 `core/system-prompt` 用 `scopeTarget(this, scope)` 派发这个 waterfall，Cordis 的 context filter 只放行 `hook.global`、无 filter、或 scope 链上的监听器（`vendor/cordis/src/events.ts` 的 `_resolve`）。`packages/core/scope` 对无 scope 标签的监听器放行，所以根 ctx 监听器并非必然被挡——但带 `global: true` 才与 scope 无关地稳定收到。
 > 正解：`ctx.on('system-prompt/assemble', listener, { prepend: true, global: true })`。单测直接调 listener 发现不了，`tests/sections.test.mjs` 额外断言 `hook.options.global === true`。验证：`/api/assemble` 的 sections 不含被关掉的段（contexts 仍可能被宿主的 required 补回，靠 agent 作用域空 shadow 把文本变空，见上下文开关条目）。
 
 > ⚠️ **工具来源只能靠调用栈：`fiber.entry` 会指到造作用域的插件**
@@ -220,7 +221,7 @@ node scripts/harness.mjs
 - UI 文案硬编码中文，没走 Client locale 服务；`locale/*.json` 只有包级标题。
 - 段/上下文的自动发现依赖一次干跑装配：当前没出现、也没被关掉的空条件段不占行（要提前配置只能先让它在会话里出现一次）。
 - 自动发现清单的 kind 开关是档位级；关闭 `subagent-settled` / `compact-checkpoint` / `runtime-context` 这类运行期消息会让对应插件收不到自己的通知，只在明确知道作用时关。
-- 系统段开关是档位级，只作用于根会话；子代理的 system 段不受档位开关控制（附加规则是全局例外）。
+- 系统段开关是档位级，只作用于根会话；附加规则也按档位，子代理沿 `parentSession` 跟随所属根会话的档位；解析不到根档位时用顶层 `baseline` 兜底。
 - 系统段顺序由宿主 `order` 固定，面板只能包含/排除，不能改先后。
 - 工作区指令只能整组关：宿主已把同一批 AGENTS.md/CLAUDE.md 拼成一条 `<system-reminder>`，无法按文件过滤；要排除某类文件名只能在部署级配 `instructionFileCandidates` / `maxBytes`。
 - PI 是**模拟档位**：`tool:*` 引导段强绑定工具状态，不能按档位单独关；DSH 沙箱/审批仍生效；`read_image` 是 DSH 对 Pi `read` 图片能力的拆分工，PI 档位保留它。

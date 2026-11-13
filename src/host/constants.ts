@@ -4,6 +4,7 @@
  * Host 与 Client 各自持有一份同规则的档位解析(见 AGENTS.md「跨端同规则双份」),
  * 这里只放 Host 侧;Client 那份在 src/client/state/resolve.ts,改一侧必须同步另一侧。
  */
+import { BASELINE_DEFAULTS, type BaselineFlags } from '../baseline.ts'
 
 export const VERSION = 4
 
@@ -36,6 +37,8 @@ export interface ContextProfile {
   contexts: Record<string, boolean>
   /** 系统提示段名 -> false 表示不进入 system 消息;缺省(或 true)表示包含。 */
   sections: Record<string, boolean>
+  /** 本档位的附加规则(四段);子代理跟随所属根会话的档位。 */
+  baseline: BaselineFlags
   channels: Record<string, string>
   groups: Record<string, string>
   servers: Record<string, string>
@@ -148,6 +151,16 @@ export const MINIMAL_PROMPT =
 /** 旧档位 runtimeContext:false 的迁移目标:所有可选上下文一次性关掉。 */
 const OFF_OPTIONAL_CONTEXTS = Object.fromEntries(OPTIONAL_CONTEXT_NAMES.map((name) => [name, false])) as Record<string, boolean>
 
+/** 新档位的默认附加规则:三段固定提示词开,自定义文本关。 */
+function defaultBaseline(): BaselineFlags {
+  return { ...BASELINE_DEFAULTS, customText: '' }
+}
+
+/** Chat / PI 这类纯净档位的附加规则:全部关闭。 */
+function offBaseline(): BaselineFlags {
+  return { contract: false, cardReceipt: false, untrustedFiles: false, custom: false, customText: '' }
+}
+
 /**
  * PI 档位的初始提示词:按 Pi 当前 main 的短版提示词冻结,工具面改成 DSH 的
  * read / write / edit / pwsh,并补上 read_image(Pi 的 read 内建图片,DSH 拆成
@@ -192,6 +205,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     prompt: { prefix: emptySlot(), suffix: emptySlot() },
     contexts: {},
     sections: {},
+    baseline: defaultBaseline(),
     channels: {},
     groups: { workflow: DEFER, goal: DEFER, schedule: DEFER, mcp: DEFER, devtools: DEFER, other: DEFER },
     servers: {},
@@ -205,6 +219,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     prompt: { prefix: emptySlot(), suffix: emptySlot() },
     contexts: {},
     sections: {},
+    baseline: defaultBaseline(),
     channels: {},
     groups: { workflow: OFF, goal: OFF, schedule: OFF, mcp: DEFER, devtools: OFF, other: DEFER },
     servers: {},
@@ -218,6 +233,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     prompt: { prefix: { enabled: true, override: true, text: MINIMAL_PROMPT }, suffix: emptySlot() },
     contexts: { ...OFF_OPTIONAL_CONTEXTS },
     sections: {},
+    baseline: defaultBaseline(),
     channels: {},
     groups: {
       interaction: OFF,
@@ -250,6 +266,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
       'working-directory:current': false,
       'subagent:identity': false,
     },
+    channels: { workspaceInstructions: OFF, timeContext: OFF },
     sections: {
       'harness:source': false,
       'app:web-surface': false,
@@ -258,7 +275,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
       'ui:deliverable-file-references': false,
       'mcp-resource-servers': false,
     },
-    channels: { workspaceInstructions: OFF, timeContext: OFF },
+    baseline: offBaseline(),
     groups: {
       files: OFF,
       search: OFF,
@@ -301,6 +318,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
       'ui:deliverable-file-references': false,
       'mcp-resource-servers': false,
     },
+    baseline: offBaseline(),
     channels: { 'skill-catalog': OFF },
     groups: {
       search: OFF,

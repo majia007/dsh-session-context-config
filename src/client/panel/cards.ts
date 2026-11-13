@@ -1,8 +1,9 @@
 /** 配置卡片:按最终请求里的消息分卡;system 卡内每段单独开关。 */
 import { createElement as h, Fragment, useState, type ReactElement, type ReactNode } from 'react'
-import { BASELINE_DEFAULTS, BASELINE_TEXT } from '../../baseline.ts'
+import { BASELINE_TEXT } from '../../baseline.ts'
 import { OFF } from '../state/resolve.ts'
-import type { BaselineState, ChannelPreview, ObservedChannel, Profile, PromptContextState, Snapshot } from '../contract/types.ts'
+import type { ChannelPreview, ObservedChannel, Profile, PromptContextState, Snapshot } from '../contract/types.ts'
+import { DEFAULT_BASELINE } from './draft.ts'
 import {
   CONTEXT_SWITCHES,
   KNOWN_CHANNEL_IDS,
@@ -18,18 +19,9 @@ import styles from './panel.module.css'
 
 type Patch = (mutate: (target: Profile) => void) => void
 
-export interface PanelDraft {
-  profiles: Profile[]
-  lastUsedId: string
-  baseline: BaselineState
-}
-
 type SectionEntry = Snapshot['sections'][number]
 
-/** 快照缺 baseline 字段时的兜底(正常链路 Host 总是返回完整值,这里只为类型完整)。 */
-export const DEFAULT_BASELINE: BaselineState = { ...BASELINE_DEFAULTS, customText: '' }
-
-/** 附加规则由全局 baseline 开关控制,在列表末尾单独渲染,不进 `profile.sections`。 */
+/** 附加规则由当前档位的 `profile.baseline` 控制,在列表末尾单独渲染,不进 `profile.sections`。 */
 const BASELINE_NAMES = new Set([
   'session-context-config:contract',
   'session-context-config:card-receipt',
@@ -113,26 +105,26 @@ function SegmentRow({ checked, onChange, title, desc, meta, disabled, tooltip }:
   )
 }
 
-function baselineRows(draft: PanelDraft, patchBaseline: (key: string, value: boolean | string) => void): ReactElement[] {
+function baselineRows(profile: Profile, patchBaseline: (key: string, value: boolean | string) => void): ReactElement[] {
   const rows: Array<{ key: 'contract' | 'cardReceipt' | 'untrustedFiles'; label: string; name: string; desc: string; text: string }> = [
     { key: 'contract', label: '行为契约', name: 'session-context-config:contract', desc: '不可逆动作先确认、如实汇报、信息足够就行动、跟随周边风格等 6 条。', text: BASELINE_TEXT.contract },
     { key: 'cardReceipt', label: '卡片回执', name: 'session-context-config:card-receipt', desc: 'UI 已渲染卡片时只回一句确认，不复述字段；失败仍给细节。', text: BASELINE_TEXT.cardReceipt },
     { key: 'untrustedFiles', label: '不可信下载', name: 'session-context-config:untrusted-files', desc: '隔离目录、路径传参、python -I 三条读取规则。', text: BASELINE_TEXT.untrustedFiles },
   ]
-  const baseline = draft?.baseline
-  const customOn = baseline?.custom === true
-  const customText = baseline?.customText ?? ''
+  const baseline = profile.baseline ?? DEFAULT_BASELINE
+  const customOn = baseline.custom === true
+  const customText = baseline.customText ?? ''
   const customMeta = !customOn
     ? '未勾选 · 可先编辑'
     : customText.trim() ? `注入 · ${customText.length} 字` : '已勾选 · 空文本不发送'
   return [
     ...rows.map((row) => h(SegmentRow, {
       key: row.key,
-      checked: baseline?.[row.key] !== false,
+      checked: baseline[row.key] !== false,
       onChange: (checked) => patchBaseline(row.key, checked),
       // tooltip 是原样注入 system 的全文;文本里的 \n 在悬停提示里显示为换行。
       tooltip: row.text,
-      title: h('span', { className: styles.segmentLabel }, row.label, h(Tags, { names: [row.name], tags: ['全局'] })),
+      title: h('span', { className: styles.segmentLabel }, row.label, h(Tags, { names: [row.name], tags: ['本档位'] })),
       desc: row.desc,
     })),
     h(SegmentRow, {
@@ -140,8 +132,8 @@ function baselineRows(draft: PanelDraft, patchBaseline: (key: string, value: boo
       checked: customOn,
       onChange: (checked) => patchBaseline('custom', checked),
       tooltip: customText.trim() ? customText : undefined,
-      title: h('span', { className: styles.segmentLabel }, '自定义文本', h(Tags, { names: ['session-context-config:custom-text'], tags: ['全局'] })),
-      desc: '自由输入的提示词；勾选后对所有会话与子代理生效，留空不发送。',
+      title: h('span', { className: styles.segmentLabel }, '自定义文本', h(Tags, { names: ['session-context-config:custom-text'], tags: ['本档位'] })),
+      desc: '自由输入的提示词；勾选后对当前档位生效，留空不发送。',
       meta: customMeta,
     }),
     h('textarea', {
@@ -275,9 +267,8 @@ function PersonaBlock({ option, profile, patch, chars, current }: {
   )
 }
 
-export function SystemMessageCard({ profile, draft, patch, patchBaseline, sections }: {
+export function SystemMessageCard({ profile, patch, patchBaseline, sections }: {
   profile: Profile
-  draft: PanelDraft
   patch: Patch
   patchBaseline(key: string, value: boolean | string): void
   sections: SectionEntry[]
@@ -335,14 +326,14 @@ export function SystemMessageCard({ profile, draft, patch, patchBaseline, sectio
     {
       role: 'developer',
       title: '系统提示词',
-      note: '以下各段按实际拼装顺序拼成同一条消息，每段可单独开关；悬停各行可查看当前注入的完整文本。段开关只作用于根会话，附加规则对所有会话与子代理生效。',
+      note: '以下各段按实际拼装顺序拼成同一条消息，每段可单独开关；悬停各行可查看当前注入的完整文本。段开关只作用于根会话，附加规则按档位生效，子代理跟随所属根会话的档位。',
     },
     ...sectionRows,
     h(SectionHeading, {
-      title: '本插件附加 · 全局',
-      desc: '以下 4 项由 dsh-session-context-config 额外加入，不属于 DSH 自带提示词；对所有新会话与子代理生效。悬停各行可查看注入的完整文本。',
+      title: '本插件附加 · 本档位',
+      desc: '以下 4 项由 dsh-session-context-config 额外加入，不属于 DSH 自带提示词；只对当前档位的根会话生效，子代理跟随所属根会话的档位。悬停各行可查看注入的完整文本。',
     }),
-    ...baselineRows(draft, patchBaseline),
+    ...baselineRows(profile, patchBaseline),
   )
 }
 

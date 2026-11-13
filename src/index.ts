@@ -16,6 +16,7 @@
  * (environment)、目录(catalog)、HTTP 路由(routes)各占一个模块;本文件只做装配。
  */
 import { BASELINE_SECTION_NAME, baselineSections, type BaselineFlags } from './baseline.ts'
+import { createBaselineRuntime } from './host/baseline-runtime.ts'
 import { CHANNELS, OFF, PERSONA_SECTION, PERSONA_SUFFIX_SECTION } from './host/constants.ts'
 import { createEnvironmentRuntime } from './host/environment.ts'
 import { createInjectedMessages } from './host/injected.ts'
@@ -49,6 +50,7 @@ export function apply(ctx: HostContext): void {
   const store = createStateStore(note)
   const kit = createSessionKit(ctx, note)
   const profiles = createProfileRuntime(ctx, store, kit, note)
+  const baseline = createBaselineRuntime(ctx, store, kit, profiles, note)
   const environment = createEnvironmentRuntime(ctx, kit, note)
   const translations = createTranslationRuntime(ctx, note)
   // 自动发现的注入消息清单:通道白名单之外的内容(第三方插件/未来版本)也能在面板里看到。
@@ -57,8 +59,8 @@ export function apply(ctx: HostContext): void {
 
   store.load()
 
-  // 基线三段是全局段:与档位无关,每个 agent 的装配都会带上;开关关闭时段文本为空,
-  // 装配层会丢弃空段。用函数读 state,所以面板改开关不需要重新注册。
+  // 全局 baseline 段只作兜底:每个 agent 在 baseline-runtime 里注册同名 scoped 段,
+  // 按所属根会话的档位取值并遮住这里;只有注册失败/拿不到 agent 时才回落到顶层 baseline。
   const baselineSectionDisposers: Array<() => void> = []
   for (const section of baselineSections((): BaselineFlags => store.state.baseline)) {
     try {
@@ -105,6 +107,8 @@ export function apply(ctx: HostContext): void {
       const payload = args[0] as { agent?: AgentLike } | undefined
       const agent = payload?.agent as AgentLike
       environment.applyEnvironment(agent)
+      // 子代理也要注册:四段按所属根会话的档位取值,没有 scoped 段就落到全局兜底。
+      baseline.apply(agent)
       if (!kit.isRootAgent(agent)) return
       ensureChannelFilter(agent)
       const sessionId = kit.sessionIdOf(agent)
@@ -127,6 +131,7 @@ export function apply(ctx: HostContext): void {
     const payload = args[0] as { agent?: AgentLike } | undefined
     const agent = payload?.agent as AgentLike
     releaseChannelFilter(agent)
+    baseline.release(agent)
     environment.releaseEnvironment(agent)
     profiles.release(agent)
   })
@@ -316,6 +321,7 @@ export function apply(ctx: HostContext): void {
   for (const agent of ctx.agents.list()) {
     try {
       environment.applyEnvironment(agent)
+      baseline.apply(agent)
       if (!kit.isRootAgent(agent)) continue
       ensureChannelFilter(agent)
       const sessionId = kit.sessionIdOf(agent)
@@ -343,6 +349,7 @@ export function apply(ctx: HostContext): void {
       }
     }
     environment.dispose()
+    baseline.dispose()
     translations.dispose()
     sources.dispose()
     store.flush()

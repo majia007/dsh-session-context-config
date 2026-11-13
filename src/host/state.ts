@@ -139,7 +139,7 @@ function normalizeSummaries(input: unknown): Record<string, string> {
   return out
 }
 
-function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff: boolean): ContextProfile {
+function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff: boolean, legacyBaseline: BaselineFlags): ContextProfile {
   const record = (raw ?? {}) as {
     id?: unknown
     name?: unknown
@@ -165,6 +165,8 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
     servers?: unknown
     tools?: unknown
     summaries?: unknown
+    /** 本档位的附加规则;缺省时从旧顶层 baseline 复制。 */
+    baseline?: unknown
   }
   const id = typeof record?.id === 'string' && /^[a-z0-9][a-z0-9-]{0,40}$/.test(record.id)
     ? record.id
@@ -218,6 +220,10 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
     servers: normalizeGroupStates(record?.servers),
     tools: normalizeToolStates(record?.tools, TOOL_STATES),
     summaries: normalizeSummaries(record?.summaries),
+    // 新档位自带 baseline;旧档位没有时复制旧顶层 baseline(结构迁移,不改值)。
+    baseline: record?.baseline === undefined
+      ? normalizeBaseline(legacyBaseline)
+      : normalizeBaseline(record.baseline),
   }
 }
 
@@ -230,12 +236,14 @@ export function normalizeState(raw: unknown): PluginState {
   const base = defaultState()
   const record = raw as { version?: unknown; profiles?: unknown; sessions?: unknown; lastUsedId?: unknown; baseline?: unknown } | null | undefined
   if (!record || (record.version !== 2 && record.version !== 3 && record.version !== VERSION)) return base
-  // 旧的全局「环境事实」开关迁到每个档位的 contexts;新状态不再有 baseline.environmentFacts。
-  const legacyBaseline = record.baseline as { environmentFacts?: unknown } | undefined
-  const legacyEnvironmentFactsOff = legacyBaseline?.environmentFacts === false
+  // 旧的全局「环境事实」开关迁到每个档位的 contexts;旧顶层 baseline 复制进每个
+  // 缺失 baseline 的档位(结构迁移,值不变);新状态不再有 baseline.environmentFacts。
+  const rawBaseline = record.baseline
+  const normalizedBaseline = normalizeBaseline(rawBaseline)
+  const legacyEnvironmentFactsOff = (rawBaseline as { environmentFacts?: unknown } | undefined)?.environmentFacts === false
   const rawProfiles = record.profiles as unknown[]
   const profiles = Array.isArray(rawProfiles) && rawProfiles.length > 0
-    ? rawProfiles.map((profile, index) => normalizeProfile(profile, index, legacyEnvironmentFactsOff))
+    ? rawProfiles.map((profile, index) => normalizeProfile(profile, index, legacyEnvironmentFactsOff, normalizedBaseline))
     : base.profiles
   const seen = new Set<string>()
   const unique = profiles.filter((profile) => {
@@ -261,6 +269,7 @@ export function normalizeState(raw: unknown): PluginState {
     lastUsedId,
     profiles: unique,
     sessions,
-    baseline: normalizeBaseline(record.baseline),
+    // 顶层 baseline 只保留给子代理解析不到根档位时的兜底;面板按档位编辑。
+    baseline: normalizedBaseline,
   }
 }

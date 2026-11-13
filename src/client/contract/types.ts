@@ -46,6 +46,8 @@ export interface Profile {
   contexts: Record<string, boolean>
   /** 系统提示段名 -> false 表示不进入 system 消息;缺省=包含。 */
   sections: Record<string, boolean>
+  /** 本档位的附加规则;旧宿主快照可能没有。 */
+  baseline?: BaselineState
   channels: Record<string, string>
   groups: Record<string, string>
   servers: Record<string, string>

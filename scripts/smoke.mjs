@@ -72,18 +72,20 @@ const tools = [
   })),
 ]
 const personaSlot = () => ({ enabled: true, override: false, text: '' })
-const profile = (id, name, description) => ({
+const baselineFlags = (on = true) => ({ contract: on, cardReceipt: on, untrustedFiles: on, custom: false, customText: '' })
+const profile = (id, name, description, baseline = baselineFlags()) => ({
   // plan:policy 用来覆盖「已知、已关闭、但当前装配里没有出现」的段:它必须仍然
   // 可重新开启,但 meta 要明确是「已关闭 · 当前未出现」。
   id, name, description, groups: {}, servers: {}, tools: {}, contexts: {}, sections: { 'plan:policy': false }, channels: {},
+  baseline,
   prompt: { prefix: personaSlot(), suffix: personaSlot() }, summaries: {},
 })
 const snapshot = {
   ok: true,
   version: 4,
-  profiles: [profile('standard', '完整', '标准档位，处理代码和资料'), profile('lean', '精简', '只留必要工具')],
+  profiles: [profile('standard', '完整', '标准档位，处理代码和资料'), profile('lean', '精简', '只留必要工具', baselineFlags(false))],
   // 新建档位下拉的模板来源:Host 快照里的当前插件内置预设,与已安装 profiles 分线。
-  defaults: [profile('pi', 'PI', '模拟 Pi'), profile('chat', 'Chat', '仅聊天')],
+  defaults: [profile('pi', 'PI', '模拟 Pi', baselineFlags(false)), profile('chat', 'Chat', '仅聊天', baselineFlags(false))],
   lastUsedId: 'standard',
   sessions: { s1: 'standard' },
   baseline: { contract: true, cardReceipt: true, untrustedFiles: true, custom: false, customText: '' },
@@ -351,8 +353,13 @@ const baselineLabels = ['行为契约', '卡片回执', '不可信下载', '自�
 const baselineRows = () => baselineLabels.map(rowByText)
 const fixedBaselineRows = () => baselineLabels.slice(0, 3).map(rowByText)
 check('附加规则前三段各是一行且默认全开', fixedBaselineRows().every((row) => row?.querySelector('input[type="checkbox"]')?.checked === true))
-check('附加规则行标了全局', baselineRows().every((row) => row?.textContent?.includes('全局')))
+check('附加规则行标了本档位', baselineRows().every((row) => row?.textContent?.includes('本档位')))
 check('附加规则排在所有段之后', segmentRows().slice(-4).every((row, index) => row.querySelector('.cp-segmentLabel')?.textContent?.includes(baselineLabels[index]) === true))
+const tabByText = (label) => [...panel.querySelectorAll('.cp-chipRow [role="tab"]')].find((tab) => tab.textContent === label)
+await click(tabByText('精简'))
+check('附加规则按档位读取（精简全关）', fixedBaselineRows().every((row) => row?.querySelector('input[type="checkbox"]')?.checked === false))
+await click(tabByText('完整'))
+check('切回完整恢复本档位勾选', fixedBaselineRows().every((row) => row?.querySelector('input[type="checkbox"]')?.checked === true))
 check('三段固定文本的 tooltip 是注入全文且保留换行', (
   rowByText('行为契约')?.getAttribute('title')?.includes('## 工作契约\n\n- 不可逆') === true &&
   rowByText('卡片回执')?.getAttribute('title')?.includes('## 工具卡片\n\n- 工具结果注明') === true &&
