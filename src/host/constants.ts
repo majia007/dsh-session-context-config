@@ -138,17 +138,15 @@ function closedSlot(): PersonaSlot {
 }
 
 /**
- * 「完整 / 精简 / 极简」共用的收尾纪律。它替换部署人设后缀,所以对这三个档位
- * 生效;Chat 与 PI 各自关闭后缀,不继承这段文本。
+ * 极简档位的部署人设文案。它是插件通用预设的一部分,不是用户当前配置;
+ * 旧 v2/v3 状态迁移不会把它注入用户档位。
  */
-export const OUTPUT_DISCIPLINE = [
-  '## 工具与输出纪律',
-  '- 工具批次：参数互不依赖的调用必须一次发完，不等回执；读文件前先列全清单再一次读完，独立的读、搜、查合进同一批，写脚本与执行脚本、同一文件的多处编辑同批。单发调用要能说出它等的是上一批哪个值。',
-  '- 不重读：刚读过或刚改过的文件不再读，不为"确认一下"重读；只有编辑结果未匹配或文件被本回合外的操作改过时，才重读；同一文件要分段读就一次读够范围，不做重叠切片。',
-  '- 实证：结论只来自读到的源码、运行输出或数据；没验证就写"未验证"，不用"应该／大概／按惯例"顶替证据；推断与实证分开表述，推断不当定案。',
-  '- 汇报：先给结论和关键数字，再给细节；引用用 `文件路径:行号`，不整段贴代码或整份文件；做了什么、没做什么、哪里没验证，如实列出。',
-  '- 语言：默认中文（代码标识符、命令、路径除外）。',
-].join('\n')
+export const MINIMAL_PROMPT =
+  '你是一个精简的编码代理。只做用户明确要求的事：先读后改，改动最小，不要扩展范围。\n' +
+  '回复用中文，先说结论，不重复用户已知的信息。遇到不确定的取舍就问一句。'
+
+/** 旧档位 runtimeContext:false 的迁移目标:所有可选上下文一次性关掉。 */
+const OFF_OPTIONAL_CONTEXTS = Object.fromEntries(OPTIONAL_CONTEXT_NAMES.map((name) => [name, false])) as Record<string, boolean>
 
 /**
  * PI 档位的初始提示词:按 Pi 当前 main 的短版提示词冻结,工具面改成 DSH 的
@@ -181,22 +179,21 @@ export const PI_PROMPT = [
 ].join('\n')
 
 /**
- * 插件内置的默认预设。它们是**新建档位的模板**,不是已安装 state 的覆盖源:
+ * 插件自带的通用预设。它们不是用户当前配置的副本,也不参与旧状态迁移:
  * - 首次安装(没有状态文件)时 defaultState 克隆它们;
- * - v2/v3 旧状态迁移时按 id 替换已存在的内置档位;
- * - 已安装的 v4 状态不会被改写;新建档位下拉通过 /api/state 的 defaults 读取它们,
- *   选中后复制成 custom-* 新档位。
+ * - 新建档位下拉通过 /api/state 的 defaults 读取它们,选中后复制成 custom-*;
+ * - 已安装 state 的 profiles 是用户配置,v2/v3→v4 迁移只做结构转换,不拿这些值替换。
  */
 export const DEFAULT_PROFILES: ContextProfile[] = [
   {
     id: 'full',
     name: '完整',
-    description: '延迟加载编排、目标、调度、插件开发、MCP 与第三方工具。',
-    prompt: { prefix: emptySlot(), suffix: { enabled: true, override: true, text: OUTPUT_DISCIPLINE } },
+    description: '全部能力开启；编排、目标、调度、插件开发、MCP 与第三方工具延迟加载。',
+    prompt: { prefix: emptySlot(), suffix: emptySlot() },
     contexts: {},
     sections: {},
     channels: {},
-    groups: { workflow: DEFER, goal: DEFER, schedule: DEFER, mcp: DEFER, devtools: DEFER, other: DEFER, delegation: DEFER },
+    groups: { workflow: DEFER, goal: DEFER, schedule: DEFER, mcp: DEFER, devtools: DEFER, other: DEFER },
     servers: {},
     tools: {},
     summaries: {},
@@ -204,12 +201,12 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
   {
     id: 'lean',
     name: '精简',
-    description: '在完整基础上, 隐藏插件开发与定时任务能力；',
-    prompt: { prefix: emptySlot(), suffix: { enabled: true, override: true, text: OUTPUT_DISCIPLINE } },
-    contexts: { 'app:web-surface': false, 'harness:source': false },
-    sections: { 'harness:source': false, 'app:web-surface': false },
+    description: '在完整基础上隐藏编排与计划、调度、目标、插件开发；MCP 与第三方工具保持延迟。',
+    prompt: { prefix: emptySlot(), suffix: emptySlot() },
+    contexts: {},
+    sections: {},
     channels: {},
-    groups: { workflow: DEFER, goal: DEFER, schedule: OFF, mcp: DEFER, devtools: OFF, other: DEFER, delegation: DEFER },
+    groups: { workflow: OFF, goal: OFF, schedule: OFF, mcp: DEFER, devtools: OFF, other: DEFER },
     servers: {},
     tools: {},
     summaries: {},
@@ -217,27 +214,21 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
   {
     id: 'minimal',
     name: '极简',
-    description: '在精简基础上, 隐藏 交互,子代理,复杂工作流等能力',
-    prompt: { prefix: emptySlot(), suffix: { enabled: true, override: true, text: OUTPUT_DISCIPLINE } },
-    contexts: {
-      'sandbox:policy': false,
-      'approval:policy': false,
-      'tool:subagent:depth': false,
-      'tool:subagent_fork:depth': false,
-      'harness:source': false,
-      'app:web-surface': false,
-    },
-    sections: { 'harness:source': false, 'app:web-surface': false },
+    description: '只留读写、搜索、终端与运行目录/依赖路径；交互、技能与网络、协作、编排、目标、调度、MCP、插件开发与第三方工具全部隐藏。',
+    prompt: { prefix: { enabled: true, override: true, text: MINIMAL_PROMPT }, suffix: emptySlot() },
+    contexts: { ...OFF_OPTIONAL_CONTEXTS },
+    sections: {},
     channels: {},
     groups: {
+      interaction: OFF,
+      skill: OFF,
       delegation: OFF,
       workflow: OFF,
       goal: OFF,
       schedule: OFF,
-      mcp: DEFER,
+      mcp: OFF,
       devtools: OFF,
-      other: DEFER,
-      interaction: OFF,
+      other: OFF,
     },
     servers: {},
     tools: {},

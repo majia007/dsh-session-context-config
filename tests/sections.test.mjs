@@ -1,6 +1,6 @@
 /**
  * 系统段开关的回归:
- * - v2 状态迁移(prompt.mode -> prompt.override,新增 sections);v3 -> v4 替换内置三档。
+ * - v2 状态迁移(prompt.mode -> prompt.override,新增 sections);v3 -> v4 只做结构迁移,不替换档位值。
  * - system-prompt/assemble 按 profile.sections 过滤;人设/附加规则受保护。
  * - sccFullSections 旁路返回完整段名单,供面板列目录。
  */
@@ -107,44 +107,33 @@ test('v3 状态只保留普通段的 sections=false;工具引导段与人设槽�
   assert.deepEqual(current.profiles[0].sections, { 'harness:source': false })
 })
 
-test('v3 → v4:内置三档换新定义,自定义档位与会话保留', () => {
+test('v3 → v4:只做结构迁移,任何档位的值都不替换', () => {
   const state = normalizeState({
     version: 3,
     lastUsedId: 'custom-1',
     profiles: [
-      { id: 'full', name: '完整', groups: { platform: 'off' } },
-      { id: 'lean' },
+      { id: 'full', name: '我的完整', groups: { platform: 'off' }, prompt: { enabled: true, override: true, text: '我的前缀' } },
+      { id: 'lean', name: '我的精简', groups: { goal: 'off' } },
       { id: 'minimal' },
+      { id: 'chat', name: '我的聊天', groups: { files: 'off' } },
       { id: 'custom-1', name: 'Chat' },
     ],
     sessions: { s1: 'custom-1' },
     baseline: { contract: false },
   })
   assert.equal(state.version, 4)
-  assert.deepEqual(state.profiles.map((profile) => profile.id), ['full', 'lean', 'minimal', 'custom-1'])
-  // 迁移只替换已存在的内置三档,不凭空补 chat/pi;两者是新建下拉的模板。
-  assert.equal(state.profiles.some((profile) => profile.id === 'chat'), false)
+  assert.deepEqual(state.profiles.map((profile) => profile.id), ['full', 'lean', 'minimal', 'chat', 'custom-1'])
+  // 迁移只做字段/版本结构转换:名称、组、提示词都保持用户原值。
+  assert.equal(state.profiles[0].name, '我的完整')
+  assert.deepEqual(state.profiles[0].groups, { platform: 'off' })
+  assert.deepEqual(state.profiles[0].prompt.prefix, { enabled: true, override: true, text: '我的前缀' })
+  assert.deepEqual(state.profiles[1].groups, { goal: 'off' })
+  assert.deepEqual(state.profiles[2].groups, {})
+  assert.equal(state.profiles[2].prompt.prefix.override, false)
+  assert.deepEqual(state.profiles[3].groups, { files: 'off' })
+  assert.equal(state.profiles[3].name, '我的聊天')
+  // 不凭空新增 pi;chat 也不被同名默认预设顶掉。
   assert.equal(state.profiles.some((profile) => profile.id === 'pi'), false)
-  assert.deepEqual(state.profiles[0].groups, {
-    workflow: 'defer',
-    goal: 'defer',
-    schedule: 'defer',
-    mcp: 'defer',
-    devtools: 'defer',
-    other: 'defer',
-    delegation: 'defer',
-  })
-  assert.deepEqual(state.profiles[2].groups, {
-    delegation: 'off',
-    workflow: 'off',
-    goal: 'off',
-    schedule: 'off',
-    mcp: 'defer',
-    devtools: 'off',
-    other: 'defer',
-    interaction: 'off',
-  })
-  assert.equal(state.profiles[3].name, 'Chat')
   assert.equal(state.sessions.s1, 'custom-1')
 })
 

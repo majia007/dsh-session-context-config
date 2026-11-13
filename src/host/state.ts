@@ -221,8 +221,11 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
   }
 }
 
-/** 版本 2/3/4 可读:2 的 prompt.mode 与 complete 语义在 normalizeProfile 里一次性迁移;
- *  v3 升级到 v4 时把三个内置档位的定义就地替换(新增 devtools 分组、人设双槽位、默认的延迟策略)。 */
+/**
+ * 版本 2/3/4 可读:旧版本只做**结构迁移**——2 的 prompt.mode/complete 语义、
+ * 旧 contexts 字段、缺失的新字段与状态版本;所有档位的值(名称/组/提示词/开关)
+ * 原样保留。`DEFAULT_PROFILES` 只用于首次安装,不参与旧状态加载或替换。
+ */
 export function normalizeState(raw: unknown): PluginState {
   const base = defaultState()
   const record = raw as { version?: unknown; profiles?: unknown; sessions?: unknown; lastUsedId?: unknown; baseline?: unknown } | null | undefined
@@ -235,23 +238,11 @@ export function normalizeState(raw: unknown): PluginState {
     ? rawProfiles.map((profile, index) => normalizeProfile(profile, index, legacyEnvironmentFactsOff))
     : base.profiles
   const seen = new Set<string>()
-  let unique = profiles.filter((profile) => {
+  const unique = profiles.filter((profile) => {
     if (seen.has(profile.id)) return false
     seen.add(profile.id)
     return true
   })
-  // v2/v3 → v4:只替换旧版就有的内置三档;chat/pi 是新增的模板,只进首次安装
-  // 与面板「新建档位」下拉,不能注入旧状态(否则自建的同名 chat 会被顶掉)。
-  if (record.version !== VERSION) {
-    const legacyBuiltinIds = new Set(['full', 'lean', 'minimal'])
-    const defaults = new Map(DEFAULT_PROFILES
-      .filter((profile) => legacyBuiltinIds.has(profile.id))
-      .map((profile) => [profile.id, profile]))
-    unique = unique.map((profile) => {
-      const replacement = defaults.get(profile.id)
-      return replacement === undefined ? profile : JSON.parse(JSON.stringify(replacement)) as ContextProfile
-    })
-  }
   const sessions: Record<string, string> = {}
   if (record.sessions && typeof record.sessions === 'object') {
     for (const [key, value] of Object.entries(record.sessions as Record<string, unknown>)) {

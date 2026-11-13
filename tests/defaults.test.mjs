@@ -1,13 +1,13 @@
 /**
  * 插件内置预设的契约：
  * - 五个模板（full / lean / minimal / chat / pi）只在首次安装与新建下拉里用；
- * - 前四档冻结为本机实际运行值，pi 是 Pi 风格的五工具档位；
- * - 已安装 state 不被这些常量改写（迁移行为见 sections.test.mjs）。
+ * - 它们是插件通用预设，不是用户当前配置的副本；旧状态迁移只做结构转换；
+ * - pi 是 Pi 风格的五工具档位。
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DEFAULT_PROFILES, OFF, OUTPUT_DISCIPLINE, PI_PROMPT } from '../src/host/constants.ts'
+import { DEFAULT_PROFILES, MINIMAL_PROMPT, OFF, PI_PROMPT } from '../src/host/constants.ts'
 import { effectiveState } from '../src/host/tools.ts'
 
 function profileById(id) {
@@ -20,20 +20,24 @@ test('默认预设：五档 id 与顺序稳定', () => {
   assert.deepEqual(DEFAULT_PROFILES.map((profile) => profile.id), ['full', 'lean', 'minimal', 'chat', 'pi'])
 })
 
-test('默认预设：完整/精简/极简使用当前实际值', () => {
+test('默认预设：完整/精简/极简使用插件通用值，不是用户当前配置', () => {
   const full = profileById('full')
   const lean = profileById('lean')
   const minimal = profileById('minimal')
-  for (const profile of [full, lean, minimal]) {
+  for (const profile of [full, lean]) {
     assert.deepEqual(profile.prompt.prefix, { enabled: true, override: false, text: '' })
-    assert.deepEqual(profile.prompt.suffix, { enabled: true, override: true, text: OUTPUT_DISCIPLINE })
+    assert.deepEqual(profile.prompt.suffix, { enabled: true, override: false, text: '' })
   }
-  assert.equal(full.groups.delegation, 'defer')
+  assert.equal(full.groups.delegation, undefined)
+  assert.equal(lean.groups.workflow, OFF)
   assert.equal(lean.groups.schedule, OFF)
   assert.equal(lean.groups.devtools, OFF)
-  assert.equal(lean.groups.workflow, 'defer')
+  assert.deepEqual(lean.contexts, {})
+  assert.deepEqual(lean.sections, {})
+  assert.deepEqual(minimal.prompt.prefix, { enabled: true, override: true, text: MINIMAL_PROMPT })
+  assert.deepEqual(minimal.prompt.suffix, { enabled: true, override: false, text: '' })
   assert.equal(minimal.groups.interaction, OFF)
-  assert.equal(minimal.groups.mcp, 'defer')
+  assert.equal(minimal.groups.mcp, OFF)
   assert.equal(minimal.contexts['sandbox:policy'], false)
   assert.equal(minimal.contexts['working-directory:current'], undefined)
 })
