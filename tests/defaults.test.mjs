@@ -40,6 +40,8 @@ test('默认预设：完整/精简/极简使用插件通用值，不是用户当
   assert.equal(minimal.groups.mcp, OFF)
   assert.equal(minimal.contexts['sandbox:policy'], false)
   assert.equal(minimal.contexts['working-directory:current'], undefined)
+  // MCP 组关闭会隐藏三个资源访问工具,段正文点名它们 → 段必须一起关。
+  assert.equal(minimal.sections['mcp-resource-servers'], false, 'MCP 组关闭时资源段也要关')
   for (const profile of [full, lean, minimal]) {
     assert.equal(profile.baseline.contract, true)
     assert.equal(profile.baseline.cardReceipt, true)
@@ -63,22 +65,23 @@ test('默认预设：Chat 保持全关', () => {
   assert.equal(chat.baseline.custom, false)
 })
 
-test('默认预设：Pi 只注入核心工具，其余一律延迟', () => {
+test('默认预设：Pi 只注入六个核心工具，其余全部关闭', () => {
   const pi = profileById('pi')
-  // 六个核心工具用工具级 force 压过组的延迟。
+  // 六个核心工具用工具级 force 压过组关闭。
   for (const name of ['read', 'write', 'edit', 'pwsh', 'read_image', 'skill']) {
     assert.equal(effectiveState(pi, name), ON, `${name} 应注入`)
     assert.equal(pi.tools[name], FORCE, `${name} 应显式强制开启`)
   }
-  // 组只承载默认值：全部组都是延迟，没有隐藏项。
-  for (const group of ['files', 'search', 'terminal', 'interaction', 'skill', 'delegation', 'workflow', 'goal', 'schedule', 'mcp', 'platform', 'devtools', 'other']) {
-    assert.equal(pi.groups[group], DEFER, `${group} 组应以延迟为默认`)
+  // 组只承载默认值：MCP 延迟（对应 Pi 内置 MCP 的 deferred 暴露），其余组关闭。
+  for (const group of ['files', 'search', 'terminal', 'interaction', 'skill', 'delegation', 'workflow', 'goal', 'schedule', 'platform', 'devtools', 'other']) {
+    assert.equal(pi.groups[group], OFF, `${group} 组应关闭`)
   }
+  assert.equal(pi.groups.mcp, DEFER, 'MCP 组应延迟')
   // Pi 启动就把技能 name/description 注入 system prompt，目录消息（skill-catalog）不关。
   assert.equal(pi.channels['skill-catalog'], undefined, '技能目录消息应注入')
   assert.equal(pi.injectDuplicateSkills, false, 'Pi 不重复注入已加载过的技能正文')
-  // tool_search 不进档位表:运行时由 planFor 按「是否有其它延迟工具」特判注入(回归 tests/refresh.test.mjs)。
-  assert.equal(pi.tools.tool_search, undefined, 'tool_search 由 planFor 自动注入，不进档位表')
+  // MCP 组延迟 → planFor 照常注入 tool_search（不进档位表）。
+  assert.equal(pi.tools.tool_search, undefined, 'tool_search 由 planFor 自动管理，不进档位表')
   assert.equal(pi.sections['mcp-resource-servers'], undefined, 'MCP 资源段不应关闭')
   for (const name of [
     'apply_patch',
@@ -107,14 +110,19 @@ test('默认预设：Pi 只注入核心工具，其余一律延迟', () => {
     'lsp',
     'session_recall',
   ]) {
-    assert.equal(effectiveState(pi, name), DEFER, `${name} 应延迟`)
+    assert.equal(effectiveState(pi, name), OFF, `${name} 应关闭`)
   }
   assert.equal(effectiveState(pi, 'mcp_connector_demo'), DEFER, 'MCP 工具应延迟')
+  // 资源访问工具归 MCP 组 → 随组延迟;宿主 mcp-resource-servers 段点名这三个工具,
+  // 关掉它们会让提示词要求调用一个不存在的工具。
+  for (const name of ['list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource']) {
+    assert.equal(effectiveState(pi, name), DEFER, `${name} 应随 MCP 组延迟`)
+    assert.equal(pi.tools[name], undefined, `${name} 不写工具级状态,跟随 MCP 组`)
+  }
   assert.equal(pi.prompt.prefix.enabled, true)
   assert.equal(pi.prompt.prefix.override, true)
   assert.equal(pi.prompt.prefix.text, PI_PROMPT)
-  assert.equal(pi.prompt.suffix.override, true)
-  assert.equal(pi.prompt.suffix.text, '')
+  assert.deepEqual(pi.prompt.suffix, { enabled: false, override: false, text: '' }, 'Pi 的后缘人设关闭')
   assert.equal(pi.baseline.contract, false)
   assert.equal(pi.baseline.cardReceipt, false)
   assert.equal(pi.baseline.untrustedFiles, false)

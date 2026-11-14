@@ -10,6 +10,7 @@ import test from 'node:test'
 import { SESSIONS_LIMIT } from '../src/host/constants.ts'
 import { defaultState, normalizeState, recordSession } from '../src/host/state.ts'
 import { effectiveState, groupOf, hiddenToolGuide, placehold, serverOf, skeleton, summaryFor } from '../src/host/tools.ts'
+import { TOOL_GUIDE_GROUPS, TOOL_GUIDE_MEMBERS } from '../src/tool-guides.ts'
 import { apply, inject, name } from '../src/index.ts'
 
 /** 只写与默认不同的项：状态表里「开启」不落盘。 */
@@ -31,6 +32,12 @@ test('分组与 server 归属：锚定前缀，不靠子串猜', () => {
   assert.equal(groupOf('read'), 'files')
   assert.equal(groupOf('pwsh'), 'terminal')
   assert.equal(groupOf('mcp__github__create_issue'), 'mcp')
+  // 共享资源工具不带 mcp 前缀,但由 mcp-resources 包注册,必须跟 MCP 组同进同退。
+  assert.equal(groupOf('list_mcp_resources'), 'mcp')
+  assert.equal(groupOf('list_mcp_resource_templates'), 'mcp')
+  assert.equal(groupOf('read_mcp_resource'), 'mcp')
+  // session-query 五个工具都属搜索;`session_trace` 不带 session_event_ 前缀,曾漏到 other。
+  assert.equal(groupOf('session_trace'), 'search')
   assert.equal(groupOf('build_deploy'), 'other')
   // 平台只留运行时基础;插件开发/宿主诊断单独成组(极简也要保留平台这两个)。
   assert.equal(groupOf('working_directory'), 'platform')
@@ -40,6 +47,17 @@ test('分组与 server 归属：锚定前缀，不靠子串猜', () => {
   assert.equal(serverOf('mcp__github__create_issue'), 'github')
   assert.equal(serverOf('mcp_connector_list'), 'mcp_connector')
   assert.equal(serverOf('read'), null)
+})
+
+test('工具引导别名表与成员表一一对应', () => {
+  // hiddenToolGuide 对别名段优先看成员表;缺成员会退回「组 OFF 就裁段」，
+  // 那正是「组关闭 + 单个成员 force」会撕裂的旧形态,所以这里把不变式钉住。
+  for (const [alias, group] of Object.entries(TOOL_GUIDE_GROUPS)) {
+    const members = TOOL_GUIDE_MEMBERS[alias]
+    assert.ok(Array.isArray(members) && members.length > 0, `${alias} 缺少成员表`)
+    // 成员必须落在别名所指的组里:漏一个名字就意味着「组开关」管不到它。
+    for (const member of members) assert.equal(groupOf(member), group, `${member} 应归入 ${group} 组`)
+  }
 })
 
 test('解析优先级：终态压过子项，延迟是可被隐藏覆盖的软状态', () => {
@@ -73,6 +91,11 @@ test('工具引导强绑定：组/工具隐藏时自动隐藏，复合段看成�
   assert.equal(hiddenToolGuide({ ...base, tools: { read: 'defer' } }, 'tool:read'), false)
   // 复合段:目标组还开着、但三个目标工具都被单独隐藏 -> 整段隐藏。
   assert.equal(hiddenToolGuide({ ...base, tools: { create_goal: 'off', get_goal: 'off', update_goal: 'off' } }, 'tool:goal'), true)
+  // 工具级 force 能把引导段拉回来:组 OFF 不再无条件裁段(与 effectiveState 保持一致)。
+  assert.equal(hiddenToolGuide({ ...base, groups: { files: 'off' }, tools: { read: 'force' } }, 'tool:read'), false)
+  assert.equal(hiddenToolGuide({ ...base, groups: { goal: 'off' }, tools: { create_goal: 'force' } }, 'tool:goal'), false)
+  // 组隐藏且成员都没被提回时,复合段仍然隐藏。
+  assert.equal(hiddenToolGuide({ ...base, groups: { goal: 'off' } }, 'tool:goal'), true)
   // 普通段名不受影响。
   assert.equal(hiddenToolGuide(terminalOff, 'harness:identity'), false)
 })

@@ -4,13 +4,13 @@
  */
 import { createElement as h, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
-import { Glyph } from '../menu/icons.ts'
+import { Glyph, Help } from '../menu/icons.ts'
 import { Popover } from '../menu/popup.ts'
 import { useError, useSnapshot } from '../state/hooks.ts'
 import { loadSnapshot, request, setSnapshot, emit } from '../state/store.ts'
 import { effective, formatTokens, NONE, ON, presetNames, statsFor } from '../state/resolve.ts'
 import type { CatalogTool, Profile, Snapshot } from '../contract/types.ts'
-import { GROUP_STATES, CHANNEL_CARDS } from './options.ts'
+import { GROUP_STATES, GROUP_STATE_HINT, CHANNEL_CARDS } from './options.ts'
 import { ChannelCard, ObservedMessagesCard, SectionHeading, SkillDedupeCard, SnapshotCard, SystemMessageCard } from './cards.ts'
 import { DEFAULT_BASELINE, draftOf, type PanelDraft } from './draft.ts'
 import { stateTag, toolRow } from './group-cards.ts'
@@ -339,6 +339,9 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     const servers = [
       ...new Set([...list.map((tool) => tool.server).filter((server): server is string => Boolean(server)), ...configuredServers]),
     ]
+    // 跨 server 的共享资源工具(list_mcp_resources / read_mcp_resource 等)没有 server,
+    // 不单独成块就会被下面的按 server 渲染整块漏掉。
+    const sharedTools = list.filter((tool) => !tool.server)
     if (list.length === 0 && servers.length === 0) return null
     const groupState = profile.groups?.[group.id] ?? ON
     const customized = list.some((tool) => (profile.tools?.[tool.name] ?? ON) !== ON)
@@ -352,6 +355,8 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         h('span', { className: styles.count }, `${list.length} 个`),
         group.id === 'mcp' && servers.length > 0 ? h('span', { className: styles.mini }, `${servers.length} 个 server`) : null,
         h('span', { className: styles.push }),
+        // 组层「开启」与「默认」字面太近:问号标记说明这里有悬停提示。
+        h('span', { className: styles.hintIcon, title: GROUP_STATE_HINT }, h(Help, { size: 13 })),
         h(SegmentedControl, {
           id: `scc-group-${group.id}`,
           value: groupState,
@@ -361,31 +366,45 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         }),
       ),
       group.id === 'mcp'
-        ? servers.map((serverId) => {
-            const serverTools = list.filter((tool) => tool.server === serverId)
-            const serverState = profile.servers?.[serverId] ?? ON
-            const serverEffective = effective(profile, { name: '', group: group.id, server: serverId })
-            return h(
-              'div',
-              { key: serverId },
-              h(
+        ? [
+            // 先列组级资源访问区,再列各 server 块:位置固定,不随 server 增减漂移。
+            ...(sharedTools.length > 0
+              ? [
+                  h(
+                    'div',
+                    { className: styles.serverRow, key: '__shared' },
+                    h('span', { className: styles.srv, title: '跨 server 的 MCP 资源访问工具' }, '资源访问'),
+                    h('span', { className: styles.count }, `${sharedTools.length} 个`),
+                  ),
+                  ...sharedTools.map((tool) => toolRow(tool, profile, setToolState)),
+                ]
+              : []),
+            ...servers.map((serverId) => {
+              const serverTools = list.filter((tool) => tool.server === serverId)
+              const serverState = profile.servers?.[serverId] ?? ON
+              const serverEffective = effective(profile, { name: '', group: group.id, server: serverId })
+              return h(
                 'div',
-                { className: styles.serverRow },
-                h('span', { className: styles.srv, title: serverId }, serverId),
-                stateTag(serverEffective, serverState),
-                h('span', { className: styles.count }, serverTools.length > 0 ? `${serverTools.length} 个` : '未上线'),
-                h('span', { className: styles.push }),
-                h(SegmentedControl, {
-                  id: `scc-server-${serverId}`,
-                  value: serverState,
-                  options: GROUP_STATES,
-                  onChange: (next) => setServerState(serverId, next),
-                  label: `${serverId} 状态`,
-                }),
-              ),
-              ...serverTools.map((tool) => toolRow(tool, profile, setToolState)),
-            )
-          })
+                { key: serverId },
+                h(
+                  'div',
+                  { className: styles.serverRow },
+                  h('span', { className: styles.srv, title: serverId }, serverId),
+                  stateTag(serverEffective, serverState),
+                  h('span', { className: styles.count }, serverTools.length > 0 ? `${serverTools.length} 个` : '未上线'),
+                  h('span', { className: styles.push }),
+                  h(SegmentedControl, {
+                    id: `scc-server-${serverId}`,
+                    value: serverState,
+                    options: GROUP_STATES,
+                    onChange: (next) => setServerState(serverId, next),
+                    label: `${serverId} 状态`,
+                  }),
+                ),
+                ...serverTools.map((tool) => toolRow(tool, profile, setToolState)),
+              )
+            }),
+          ]
         : list.map((tool) => toolRow(tool, profile, setToolState)),
       group.id === 'mcp' || !customized
         ? null
@@ -408,7 +427,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         'div',
         { className: styles.headText },
         h('h1', { className: styles.title }, LABEL),
-        h('p', { className: styles.sub }, '在这里配置档位；新会话与已开始的会话都可以选它。组只提供默认值，隐藏与强制开启会压过子项。'),
+        h('p', { className: styles.sub }, '在这里配置档位；新会话与已开始的会话都可以选它。状态从左到右，优先级从高到低。'),
       ),
       props?.closePanel
         ? h('button', { className: styles.iconBtn, onClick: props.closePanel, title: '关闭' }, '✕')
@@ -537,7 +556,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         h(
           'div',
           { className: styles.chipRow },
-          h('span', { className: styles.mini }, `注入 ${s.on} · 延迟 ${s.defer} · 隐藏 ${s.off}`),
+          h('span', { className: styles.mini }, `开启 ${s.on} · 延迟 ${s.defer} · 关闭 ${s.off}`),
           h('span', { className: styles.mini }, `≈ ${formatTokens(s.onTokens)} tokens`),
           h('button', { className: styles.link, type: 'button', onClick: () => setPreviewOpen(true) }, '预览各模式结果'),
         ),
@@ -571,7 +590,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
 
       h(SectionHeading, {
         title: '工具目录',
-        desc: '按组 / server / 单个工具控制注入、延迟（占位折叠）与隐藏；工具引导段（tool:*）跟随这里的工具/组状态自动隐藏或恢复，不单独配置。',
+        desc: '按组 / server / 单个工具控制开启、延迟与关闭；工具引导段（tool:*）跟随这里的工具/组状态自动隐藏或恢复，不单独配置。',
       }),
 
       tools.length === 0

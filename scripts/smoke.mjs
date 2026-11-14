@@ -70,6 +70,12 @@ const tools = [
     chars: 80,
     tokens: 40,
   })),
+  // MCP 组按 server 分块渲染;跨 server 的共享资源工具 server 为 null,
+  // 必须落在组头下的「资源访问」区,否则一块都渲染不到。
+  { name: 'list_mcp_resource_templates', description: 'List parameterized resource URI templates from an MCP server.', group: 'mcp', server: null, chars: 60, tokens: 30 },
+  { name: 'list_mcp_resources', description: 'List resources available from an MCP server.', group: 'mcp', server: null, chars: 50, tokens: 25 },
+  { name: 'mcp__docs__search', description: 'Search the docs server.', group: 'mcp', server: 'docs', chars: 90, tokens: 45 },
+  { name: 'read_mcp_resource', description: 'Read an MCP resource by URI from the named server.', group: 'mcp', server: null, chars: 70, tokens: 35 },
 ]
 const personaSlot = () => ({ enabled: true, override: false, text: '' })
 const baselineFlags = (on = true) => ({ contract: on, cardReceipt: on, untrustedFiles: on, custom: false, customText: '' })
@@ -92,7 +98,7 @@ const snapshot = {
   presets: [{ id: 'standard', name: '标准模式', tools }],
   defaultPreset: 'standard',
   tools,
-  groups: [{ id: 'files', title: '文件' }],
+  groups: [{ id: 'files', title: '文件' }, { id: 'mcp', title: 'MCP' }],
   sections: [
     // 按真实装配顺序排列(identity -1000 → 人设 → 宿主段 → 工具引导 → 收尾段);
     // 空文本段不进目录(与 /api/state 的过滤一致)。text 是面板 title 的来源。
@@ -177,8 +183,8 @@ win.__ModuleLoader__ = { load: (registration) => { factory = registration.factor
 new Function('window', 'document', 'fetch', readFileSync(bundle, 'utf8'))(win, win.document, globalThis.fetch)
 
 /* ui-primitives 桩:镜像宿主 SegmentedControl 的 DOM 契约(tablist + tab 按钮 +
-   aria-selected/roving tabindex,见 ui-primitives/src/SegmentedControl.tsx)与 Tag
-   的 data-tone 契约(胶囊视觉由宿主 CSS 提供,冒烟只断言语义);几何与键盘走位
+   aria-selected/roving tabindex/option.title 透传,见 ui-primitives/src/SegmentedControl.tsx)
+   与 Tag 的 data-tone 契约(胶囊视觉由宿主 CSS 提供,冒烟只断言语义);几何与键盘走位
    不在冒烟范围,点选路径已覆盖。 */
 const SegmentedControlStub = ({ id, value, options, onChange, label }) =>
   React.createElement(
@@ -194,6 +200,7 @@ const SegmentedControlStub = ({ id, value, options, onChange, label }) =>
           role: 'tab',
           'aria-selected': option.value === value,
           tabIndex: option.value === value ? 0 : -1,
+          title: option.title,
           onClick: () => { if (option.value !== value) onChange(option.value) },
         },
         option.label,
@@ -425,6 +432,8 @@ const toolByName = (name) => [...panel.querySelectorAll('.cp-tool')].find((row) 
 check('工具状态是四元分段选择', stateTabs.length === 4 && stateTabs.filter((tab) => tab.getAttribute('aria-selected') === 'true').length === 1)
 check('工具行固定为 名字(含标签)/描述/状态 三列', toolRowEl?.children.length === 3, String(toolRowEl?.children.length))
 check('名字与状态标签同在一个单元格', toolRowEl?.querySelector('.cp-nameCell .cp-nm')?.textContent === 'read')
+check('工具行状态选项顺序为 开启/关闭/延迟/默认', stateTabs.map((tab) => tab.textContent).join(',') === '开启,关闭,延迟,默认', stateTabs.map((tab) => tab.textContent).join(','))
+check('每个状态选项都带原生说明', stateTabs.every((tab) => (tab.getAttribute('title') ?? '').length > 0), stateTabs.map((tab) => tab.getAttribute('title')).join('|'))
 check('每个工具都显示最终状态标签（开启 / success）', toolRowEl?.querySelector('.cp-stateTag')?.textContent === '开启' && toolRowEl?.querySelector('.cp-stateTag [data-tone]')?.getAttribute('data-tone') === 'success')
 check('状态标签带同色描边', toolRowEl?.querySelector('.cp-stateTag .cp-stateTagInner') !== null)
 check('状态标签旁并排 token 标签（默认描边灰）', toolRowEl?.querySelector('.cp-tokenTag')?.textContent === '≈80' && toolRowEl?.querySelector('.cp-tokenTag [data-tone]')?.getAttribute('data-tone') === 'outline', toolRowEl?.querySelector('.cp-tokenTag')?.textContent)
@@ -432,8 +441,18 @@ check('token 标签是状态标签的兄弟节点、不再有独立成本列', t
 check('工具行显示来源短名与完整依据', toolRowEl?.querySelector('.cp-source')?.textContent === '来源 · 文件工具' && toolRowEl?.querySelector('.cp-source')?.getAttribute('title')?.includes('@deepseek-ai/dsh-tool-fs') === true)
 check('没有来源的工具显示未识别', toolByName('write')?.querySelector('.cp-source')?.textContent === '来源 · 未识别')
 check('组状态复用同一分段选择', panel.querySelector('.cp-groupHead [role="tablist"]') !== null)
+const groupHint = panel.querySelector('.cp-groupHead .cp-hintIcon')
+check('组头有说明标记并带四态总说明', groupHint !== null && (groupHint?.getAttribute('title') ?? '').includes('默认'), groupHint?.getAttribute('title') ?? '')
 check('组标题不再有「摘要」入口与摘要输入', !panel.textContent.includes('目录摘要') && panel.querySelectorAll('.cp-groupHead .cp-link').length === 0)
 check('工具目录非空时不显示空目录告警', ![...panel.querySelectorAll('.cp-cardTitle')].some((el) => el.textContent === '工具目录'))
+const mcpCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-groupName')?.textContent === 'MCP')
+const mcpRowNames = [...(mcpCard?.querySelectorAll('.cp-tool') ?? [])].map((row) => row.querySelector('.cp-nm')?.textContent)
+check(
+  'MCP 组的共享资源工具列在组头下、server 块之前',
+  mcpCard?.textContent?.includes('资源访问') === true
+    && mcpRowNames.join(',') === 'list_mcp_resource_templates,list_mcp_resources,read_mcp_resource,mcp__docs__search',
+  mcpRowNames.join(','),
+)
 
 console.log('\n[tool state] 生效状态标签')
 const stateText = (row) => row?.querySelector('.cp-stateTag')?.textContent
@@ -442,16 +461,16 @@ await click([...panel.querySelectorAll('.cp-groupHead [role="tab"]')].find((tab)
 const shiftTag = toolByName('read')?.querySelector('.cp-stateTag')
 check('组改写生效状态时,标签紧跟在工具名右侧', shiftTag?.previousElementSibling?.classList.contains('cp-nm') === true)
 check('标签显示最终状态（延迟）且用告警色调', stateText(toolByName('read')) === '延迟' && shiftTag?.firstElementChild?.getAttribute('data-tone') === 'warning', stateText(toolByName('read')))
-check('被改写时 tooltip 说明本行选择', shiftTag?.getAttribute('title')?.includes('本行选择：开启') === true, shiftTag?.getAttribute('title') ?? '')
+check('被改写时 tooltip 说明本行选择', shiftTag?.getAttribute('title')?.includes('本行选择：默认') === true, shiftTag?.getAttribute('title') ?? '')
 check('右侧按钮组旁不再有生效列', toolByName('read')?.querySelector('.cp-shift') === null)
 await click([...(toolByName('read')?.querySelectorAll('[role="tab"]') ?? [])].find((tab) => tab.textContent === '延迟'))
 check('行内选择与生效一致时仍显示标签,只是不再有 tooltip', stateText(toolByName('read')) === '延迟' && toolByName('read')?.querySelector('.cp-stateTag')?.getAttribute('title') === null)
 check('换成隐藏时用中性色调', (await (async () => {
-  await click([...(toolByName('read')?.querySelectorAll('[role="tab"]') ?? [])].find((tab) => tab.textContent === '隐藏'))
-  return stateText(toolByName('read')) === '隐藏' && toolByName('read')?.querySelector('.cp-stateTag [data-tone]')?.getAttribute('data-tone') === 'neutral'
+  await click([...(toolByName('read')?.querySelectorAll('[role="tab"]') ?? [])].find((tab) => tab.textContent === '关闭'))
+  return stateText(toolByName('read')) === '关闭' && toolByName('read')?.querySelector('.cp-stateTag [data-tone]')?.getAttribute('data-tone') === 'neutral'
 })()))
-await click([...(toolByName('read')?.querySelectorAll('[role="tab"]') ?? [])].find((tab) => tab.textContent === '开启'))
-await click([...panel.querySelectorAll('.cp-groupHead [role="tab"]')].find((tab) => tab.textContent === '开启'))
+await click([...(toolByName('read')?.querySelectorAll('[role="tab"]') ?? [])].find((tab) => tab.textContent === '默认'))
+await click([...panel.querySelectorAll('.cp-groupHead [role="tab"]')].find((tab) => tab.textContent === '默认'))
 
 console.log('\n[translate] 工具说明切换')
 const storedLang = () => JSON.parse(win.localStorage.getItem('dsh-session-context-config:tool-lang') ?? '{}')

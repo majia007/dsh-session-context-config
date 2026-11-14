@@ -20,9 +20,9 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
 
 ```js
 {
-  groups:  { mcp: 'defer', platform: 'off', files: 'on' },  // 4 态：强制开启 / 开启 / 延迟 / 隐藏
+  groups:  { mcp: 'defer', platform: 'off', files: 'on' },  // 4 态：开启 / 关闭 / 延迟 / 默认
   servers: { playwright: 'defer', 'legal-db': 'off' },     // 4 态，MCP 专有，离线也保留
-  tools:   { read: 'force', mcp_connector_policy: 'off' },  // 4 态：强制开启 / 开启 / 延迟 / 隐藏
+  tools:   { read: 'force', mcp_connector_policy: 'off' },  // 4 态：开启 / 关闭 / 延迟 / 默认
   prompt:  {                                                // 部署人设两个槽位，各自独立
     prefix: { enabled: true, override: false, text: '' },   // order 0，身份声明之后
     suffix: { enabled: true, override: false, text: '' },   // order 10200，提示词最末
@@ -40,29 +40,29 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
 
 `sections` 的键是宿主/插件实际注册的 system 段名，缺省=包含，只存 `false`。面板从当前会话的装配结果动态列出（`/api/state` 的 `sections`），未知新段按原始 name 显示；人设两个槽位与附加规则段由专用开关控制。**工具引导段（`tool:*`）不进这张表**——它强绑定工具的启用状态，由 Host 自动隐藏/显示（复合段看成员），面板不提供单独开关；旧状态里的 `tool:*` 键读入时剪掉。
 
-解析自上而下，组与 server 只提供默认值，两个极端值压过子项：
+组、server、工具三层共用同一套四态，**位置即优先级：开启(1) → 关闭(2) → 延迟(3) → 默认(4)**，数字小的压过数字大的；同号时靠上的层（组 > server > 工具）优先，但同号结果相同，不产生差异。判定顺序：
 
 ```
-组 = 强制开启     → 注入
-工具 = 强制开启   → 注入
-组 = 隐藏         → 隐藏
-server = 强制开启 → 注入
-server = 隐藏     → 隐藏
-工具 = 隐藏       → 隐藏
-工具 = 延迟       → 延迟
-组或 server = 延迟 → 延迟
-否则              → 注入
+组 = 开启           → 注入
+工具 = 开启         → 注入
+组 = 关闭           → 关闭
+server = 开启       → 注入
+server = 关闭       → 关闭
+工具 = 关闭         → 关闭
+工具 = 延迟         → 延迟
+组或 server = 延迟  → 延迟
+否则                → 注入
 ```
 
-`tools` 里没有条目就是「开启」；组被隐藏时子项记录**原样保留**，组重新打开即恢复。
+`tools` 里没有条目就是「默认」。**「默认」不带优先级、也不落盘**——它就是跟随上一层：组是「延迟」时它生效为延迟，组是「关闭」时它生效为关闭。想让某个工具在延迟/关闭的组里仍然注入，必须选「开启」（1 压 2，这才是终态）；反过来，组选「开启」时工具层的关闭与延迟全部失效（1 压 2/3）。组被关闭时子项记录**原样保留**，组重新打开即恢复。
 
-工具级的「强制开启」压过组与 server 的隐藏/延迟，用来表达「组整体延迟、只把少数工具提回注入」——pi 档位就是这么配的（13 个组全 `defer`，`read/write/edit/pwsh/read_image/skill` 六个工具 `force`），不必再逐个把不要的工具写成 `off`。组级的「强制开启」优先级仍在工具之上。
+工具级的「开启」压过组与 server 的关闭/延迟，用来表达「组整体关闭、只把少数工具提回注入」——pi 档位就是这么配的（除 MCP 组「延迟」外 12 个组全部 `关闭`，`read/write/edit/pwsh/read_image/skill` 六个工具 `开启`），不必再逐个把不要的工具写成 `关闭`。
 
 ## 三态怎么落地
 
 | 状态 | 实现 | 效果 |
 |---|---|---|
-| 隐藏 | `agent.ctx.tools.restrict({ deny })` | 不发 schema，也调不到 |
+| 关闭（面板标签「关闭」，机制上是隐藏） | `agent.ctx.tools.restrict({ deny })` | 不发 schema，也调不到 |
 | 延迟 | 在 agent 作用域重新注册一份瘦身定义，遮住继承来的完整定义 | tools 数组里保留名字 + 功能摘要 + **参数类型骨架**（每个参数的名称与类型都在，只剥说明/示例/默认值）；完整定义由 `tool_search` 以工具结果追加进历史 |
 | 注入 | 不动 | — |
 
@@ -72,7 +72,7 @@ server = 隐藏     → 隐藏
 
 面板里的工具行在名字右侧并排显示两枚标签，都走宿主 `Tag` 胶囊、带一圈描边：
 
-- **状态标签**：显示**最终生效状态**的三个值——`开启`（绿）/ `延迟`（琥珀）/ `隐藏`（中性灰）。组 / server 的选择会压过工具级选择；被改写时悬停标签可看到「生效 / 本行选择」的对照，未被改写时不带 tooltip。
+- **状态标签**：显示**最终生效状态**的三个值——`开启`（绿）/ `延迟`（琥珀）/ `关闭`（中性灰）。组 / server 的选择按上面的四态优先级压过工具级；被改写时悬停标签可看到「生效 / 本行选择」的对照，未被改写时不带 tooltip。
 - **token 标签**：该工具定义的估算占用（`≈267`），用默认的描边灰标签，与状态标签并排；行尾不再有独立的 token 列。
 - **来源行**：名字下方一行灰字 `来源 · 会话桥`，回答「这个工具来自哪个插件」。插件包有本地化标题就用标题，否则用包短名；悬停可看完整包名、Loader 入口与判定方式（注册时捕获 / 官方工具目录 / 入口产物推断，推断结果带虚线下划线）。MCP 工具显示 `MCP · <server>`；宿主自带但当前版本定位不到实现包的显示 `DSH 内置`；证据不足时显示 `来源 · 未识别`，不猜。
 
@@ -88,12 +88,12 @@ server = 隐藏     → 隐藏
 | 精简 | 在完整基础上隐藏编排与计划、调度、目标、插件开发；MCP 与第三方工具保持延迟 | 同上，不额外关闭上下文或段 |
 | 极简 | 文件、搜索、终端、平台开启；交互、技能、协作、编排、目标、调度、MCP、插件开发、第三方全部隐藏 | 人设使用插件内置的 `MINIMAL_PROMPT`；可选上下文全关 |
 | Chat | 全部组、工具、上下文、段隐藏 | 双人设槽关闭；工作区指令与时间采样两个通道关闭 |
-| Pi | 参考 Pi 设计理念的精简档位：`read` / `write` / `edit` / `pwsh` / `read_image` / `skill` 强制开启（技能目录随会话注入、正文按需加载），其余组一律延迟、经 `tool_search` 按需加载 | Pi 风格初始提示词，首行声明运行在 DeepSeek Harness；关闭 DSH 身份、源码、Web、文件引用段；保留 MCP 资源段 |
+| Pi | 参考 Pi 设计理念的精简档位：`read` / `write` / `edit` / `pwsh` / `read_image` / `skill` 强制开启（技能目录随会话注入、正文按需加载），其余 12 个组关闭，只有 MCP 组（含三个共享资源工具）保持延迟、经 `tool_search` 按需加载 | 前置人设使用 Pi 风格提示词（首行声明运行在 DeepSeek Harness），后缘人设关闭；关闭 DSH 身份、源码、Web、文件引用段；保留 MCP 资源段 |
 
-- **完整 / 精简** 沿用部署人设；**极简** 使用 `MINIMAL_PROMPT`；**Chat** 两个槽位都关闭；**Pi** 使用 Pi 风格提示词，首行声明运行在 DeepSeek Harness。
+- **完整 / 精简** 沿用部署人设；**极简** 使用 `MINIMAL_PROMPT`；**Chat** 两个槽位都关闭；**Pi** 前置用 Pi 风格提示词（首行声明运行在 DeepSeek Harness），后缘关闭。
 - **baseline**：完整/精简/极简默认三段固定提示词开、自定义文本关；Chat/PI 默认全关。这是模板值，已安装档位以状态文件里的 `baseline` 为准。
 - **Chat** 是「只聊天」模板：所有工具与运行时上下文关闭，适合纯对话。
-- **Pi** 档位参考 Pi 的设计理念做精简运行时，不逐项复刻：直接可见的工具只有 `read/write/edit/pwsh/read_image/skill`（用工具级强制开启压过组延迟），其余工具一律以「延迟」为默认、留在 tools 数组里作占位，模型需要时经 `tool_search` 取完整定义——不用逐个写「隐藏」，新增工具自动继承延迟。技能走「目录注入 + 正文按需加载」（`skill-catalog` 目录消息 + `skill` 工具；DSH 的技能目录不带路径，正文经 `skill` 工具加载），且同一份正文不重复注入（`injectDuplicateSkills: false`）。提示词只保留身份行与行为规则、不列工具清单——工具说明由 tools 数组与 `tool:*` 引导段自动注入，首行声明运行在 DeepSeek Harness；Pi `read` 的图片能力在 DSH 拆成独立的 `read_image`。保留的工具仍有 `tool:*` 引导段（强绑定工具状态，不能按档位单独关），沙箱/审批照常生效。
+- **Pi** 档位参考 Pi 的设计理念做精简运行时，不逐项复刻：直接可见的工具只有 `read/write/edit/pwsh/read_image/skill`（用工具级「开启」压过组的「关闭」），其余 12 个组**全部关闭**——不进 tools 数组、不占位、`tool_search` 也加载不到。唯一的延迟组是 MCP：对应 Pi 内置 MCP 的 deferred 暴露，工具默认不声明、需要时经 `tool_search` 取完整定义，`tool_search` 因此照常自动注入；MCP 组同时收三个共享资源工具（`list_mcp_resources` / `list_mcp_resource_templates` / `read_mcp_resource`），随组延迟——宿主 `mcp-resource-servers` 段会点名这三个工具，关掉它们就成了「提示词要求调用不存在的工具」。技能走「目录注入 + 正文按需加载」（`skill-catalog` 目录消息 + `skill` 工具；DSH 的技能目录不带路径，正文经 `skill` 工具加载），且同一份正文不重复注入（`injectDuplicateSkills: false`）。提示词只保留身份行与行为规则、不列工具清单——工具说明由 tools 数组与 `tool:*` 引导段自动注入，首行声明运行在 DeepSeek Harness；Pi `read` 的图片能力在 DSH 拆成独立的 `read_image`。保留的工具仍有 `tool:*` 引导段（强绑定工具状态，不能按档位单独关），沙箱/审批照常生效。
 - **新建档位**：直接点按钮使用「全启用」模板（所有组/工具/上下文/段默认注入）；悬停按钮出现下拉，列出当前插件版本的 5 个内置预设，选中后复制成 `custom-*` 新档位。两种方式都只改面板草稿，保存前不写状态文件，也不会切换当前会话的档位。
 
 状态版本为 v4：旧 v2/v3 读入只做**结构迁移**（prompt 双槽位、contexts/sections 旧字段、缺失的新字段与 version），所有档位的名称、组、提示词与开关原样保留（旧状态里的 `tools.tool_search` 读入时剪掉，由插件自动管理）；`DEFAULT_PROFILES` 不参与旧状态加载，也不会替换任何已有值。
@@ -244,7 +244,7 @@ injectDuplicateSkills: false   // 默认 true
 | 路由 | 用途 |
 |---|---|
 | `GET/POST /session-context-config/api/state` | 读快照 / 保存档位（`sections[].text` 与 `contexts[].text` 是实际注入正文，`defaults` 是当前插件版本的内置预设模板，`channelsByProfile` 是按档位分组的两条已知通道最新正文，`observedChannelsByProfile` 是按档位分组的注入消息清单；`tools[].source` 带来源标注，`sources` 是解析诊断计数） |
-| `GET /session-context-config/api/session?id=` | 某会话的逐工具状态（注入 / 延迟 / 隐藏 / 已取定义） |
+| `GET /session-context-config/api/session?id=` | 某会话的逐工具状态（开启 / 延迟 / 关闭 / 已取定义） |
 | `POST /session-context-config/api/session` | 为某会话选定档位（`none` = 不处理） |
 | `GET /session-context-config/api/preview?id=&profile=` | 干跑：某档位在该会话下的注入/延迟/隐藏清单 |
 | `GET /session-context-config/api/assemble?id=` | 干跑一次装配，返回占位后的 schema、字符总数，以及 `refreshContext` 复核后的上下文名单 |
@@ -281,7 +281,7 @@ injectDuplicateSkills: false   // 默认 true
 - 运行时上下文/系统段的名字由一次干跑装配动态发现：**当前没出现、也没被关掉的空条件段不会占行**；需要提前配置一个尚未触发的条件段时，先让它在会话里出现一次。
 - 自动发现清单的 kind 开关是档位级；关闭 `subagent-settled` / `compact-checkpoint` / `runtime-context` 这类运行期消息会让对应插件收不到自己的通知，只在明确知道作用时关。
 - 工作区指令只能整组关：宿主已把同一批 AGENTS.md/CLAUDE.md 拼成一条 `<system-reminder>`，无法按文件过滤；要排除某类文件名只能在部署级配 `instructionFileCandidates` / `maxBytes`。
-- Pi 档位参考 Pi 的设计理念做精简运行时，不逐项复刻：只有 `read/write/edit/pwsh/read_image/skill` 直接可见，其余工具以延迟为默认、经自动注入的 `tool_search` 按需加载（不再有隐藏项）；技能目录随会话注入、正文经 `skill` 工具按需加载且不重复注入；保留的工具仍有 `tool:*` 引导段（强绑定工具状态，不能按档位单独关），沙箱/审批策略照常生效。
+- Pi 档位参考 Pi 的设计理念做精简运行时，不逐项复刻：只有 `read/write/edit/pwsh/read_image/skill` 直接可见，其余 12 个组关闭（不占位、`tool_search` 也加载不到），只有 MCP 组延迟、经自动注入的 `tool_search` 按需加载；MCP 组含 `list_mcp_resources` / `list_mcp_resource_templates` / `read_mcp_resource` 三个共享资源工具，随组延迟；技能目录随会话注入、正文经 `skill` 工具按需加载且不重复注入；保留的工具仍有 `tool:*` 引导段（强绑定工具状态，不能按档位单独关），沙箱/审批策略照常生效。
 - 新建下拉的预设来自 `/api/state` 的 `defaults`（当前插件版本），不是 state 里的已安装档位；复制结果是 `custom-*` 新档位，保存前只存在于面板草稿，不会改当前会话或已安装状态。
 
 ## 开发文档

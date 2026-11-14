@@ -1,4 +1,4 @@
-/** 预览浮层:各 agent preset 下这套档位的注入/延迟/隐藏统计。 */
+/** 预览浮层:各 agent preset 下这套档位的开启/延迟/关闭统计。 */
 import { createElement as h, type ReactElement } from 'react'
 import { formatTokens, statsFor } from '../state/resolve.ts'
 import type { Profile, Snapshot } from '../contract/types.ts'
@@ -22,7 +22,7 @@ export function PreviewDialog({ profile, snapshot, onClose }: { profile: Profile
           'div',
           { className: styles.statusRow, key: preset.id },
           h('span', { className: styles.nm }, preset.name),
-          h('span', { className: styles.st }, `注入 ${stats.on} · 延迟 ${stats.defer} · 隐藏 ${stats.off} · ≈${formatTokens(stats.onTokens)} tokens`),
+          h('span', { className: styles.st }, `开启 ${stats.on} · 延迟 ${stats.defer} · 关闭 ${stats.off} · ≈${formatTokens(stats.onTokens)} tokens`),
         ),
       ),
     ),

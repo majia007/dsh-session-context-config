@@ -67,9 +67,9 @@ export function SessionChip(props: ChipProps): ReactElement | null {
                 h(
                   'div',
                   { className: menuStyles.statusRow },
-                  h('span', null, `注入 ${status.tools.filter((tool) => tool.state === ON).length}`),
+                  h('span', null, `开启 ${status.tools.filter((tool) => tool.state === ON).length}`),
                   h('span', null, `延迟 ${status.tools.filter((tool) => tool.state === DEFER).length}`),
-                  h('span', null, `隐藏 ${status.tools.filter((tool) => tool.state === 'off').length}`),
+                  h('span', null, `关闭 ${status.tools.filter((tool) => tool.state === 'off').length}`),
                 ),
                 // 全部工具都进清单,区域高度固定、里面自己滚——不靠截断。
                 h(

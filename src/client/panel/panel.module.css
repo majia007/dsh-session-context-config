@@ -238,6 +238,19 @@ body {
   margin-left: auto;
 }
 
+/* 状态分段的说明标记:四态在组层的「开启/默认」字面太近,用一个问号标出这里可悬停。 */
+.hintIcon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.75;
+  cursor: help;
+}
+
+.hintIcon:hover {
+  opacity: 1;
+}
+
 .serverRow {
   display: flex;
   align-items: center;

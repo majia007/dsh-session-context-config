@@ -63,7 +63,8 @@ export const PERSONA_SUFFIX_ORDER_NAME = 'DEPLOYMENT_PERSONA_SUFFIX'
 /** 组是 UI 的分组,同时也是第一级开关。 */
 export const GROUPS: ReadonlyArray<{ id: string; title: string; test: (name: string) => boolean }> = [
   { id: 'files', title: '文件', test: (n) => /^(read|write|edit|apply_patch|read_image)$/.test(n) },
-  { id: 'search', title: '搜索', test: (n) => /^(glob|grep|session_search|session_event_)/.test(n) },
+  // session-query 的五个工具:除 `session_event_` 前缀外的 `session_trace` 是精确名,漏了会落到 other。
+  { id: 'search', title: '搜索', test: (n) => /^(glob|grep|session_search|session_event_|session_trace)/.test(n) },
   { id: 'terminal', title: '终端与任务', test: (n) => /^(pwsh|bash|job_|terminal_)/.test(n) },
   { id: 'interaction', title: '交互', test: (n) => /^(ask_user_question|todo_write|present)$/.test(n) },
   { id: 'skill', title: '技能与网络', test: (n) => /^(skill|web_fetch|web_search)$/.test(n) },
@@ -71,7 +72,14 @@ export const GROUPS: ReadonlyArray<{ id: string; title: string; test: (name: str
   { id: 'workflow', title: '编排与计划', test: (n) => /^(workflow|exit_plan_mode|plan_mode|propose_action|ralph)$/.test(n) },
   { id: 'goal', title: '目标', test: (n) => /^(create_goal|get_goal|update_goal)$/.test(n) },
   { id: 'schedule', title: '调度', test: (n) => /^schedule_/.test(n) },
-  { id: 'mcp', title: 'MCP', test: (n) => n.startsWith('mcp_connector_') || n.startsWith('mcp__') },
+  // 资源访问工具(list_mcp_resources / list_mcp_resource_templates / read_mcp_resource)由
+  // mcp-resources 包共享注册,名字不带 mcp 前缀;归在这里才能与 MCP 组同进同退——
+  // 留在 other 会让「MCP 组关闭」漏掉资源能力,而宿主 mcp-resource-servers 段会点名它们。
+  {
+    id: 'mcp',
+    title: 'MCP',
+    test: (n) => n.startsWith('mcp_connector_') || n.startsWith('mcp__') || /^(list_mcp_resources|list_mcp_resource_templates|read_mcp_resource)$/.test(n),
+  },
   // 运行时基础:工作目录、随包依赖路径、语言服务——任何档位都保留。
   { id: 'platform', title: '平台', test: (n) => /^(load_workspace_dependencies|working_directory|lsp)/.test(n) },
   // 插件开发/宿主诊断:非常用,完整档延迟,精简与极简隐藏。
@@ -176,7 +184,8 @@ function offBaseline(): BaselineFlags {
  * Pi 已内建 skills(docs.pi.dev/latest/skills):启动把每个技能的 name/description
  * 注入 system prompt(不放全文),正文由模型按需读取。DSH 的对应机制是
  * skill-catalog 目录消息 + `skill` 工具,因此工具面保留 skill;Pi 没有内建
- * web_fetch/web_search,它们仍按工具逐个关闭。
+ * web_fetch/web_search,所以「技能与网络」组以关闭为默认,只用工具级 force
+ * 把 skill 提回注入(优先级 1 压过组的关闭 2)。
  *
  * 身份行必须明确写「运行在 DeepSeek Harness、这是 Pi 风格预设,不是 Pi 本身」,
  * 不能伪装成 pi。MCP 是 Pi 1.0+ 的内置扩展,由档位的 MCP 组 + 自动注入的 tool_search 近似,
@@ -238,7 +247,9 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     description: '只留读写、搜索、终端与运行目录/依赖路径；交互、技能与网络、协作、编排、目标、调度、MCP、插件开发与第三方工具全部隐藏。',
     prompt: { prefix: { enabled: true, override: true, text: MINIMAL_PROMPT }, suffix: emptySlot() },
     contexts: { ...OFF_OPTIONAL_CONTEXTS },
-    sections: {},
+    // MCP 组关闭 → 三个共享资源工具也隐藏;宿主 mcp-resource-servers 段正文会点名它们,
+    // 段不一起关就成「提示词要求调用一个不存在的工具」。Chat 档同理(见其 sections)。
+    sections: { 'mcp-resource-servers': false },
     baseline: defaultBaseline(),
     channels: {},
     injectDuplicateSkills: true,
@@ -306,8 +317,9 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
   {
     id: 'pi',
     name: 'Pi',
-    description: '参考 Pi 设计理念的精简档位：read / write / edit / pwsh / read_image / skill 直接可见（技能目录随会话注入、正文按需加载），其余工具一律延迟、经 tool_search 按需加载。',
-    prompt: { prefix: { enabled: true, override: true, text: PI_PROMPT }, suffix: { enabled: true, override: true, text: '' } },
+    description: '参考 Pi 设计理念的精简档位：只有 read / write / edit / pwsh / read_image / skill 六个工具直接可见，MCP 工具延迟、经 tool_search 按需加载，其余工具全部关闭。',
+    // 人设只保留前置(自己的 PI_PROMPT);后缘槽关闭,不发送、也不覆盖部署文本。
+    prompt: { prefix: { enabled: true, override: true, text: PI_PROMPT }, suffix: closedSlot() },
     contexts: {
       'sandbox:policy': false,
       'approval:policy': false,
@@ -331,24 +343,25 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     // 技能正文只按需加载一次:同一个 /技能名 手势再注入整份正文,与精简目标相反。
     injectDuplicateSkills: false,
     groups: {
-      // 全部组以「延迟」为默认值——组只承载默认,不决定终态。Pi 的默认工具面很小,
-      // 其余工具留在 tools 数组里作为占位,模型需要时经 tool_search 取完整定义。
-      files: DEFER,
-      search: DEFER,
-      terminal: DEFER,
-      interaction: DEFER,
-      skill: DEFER,
-      delegation: DEFER,
-      workflow: DEFER,
-      goal: DEFER,
-      schedule: DEFER,
+      // 参考 Pi 的精简默认：六个核心工具（工具级 force）之外一律「关闭」——不进
+      // tools 数组、不占位、tool_search 也加载不到；唯独 MCP 组保持「延迟」，
+      // 对应 Pi 内置 MCP 的 deferred 暴露（工具默认不声明，按需经 tool_search 加载）。
+      files: OFF,
+      search: OFF,
+      terminal: OFF,
+      interaction: OFF,
+      skill: OFF,
+      delegation: OFF,
+      workflow: OFF,
+      goal: OFF,
+      schedule: OFF,
       mcp: DEFER,
-      platform: DEFER,
-      devtools: DEFER,
-      other: DEFER,
+      platform: OFF,
+      devtools: OFF,
+      other: OFF,
     },
-    // 需要直接可见的六个工具用工具级 force 提回注入(压过组的延迟),其余保持延迟。
-    // tool_search 由 planFor 按「是否有其它延迟工具」自动注入,不进档位表。
+    // 需要直接可见的六个工具用工具级 force 提回注入(压过组关闭),其余保持关闭。
+    // MCP 是唯一的延迟组,因此 planFor 会照常注入 tool_search(不进档位表)。
     tools: {
       read: FORCE,
       write: FORCE,

@@ -11,7 +11,7 @@ export const FORCE = 'force'
 
 export const NONE = 'none'
 
-export const STATE_LABEL: Record<string, string> = { on: '注入', defer: '延迟', off: '隐藏', force: '强制开启' }
+export const STATE_LABEL: Record<string, string> = { on: '开启', defer: '延迟', off: '关闭', force: '开启' }
 
 export function effective(profile: Partial<Profile>, tool: { name: string; group: string; server?: string | null }): string {
   const groupState = profile.groups?.[tool.group] ?? ON

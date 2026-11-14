@@ -111,7 +111,7 @@ body {
 
 - **复选行**：`<label>` 包住 `input[type=checkbox]` + 文字，点整行文字即可切换。勾选框 16×16、`accent-color: var(--dsw-alias-brand-primary)`、与文字 `gap: 8px`；DSH 原版 gap 是 6px，本项目 13px 字号用 8px。出处 `ui-primitives/src/Checkbox.tsx` + `Checkbox.module.css`。对应 `.cp-check` / `.cp-checkBody`。
 - **分段选择（宿主组件的观感抄写值）**：轨道 `padding: 4px`、`border-radius: var(--dsw-radius-md)`、底色 `--dsw-alias-interactive-bg-hover`；选中片高 28px、底色 `--dsw-alias-bg-layer-1`、`box-shadow: var(--dsw-elevation-soft)`（表面把 `--dsw-elevation-stroke-color` 重绑到 `border-l1`）、圆角 `--dsw-radius-sm`；未选中文字 `label-secondary`，选中 `label-primary`。出处 `ui-primitives/src/SegmentedControl.tsx` + `SegmentedControl.module.css`。
-- **选中态不是实心品牌色**：DSH 的分段选中片是「抬起的浅色面」，靠阴影和轨道底色分离；状态色调（强制开启/延迟/隐藏）只染选中段文字，取 `state-success/warn/*` token。不要把选中段做成黑底白字。
+- **选中态不是实心品牌色**：DSH 的分段选中片是「抬起的浅色面」，靠阴影和轨道底色分离；状态色调（开启/延迟/关闭）只染选中段文字，取 `state-success/warn/*` token。不要把选中段做成黑底白字。四态标签字面接近（组的「开启」与「默认」都是全开），差别靠每个选项的原生 `title` 说明，组头另放一个 `?` 标记承载总说明。
 - 键盘行为：宿主 `SegmentedControl` 自带 tablist + roving tabindex（方向键走位、`aria-selected`），冒烟脚本断言的就是这套 DOM 契约；本项目不再自绘 radio 版本。
 
 ### 2.5 圆角与「全圆」的 superellipse 退出

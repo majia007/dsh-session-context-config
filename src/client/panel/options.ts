@@ -1,18 +1,26 @@
 /** 面板的状态选项表、消息卡片元数据与系统段目录(UI 呈现层)。 */
 import type { SegmentedControlOption } from '@deepseek-ai/dsh-client-ui-primitives'
 
+/** 组与 server 共用一套四态，位置即优先级：开启(force) → 关闭(off) → 延迟(defer) → 默认(on)。
+ *  左边的能覆盖右边的；同号时靠上的层（组）优先，但同号结果相同，不产生差异。
+ *  每个选项带 `title`：宿主的 SegmentedControl 直接把它渲染成 tab 的原生提示，
+ *  用来讲清「开启」与「默认」在组层的差别——前者压过行级设置，后者只给默认值。 */
 export const GROUP_STATES: SegmentedControlOption[] = [
-  { value: 'force', label: '强制开启' },
-  { value: 'on', label: '开启' },
-  { value: 'defer', label: '延迟' },
-  { value: 'off', label: '隐藏' },
+  { value: 'force', label: '开启', title: '强制注入：压过下层的关闭与延迟，下层设置全部失效' },
+  { value: 'off', label: '关闭', title: '关闭：不注入，也不进 tools 数组，tool_search 取不到' },
+  { value: 'defer', label: '延迟', title: '延迟：保留名字与参数骨架的占位，模型按需经 tool_search 取完整定义' },
+  { value: 'on', label: '默认', title: '默认：本层只提供默认值，下层的设置照常生效' },
 ]
 
+/** 组头问号标记的总说明：组层的「开启/默认」只差一件事——是否压过行级设置。 */
+export const GROUP_STATE_HINT = '「开启」强制本组全部注入，忽略工具行的设置；「关闭」全部不注入；「延迟」保留占位、按需加载；「默认」只给默认值，工具行的设置照常生效。'
+
+/** 工具行同一套词：开启=强制注入(压过组)、关闭=本工具不注入、延迟=软默认、默认=跟随组。 */
 export const TOOL_STATES: SegmentedControlOption[] = [
-  { value: 'force', label: '强制开启' },
-  { value: 'on', label: '开启' },
-  { value: 'defer', label: '延迟' },
-  { value: 'off', label: '隐藏' },
+  { value: 'force', label: '开启', title: '开启：本工具一律注入，压过组与 server 的关闭和延迟' },
+  { value: 'off', label: '关闭', title: '关闭：本工具不注入，也不进 tools 数组' },
+  { value: 'defer', label: '延迟', title: '延迟：保留占位定义，需要时经 tool_search 加载' },
+  { value: 'on', label: '默认', title: '默认：跟随组与 server 的设置' },
 ]
 
 /**

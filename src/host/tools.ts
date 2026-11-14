@@ -27,8 +27,10 @@ export function serverOf(toolName: string): string | null {
 }
 
 /**
- * 父级只提供默认值;隐藏与强制开启是终态,会压过子项。
- * 自上而下判定:组终态 → 工具强制开启 → server 终态 → 工具终态 → 任一层的“延迟” → 注入。
+ * 四态按面板顺序编号:开启(force) → 关闭(off) → 延迟(defer) → 默认(on),数字小的压过
+ * 数字大的;同号时靠上的层(组 > server > 工具)优先,但同号结果相同、不产生差异。
+ * 自上而下判定:组 force → 工具 force → 组 off → server force/off → 工具 off/defer
+ * → 组/server defer → 注入。
  *
  * 工具级的 force 是给「其余全部延迟、只把几个工具提回注入」这种配置用的:
  * 组只承载默认值,没有它就只能逐个把不要的工具写成 off。
@@ -61,16 +63,16 @@ export function hiddenToolGuide(profile: ContextProfile | null | undefined, sect
   if (!profile || !sectionName.startsWith('tool:')) return false
   const toolName = sectionName.slice(5)
   const alias = TOOL_GUIDE_GROUPS[toolName]
-  // 复合段(jobs/goal/schedule/session-query)的段名不是工具名:先看别名组终态,
-  // 再要求至少一个真实成员工具仍处于开启/延迟。
+  // 复合段(jobs/goal/schedule/session-query)的段名不是工具名:看成员工具的终态。
+  // 有成员表时不再用所在组的 OFF 短路——工具级 force 能把成员提回注入,组 OFF
+  // 已经体现在 effectiveState 里;先用组短路会让「组关闭 + 单个成员开启」
+  // 出现「工具有了、引导段没了」的不一致。
   if (alias) {
-    if ((profile.groups?.[alias] ?? ON) === OFF) return true
     const members = TOOL_GUIDE_MEMBERS[toolName]
     if (members) return members.every((name) => effectiveState(profile, name) === OFF)
-    return false
+    return (profile.groups?.[alias] ?? ON) === OFF
   }
-  const group = groupOf(toolName)
-  if ((profile.groups?.[group] ?? ON) === OFF) return true
+  // 同理:普通段也统一交给 effectiveState 判定(组 OFF 在其中返回 OFF),不要再先看组。
   return effectiveState(profile, toolName) === OFF
 }
 
