@@ -85,12 +85,12 @@ server = 隐藏     → 隐藏
 | 精简 | 在完整基础上隐藏编排与计划、调度、目标、插件开发；MCP 与第三方工具保持延迟 | 同上，不额外关闭上下文或段 |
 | 极简 | 文件、搜索、终端、平台开启；交互、技能、协作、编排、目标、调度、MCP、插件开发、第三方全部隐藏 | 人设使用插件内置的 `MINIMAL_PROMPT`；可选上下文全关 |
 | Chat | 全部组、工具、上下文、段隐藏 | 双人设槽关闭；工作区指令与时间采样两个通道关闭 |
-| Pi | Pi 风格（非 Pi 本身）：保留 `read` / `write` / `edit` / `pwsh` / `read_image`；MCP 工具延迟，`tool_search` 由插件自动注入（不占档位配置） | Pi 风格初始提示词，首行明确写运行在 DeepSeek Harness、不是 Pi；关闭 DSH 身份、源码、Web、文件引用段；保留 MCP 资源段 |
+| Pi | 参考 Pi 设计理念的精简档位：默认 `read` / `write` / `edit` / `pwsh` / `read_image` / `skill`（技能目录随会话注入、正文按需加载），其余工具隐藏；MCP 工具延迟，`tool_search` 由插件自动注入（不占档位配置） | Pi 风格初始提示词，首行声明运行在 DeepSeek Harness；关闭 DSH 身份、源码、Web、文件引用段；保留 MCP 资源段 |
 
-- **完整 / 精简** 沿用部署人设；**极简** 使用 `MINIMAL_PROMPT`；**Chat** 两个槽位都关闭；**Pi** 使用 Pi 风格提示词，并明确写「运行在 DeepSeek Harness，不是 Pi」。
+- **完整 / 精简** 沿用部署人设；**极简** 使用 `MINIMAL_PROMPT`；**Chat** 两个槽位都关闭；**Pi** 使用 Pi 风格提示词，首行声明运行在 DeepSeek Harness。
 - **baseline**：完整/精简/极简默认三段固定提示词开、自定义文本关；Chat/PI 默认全关。这是模板值，已安装档位以状态文件里的 `baseline` 为准。
 - **Chat** 是「只聊天」模板：所有工具与运行时上下文关闭，适合纯对话。
-- **Pi** 是 Pi 风格模拟，不是真正的 Pi：提示词按 Pi 1.5.x 的 base prompt 冻结，但首行明确写运行在 DeepSeek Harness、是 Pi-style preset adapted to DSH，不冒充 Pi；工具名与参数改成了 DSH 的 `pwsh` 与 `old_string`，Pi 自指的文档段已去掉。Pi 1.5.x 把 MCP 做成内置扩展，DSH 这里用「MCP 组延迟 + 自动注入的 `tool_search`」近似它的 `codemode`/`deferred` 暴露；`tool_search` 不在档位表里，由插件按「是否有其它延迟工具」自动注入/隐藏。DSH 没有 `codemode`，不能完全等价。DSH 仍会为保留的工具注入 `tool:*` 引导段（这些段强绑定工具状态，不能按档位单独关），沙箱/审批也仍然生效。Pi 的 `read` 内建图片能力在 DSH 拆成独立的 `read_image`，因此保留。
+- **Pi** 档位参考 Pi 的设计理念做精简运行时，不逐项复刻：核心工具面小（默认 `read/write/edit/pwsh/read_image/skill`，其余隐藏）、技能「目录注入 + 正文按需加载」（`skill-catalog` 目录消息 + `skill` 工具——DSH 的技能目录不带路径，正文经 `skill` 工具加载）、MCP 按需暴露（MCP 组延迟 + 自动注入的 `tool_search`；`tool_search` 不在档位表里，由插件按「是否有其它延迟工具」自动注入/隐藏）。提示词只保留身份行与行为规则、不列工具清单——工具说明由 tools 数组与 `tool:*` 引导段自动注入，首行声明运行在 DeepSeek Harness；Pi `read` 的图片能力在 DSH 拆成独立的 `read_image`。保留的工具仍有 `tool:*` 引导段（强绑定工具状态，不能按档位单独关），沙箱/审批照常生效。
 - **新建档位**：直接点按钮使用「全启用」模板（所有组/工具/上下文/段默认注入）；悬停按钮出现下拉，列出当前插件版本的 5 个内置预设，选中后复制成 `custom-*` 新档位。两种方式都只改面板草稿，保存前不写状态文件，也不会切换当前会话的档位。
 
 状态版本为 v4：旧 v2/v3 读入只做**结构迁移**（prompt 双槽位、contexts/sections 旧字段、缺失的新字段与 version），所有档位的名称、组、提示词与开关原样保留（旧状态里的 `tools.tool_search` 读入时剪掉，由插件自动管理）；`DEFAULT_PROFILES` 不参与旧状态加载，也不会替换任何已有值。
@@ -278,7 +278,7 @@ injectDuplicateSkills: false   // 默认 true
 - 运行时上下文/系统段的名字由一次干跑装配动态发现：**当前没出现、也没被关掉的空条件段不会占行**；需要提前配置一个尚未触发的条件段时，先让它在会话里出现一次。
 - 自动发现清单的 kind 开关是档位级；关闭 `subagent-settled` / `compact-checkpoint` / `runtime-context` 这类运行期消息会让对应插件收不到自己的通知，只在明确知道作用时关。
 - 工作区指令只能整组关：宿主已把同一批 AGENTS.md/CLAUDE.md 拼成一条 `<system-reminder>`，无法按文件过滤；要排除某类文件名只能在部署级配 `instructionFileCandidates` / `maxBytes`。
-- Pi 是**Pi 风格模拟**，不是真正的 Pi：提示词首行明确写运行在 DeepSeek Harness，不冒充 Pi；`read/write/edit/pwsh/read_image` 之外的 DSH 工具默认隐藏，MCP 工具延迟并由自动注入的 `tool_search` 按需加载（DSH 没有 `codemode`，不能完全等价）；DSH 仍会为保留的工具注入 `tool:*` 引导段（强绑定工具状态，不能按档位单独关），沙箱/审批策略也仍然生效。
+- Pi 档位参考 Pi 的设计理念做精简运行时，不逐项复刻：默认只保留 `read/write/edit/pwsh/read_image/skill`，其余工具隐藏；技能目录随会话注入、正文经 `skill` 工具按需加载；MCP 工具延迟并由自动注入的 `tool_search` 按需加载；保留的工具仍有 `tool:*` 引导段（强绑定工具状态，不能按档位单独关），沙箱/审批策略照常生效。
 - 新建下拉的预设来自 `/api/state` 的 `defaults`（当前插件版本），不是 state 里的已安装档位；复制结果是 `custom-*` 新档位，保存前只存在于面板草稿，不会改当前会话或已安装状态。
 
 ## 开发文档

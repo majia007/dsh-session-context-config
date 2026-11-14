@@ -2,7 +2,7 @@
  * 插件内置预设的契约：
  * - 五个模板（full / lean / minimal / chat / pi）只在首次安装与新建下拉里用；
  * - 它们是插件通用预设，不是用户当前配置的副本；旧状态迁移只做结构转换；
- * - pi 是 Pi 风格的五工具档位。
+ * - pi 是 Pi 风格档位：默认工具 + skill 按需加载（Pi 内建 skills，目录进 system prompt、正文按需读）。
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -63,11 +63,13 @@ test('默认预设：Chat 保持全关', () => {
   assert.equal(chat.baseline.custom, false)
 })
 
-test('默认预设：Pi 保留默认五工具，MCP 延迟并由 tool_search 加载', () => {
+test('默认预设：Pi 保留默认工具与 skill，MCP 延迟并由 tool_search 加载', () => {
   const pi = profileById('pi')
-  for (const name of ['read', 'write', 'edit', 'pwsh', 'read_image']) {
+  for (const name of ['read', 'write', 'edit', 'pwsh', 'read_image', 'skill']) {
     assert.equal(effectiveState(pi, name), ON, `${name} 应注入`)
   }
+  // Pi 启动就把技能 name/description 注入 system prompt，目录消息（skill-catalog）不关。
+  assert.equal(pi.channels['skill-catalog'], undefined, '技能目录消息应注入')
   assert.equal(pi.groups.mcp, DEFER)
   assert.equal(pi.groups.other, ON)
   assert.equal(pi.tools.tool_search, undefined, 'tool_search 由 planFor 自动注入，不进档位表')
@@ -87,7 +89,6 @@ test('默认预设：Pi 保留默认五工具，MCP 延迟并由 tool_search 加
     'terminal_signal',
     'web_fetch',
     'web_search',
-    'skill',
     'subagent',
     'send_message',
     'workflow',
@@ -117,11 +118,13 @@ test('默认预设：Pi 保留默认五工具，MCP 延迟并由 tool_search 加
 test('默认预设：Pi 提示词是 Pi 风格，但明确运行在 DeepSeek Harness，不冒充 Pi', () => {
   assert.match(PI_PROMPT, /^You are a coding assistant running inside DeepSeek Harness with a Pi-like configuration\./)
   assert.match(PI_PROMPT, /This is a Pi-style preset adapted to DSH, not Pi itself\./)
-  assert.match(PI_PROMPT, /<tools>/)
   assert.match(PI_PROMPT, /<rules>/)
-  assert.match(PI_PROMPT, /- pwsh: /)
-  assert.match(PI_PROMPT, /- read_image: /)
+  assert.match(PI_PROMPT, /Use PowerShell for file operations/)
   assert.match(PI_PROMPT, /old_string must match exactly/)
+  // 不写 <tools> 清单:工具说明由 tools 数组与 tool:* 引导段自动注入,提示词不做第二份。
+  assert.doesNotMatch(PI_PROMPT, /<tools>/)
+  assert.doesNotMatch(PI_PROMPT, /- (read|write|edit|pwsh|read_image|skill): /)
+  assert.doesNotMatch(PI_PROMPT, /instead of cat or sed/)
   assert.doesNotMatch(PI_PROMPT, /running inside pi, a coding agent harness/)
   assert.doesNotMatch(PI_PROMPT, /\bbash\b/)
 })

@@ -167,10 +167,16 @@ function offBaseline(): BaselineFlags {
 }
 
 /**
- * PI 档位的初始提示词:按 Pi 1.5.x 的 base prompt 冻结,工具面改成 DSH 的
- * read / write / edit / pwsh,并补上 read_image(Pi 的 read 内建图片,DSH 拆成
- * 独立工具)。Pi 自指的「Pi documentation」段已去掉,DSH 的 cwd 由运行时上下文
- * 提供;其余措辞与 Pi 的 tools/rules 结构一致。
+ * PI 档位的初始提示词:身份行 + 行为规则(rules 措辞按 Pi 的 base prompt 风格),
+ * 不写 <tools> 清单——每个开启工具的说明由 tools 数组 description 与 tool:*
+ * 引导段自动注入(skill 由 skill-catalog 消息引导),提示词里再列一份就与工具面
+ * 双份维护(pi 档开 skill 时就被迫同步两处)。与 tool:* 段重复的规则(如 tool:read
+ * 的「用 read 不用 cat/sed」)同样不写。
+ *
+ * Pi 已内建 skills(docs.pi.dev/latest/skills):启动把每个技能的 name/description
+ * 注入 system prompt(不放全文),正文由模型按需读取。DSH 的对应机制是
+ * skill-catalog 目录消息 + `skill` 工具,因此工具面保留 skill;Pi 没有内建
+ * web_fetch/web_search,它们仍按工具逐个关闭。
  *
  * 身份行必须明确写「运行在 DeepSeek Harness、这是 Pi 风格预设,不是 Pi 本身」,
  * 不能伪装成 pi。MCP 是 Pi 1.0+ 的内置扩展,由档位的 MCP 组 + 自动注入的 tool_search 近似,
@@ -179,19 +185,8 @@ function offBaseline(): BaselineFlags {
 export const PI_PROMPT = [
   'You are a coding assistant running inside DeepSeek Harness with a Pi-like configuration. This is a Pi-style preset adapted to DSH, not Pi itself. Help users inspect files, run commands, and modify code.',
   '',
-  '<tools>',
-  '- read: Read file contents',
-  '- read_image: Read an image file and return the image itself',
-  '- pwsh: Execute PowerShell commands',
-  '- edit: Make precise file edits with exact text replacement',
-  '- write: Create or overwrite files',
-  '',
-  'Additional tools may be available.',
-  '</tools>',
-  '',
   '<rules>',
   '- Use PowerShell for file operations like listing, searching, and finding files',
-  '- Use read to examine files instead of cat or sed.',
   '- Use read_image for images; use read for text files.',
   '- Use edit for precise changes (old_string must match exactly; use replace_all to replace every match).',
   '- Use write only for new files or complete rewrites.',
@@ -311,7 +306,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
   {
     id: 'pi',
     name: 'Pi',
-    description: 'Pi 风格（非 Pi 本身）：在 DeepSeek Harness 上模拟 Pi 1.5.x 的默认工具与 MCP 暴露；保留 read / write / edit / pwsh / read_image，MCP 延迟并由 tool_search 按需加载。',
+    description: '参考 Pi 设计理念的精简档位：默认 read / write / edit / pwsh / read_image / skill（技能目录随会话注入、正文按需加载），MCP 延迟并由 tool_search 按需加载。',
     prompt: { prefix: { enabled: true, override: true, text: PI_PROMPT }, suffix: { enabled: true, override: true, text: '' } },
     contexts: {
       'sandbox:policy': false,
@@ -331,12 +326,12 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
       'ui:deliverable-file-references': false,
     },
     baseline: offBaseline(),
-    channels: { 'skill-catalog': OFF },
+    // Pi 启动就把技能 name/description 注入 system prompt,skill-catalog 通道不关。
+    channels: {},
     injectDuplicateSkills: true,
     groups: {
       search: OFF,
       interaction: OFF,
-      skill: OFF,
       delegation: OFF,
       workflow: OFF,
       goal: OFF,
@@ -349,9 +344,12 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
       // other 组保留默认开启;tool_search 由 planFor 自动注入,不在档位表里配置。
       other: ON,
     },
-    // files / terminal 两组保持默认开启,只把 PI 没有的成员逐个关掉;read_image
-    // 是 DSH 对 Pi read 图片能力的对应实现,保留。MCP 组用 defer 近似 Pi 1.5.x 的
-    // codemode/deferred 暴露;tool_search 由 planFor 按「是否有其它延迟工具」自动注入。
+    // files / terminal / skill 三组保持默认开启,只把 Pi 没有的成员逐个关掉;
+    // read_image 是 DSH 对 Pi read 图片能力的对应实现,skill 是 Pi 按需读取技能
+    // 正文机制的 DSH 对应(目录由 skill-catalog 消息注入,DSH 目录不带路径,
+    // 模型不能像 Pi 那样直接 read SKILL.md);Pi 没有内建网络工具,web_fetch /
+    // web_search 保持关闭。MCP 组用 defer 近似 Pi 的 codemode/deferred 暴露;
+    // tool_search 由 planFor 按「是否有其它延迟工具」自动注入。
     tools: {
       apply_patch: OFF,
       job_kill: OFF,
@@ -365,6 +363,8 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
       terminal_signal: OFF,
       session_recall: OFF,
       web_extract: OFF,
+      web_fetch: OFF,
+      web_search: OFF,
     },
     servers: {},
     summaries: {},
