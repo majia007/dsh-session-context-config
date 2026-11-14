@@ -157,6 +157,9 @@ const fetches = []
 const translateCalls = []
 let holdFirstTranslate = true
 let pendingTranslate = null
+// 首个 /api/state 先挂起:加载态用例要看到「快照未到」的那一帧(它先于其它组件挂载)。
+let holdFirstState = true
+let releaseState = null
 globalThis.fetch = async (url, options) => {
   const target = String(url)
   fetches.push(target)
@@ -170,6 +173,12 @@ globalThis.fetch = async (url, options) => {
       })
     }
     return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, zh: `译：${text.slice(0, 24)}` }) }
+  }
+  if (holdFirstState && target.endsWith('/api/state')) {
+    holdFirstState = false
+    return new Promise((resolve) => {
+      releaseState = () => resolve({ ok: true, status: 200, text: async () => JSON.stringify(snapshot) })
+    })
   }
   const body = target.includes('/api/session') ? sessionState : snapshot
   return { ok: true, status: 200, text: async () => JSON.stringify(body) }
@@ -266,6 +275,22 @@ const menus = () => [...win.document.querySelectorAll('.cp-menu')]
 const lastMenu = () => menus()[menus().length - 1]
 
 console.log(`bundle: ${bundle}`)
+
+console.log('\n[loading] 快照未到时页头先出')
+const loadingHost = win.document.createElement('div')
+win.document.body.appendChild(loadingHost)
+const loadingRoot = ReactDOMClient.createRoot(loadingHost)
+act(() => { loadingRoot.render(React.createElement(renders.get('main'), faces.get('main'))) })
+await flush()
+const loadingHead = loadingHost.querySelector('header.cp-head')
+check('加载中仍显示页头', loadingHead?.querySelector('h1')?.textContent === '上下文档位' && loadingHead?.querySelector('.cp-sub') !== null)
+check('加载提示在正文区', loadingHost.querySelector('.cp-scroll > .cp-loading')?.textContent?.includes('正在读取档位与工具目录') === true)
+check('正文用骨架卡占位（三张）', loadingHost.querySelectorAll('.cp-skelCard').length === 3, String(loadingHost.querySelectorAll('.cp-skelCard').length))
+// 先卸载再放行快照:这份面板始终停在加载帧,不触发工具说明的自动翻译(那个用例要抢首个翻译请求)。
+act(() => { loadingRoot.unmount() })
+loadingHost.remove()
+releaseState?.()
+await flush()
 
 console.log('\n[hero] 新会话行 chip')
 const hero = await mount('conversation.hero.options')

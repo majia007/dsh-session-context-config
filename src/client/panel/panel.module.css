@@ -508,6 +508,116 @@ body {
   color: var(--dsw-alias-label-secondary);
 }
 
+/* 加载态只在正文滚动区里:页头先出,状态行贴正文左上,骨架卡保持与真实卡片同一节奏。 */
+.loading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 2px 2px 0;
+}
+
+.loadingDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-brand-primary);
+  animation: cp-loading-pulse 1.2s ease-in-out infinite;
+}
+
+.loadingText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.loadingTitle {
+  font-size: var(--dsh-plugin-fs-13, 13px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
+  color: var(--dsw-alias-label-primary);
+}
+
+.loadingHint {
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.skelCard {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-lg, 16px);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+/* 骨架条用宿主同款 skeleton token 与 2s 呼吸曲线,只脉动条本身,卡片保持静止。 */
+.skelHead {
+  width: 26%;
+  height: 12px;
+  border-radius: var(--dsw-radius-xs, 4px);
+  background: var(--dsw-alias-bg-skeleton, var(--dsw-alias-interactive-bg-hover));
+  animation: cp-skel-breathe 2s cubic-bezier(0.36, 0, 0.64, 1) infinite;
+}
+
+.skelLine {
+  height: 10px;
+  border-radius: var(--dsw-radius-xs, 4px);
+  background: var(--dsw-alias-bg-skeleton, var(--dsw-alias-interactive-bg-hover));
+  animation: cp-skel-breathe 2s cubic-bezier(0.36, 0, 0.64, 1) infinite;
+}
+
+@keyframes cp-loading-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cp-skel-breathe {
+  0% {
+    opacity: 1;
+  }
+
+  40% {
+    opacity: 0.6;
+  }
+
+  80%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadingDot,
+  .skelHead,
+  .skelLine {
+    animation: none;
+  }
+
+  .loadingDot {
+    opacity: 0.8;
+  }
+}
+
 .error {
   font-size: var(--dsh-plugin-fs-12, 12px);
   color: var(--dsw-alias-state-error-primary);

@@ -247,6 +247,8 @@ rg -n "menu-surface-fill|radius-sm" packages/client/ui-theme/src/styles
 | 折叠卡 | 头与普通卡片头同构（标题行 + 可选描述），折叠时只显示头、**不画分割线**；展开时头与 content 之间画 `0.5px` `border-l4`。头内距 `12px 16px`，content `10px 16px 14px` |
 | 页脚 | 数据文件/状态说明 + 操作按钮；固定页底，不随正文滚动 |
 
+**加载与错误态**：页头是页面骨架的一部分，数据没到也要先显示——加载提示放正文首行，错误态同样保留页头、正文挂错误卡与重试，**不把整页替换成一行提示**（用户口径：loading 不得阻止 head 展示）。加载提示要写明在等什么；SCC 现状是品牌色脉冲点 + 13/20 标题 + 12/18 `label-tertiary` 说明，下面用与真实卡片同节奏的骨架卡占位（骨架条用 `bg-skeleton`，`prefers-reduced-motion` 下停用动画），SMC 现状是正文 `.loading` 文本行。两页都不给加载态加遮罩——页头始终可读可操作。
+
 **页面级左右边距统一 22px**（用户纠正：页签行 22px 比两栏的 8/16px 大）：页头、页签行、正文、页脚一律 22px；两栏页里左右列**只在靠页边的一侧**承担这 22px，靠分隔线的一侧保留较小的列内距（SMC：`.rail` `10px 8px 12px 22px`、`.pane` `12px 22px 16px 16px`）。单栏页的滚动容器把 22px 写进自身 padding（SCC `.scroll` `16px 22px 26px`）。两栏各自滚动，右列的滚动条（宿主 `--dsh-scrollbar-width`，5px）额外占内容盒宽度——量到的卡片右缘会比 22px 多一个滚动条宽度，这是滚动容器的固有偏差，不要用负 padding 硬凑。行内字段说明（`.configDesc` 这类标签下的描述）不设 `max-width` 上限，跟随容器宽度换行。
 
 **页签位置**：参照宿主 `ui-plugin-manager` 的 pageBar——tabs 在 `pageHead` 下方（`pageTabs` 是 `order:3; flex-basis:100%` 的第二行），**但本仓库口径更进一步：页头带底部分隔线，页签行放在分隔线之下、正文容器里**，不和标题同块（用户纠正：页签被放进标题区 = 返工）。宿主值见 `PluginManagerPage.module.css` 的 `.pageTabs` / `.pageTabList`（`size="sm"`、`width:fit-content; min-width:240px`）。

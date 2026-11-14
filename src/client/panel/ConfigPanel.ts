@@ -87,6 +87,60 @@ function copyOfPreset(preset: Profile, profiles: Profile[]): Profile {
   return copy
 }
 
+/** 加载骨架的卡内行宽(百分比):三张卡对应档位卡 / 消息卡 / 工具卡的版面节奏。 */
+const LOADING_SKELETON = [
+  [42, 92, 68, 54],
+  [36, 88, 74, 58, 44],
+  [30, 84, 62],
+] as const
+
+/** 页头:页面骨架的一部分,快照没到时也要先出现——加载与错误只占正文区。 */
+function PanelHead(props: { closePanel?: () => void }): ReactElement {
+  return h(
+    'header',
+    { className: styles.head },
+    h('div', { className: styles.headIcon }, h(Glyph, { size: 18 })),
+    h(
+      'div',
+      { className: styles.headText },
+      h('h1', { className: styles.title }, LABEL),
+      h('p', { className: styles.sub }, '在这里配置档位；新会话与已开始的会话都可以选它。状态从左到右，优先级从高到低。'),
+    ),
+    props.closePanel
+      ? h('button', { className: styles.iconBtn, onClick: props.closePanel, title: '关闭' }, '✕')
+      : null,
+  )
+}
+
+/** 正文加载态:页头已先出,这里只占滚动区。状态行说明在等什么,骨架卡让版面不跳空。 */
+function PanelLoading(): ReactElement {
+  return h(
+    'div',
+    { className: styles.scroll },
+    h(
+      'div',
+      { className: styles.loading, role: 'status', 'aria-live': 'polite' },
+      h('span', { className: styles.loadingDot, 'aria-hidden': 'true' }),
+      h(
+        'div',
+        { className: styles.loadingText },
+        h('span', { className: styles.loadingTitle }, '正在读取档位与工具目录…'),
+        h('span', { className: styles.loadingHint }, '装配系统提示词、运行时上下文与工具表'),
+      ),
+    ),
+    h(
+      'div',
+      { className: styles.skeleton, 'aria-hidden': 'true' },
+      ...LOADING_SKELETON.map((rows, card) => h(
+        'div',
+        { className: styles.skelCard, key: card },
+        h('span', { className: styles.skelHead }),
+        ...rows.map((width, row) => h('span', { className: styles.skelLine, key: row, style: { width: `${width}%` } })),
+      )),
+    ),
+  )
+}
+
 export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const snapshot = useSnapshot()
   const error = useError()
@@ -308,10 +362,12 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     }
   }, [])
 
+  // 页头不随数据状态消失:错误与加载只换正文,重试入口留在内容卡里。
   if (error) {
     return h(
       'div',
       { className: styles.root },
+      h(PanelHead, { closePanel: props?.closePanel }),
       h(
         'div',
         { className: styles.scroll },
@@ -320,7 +376,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     )
   }
   if (!snapshot || !draft || !profile) {
-    return h('div', { className: styles.root }, h('div', { className: styles.empty }, '正在读取…'))
+    return h('div', { className: styles.root }, h(PanelHead, { closePanel: props?.closePanel }), h(PanelLoading))
   }
 
   const modeNames = presetNames(snapshot, previewMode ?? snapshot.defaultPreset) ?? presetNames(snapshot, snapshot.defaultPreset)
@@ -419,20 +475,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   return h(
     'div',
     { className: styles.root },
-    h(
-      'header',
-      { className: styles.head },
-      h('div', { className: styles.headIcon }, h(Glyph, { size: 18 })),
-      h(
-        'div',
-        { className: styles.headText },
-        h('h1', { className: styles.title }, LABEL),
-        h('p', { className: styles.sub }, '在这里配置档位；新会话与已开始的会话都可以选它。状态从左到右，优先级从高到低。'),
-      ),
-      props?.closePanel
-        ? h('button', { className: styles.iconBtn, onClick: props.closePanel, title: '关闭' }, '✕')
-        : null,
-    ),
+    h(PanelHead, { closePanel: props?.closePanel }),
     h(
       'div',
       { className: styles.scroll },
