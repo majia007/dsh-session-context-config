@@ -77,7 +77,7 @@ node scripts/harness.mjs
 1. 本地验证：`pnpm build` → `pnpm test` → `node scripts/smoke.mjs` → `node scripts/harness.mjs`，全绿再谈发布。
 2. **版本号只在发布时改**：平时本地修 bug / 加功能一律不动 `package.json` 的 `version`，也不 push、不 publish；用户要求发布时按他指定的版本号改（修 bug 升 patch，加功能升 minor），并 `pnpm build` 让 `lib/` 与版本一致。
 3. **不自行 push、不自行发版**：改动提交到本地后，先问用户「是否推送、是否发版」；用户确认后才 `git push`，再 `npm publish`。
-4. 发布：在包目录执行 `npm publish`（`prepack` / `prepare` 会重建产物；`files` 已含 `lib/index.js`、`lib/client.js`、`lib/types`、`cordis.patch.yml`、`locale`、`icon`）。账号开了 2FA 时会报 `EOTP`，用 `npm publish --otp=<6 位验证码>` 重试。
+4. 发布：在包目录执行 `npm publish`（`prepack` / `prepare` 会重建产物；`files` 已含 `lib/index.js`、`lib/client.js`、`lib/types`、`cordis.patch.yml`、`locale`、`icon`）。**2FA 卡点（同步自根 `_docs/release-process.md` §5）**：npm 的 `otplease` 先判 `process.stdin.isTTY`，助手命令通道非 TTY → 直接跑 `npm publish` 必报 `EOTP` 并退出（只打出 `auth/cli` 与 `done?authId` 两行 URL，不开浏览器、不轮询，`--auth-type=web` 无效）。所以「发布」= 写发版脚本 + `Start-Process pwsh -ArgumentList '-NoExit','-File',<脚本>` 弹可见窗口，由用户在窗口里完成浏览器授权或输 OTP（本插件先例 `.tmp/publish-scc-1.2.2.ps1`，在仓库根执行）；**不要向用户索要 6 位码，也不要用 `--otp` 代跑**。成功后以 `npm view` 回读为准。
 5. 核对：`npm view @jia-tools/dsh-session-context-config version` 应返回新版本；再 `remove_bundle` → `install_bundle` 让 profile 里的 link 安装重新解析。
 
 ## 约定
