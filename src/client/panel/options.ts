@@ -9,6 +9,7 @@ export const GROUP_STATES: SegmentedControlOption[] = [
 ]
 
 export const TOOL_STATES: SegmentedControlOption[] = [
+  { value: 'force', label: '强制开启' },
   { value: 'on', label: '开启' },
   { value: 'defer', label: '延迟' },
   { value: 'off', label: '隐藏' },

@@ -73,7 +73,7 @@ export function recordSession(state: PluginState, sessionId: string, profileId: 
 }
 
 const GROUP_STATES = new Set([ON, DEFER, OFF, FORCE])
-const TOOL_STATES = new Set([ON, DEFER, OFF])
+const TOOL_STATES = new Set([ON, DEFER, OFF, FORCE])
 
 /** 「开启」是默认值,不落盘:状态表里只记与默认不同的项。 */
 function normalizeGroupStates(input: unknown): Record<string, string> {

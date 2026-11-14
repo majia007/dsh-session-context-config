@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DEFAULT_PROFILES, DEFER, MINIMAL_PROMPT, OFF, ON, PI_PROMPT } from '../src/host/constants.ts'
+import { DEFAULT_PROFILES, DEFER, FORCE, MINIMAL_PROMPT, OFF, ON, PI_PROMPT } from '../src/host/constants.ts'
 import { effectiveState } from '../src/host/tools.ts'
 
 function profileById(id) {
@@ -63,18 +63,22 @@ test('默认预设：Chat 保持全关', () => {
   assert.equal(chat.baseline.custom, false)
 })
 
-test('默认预设：Pi 保留默认工具与 skill，MCP 延迟并由 tool_search 加载', () => {
+test('默认预设：Pi 只注入核心工具，其余一律延迟', () => {
   const pi = profileById('pi')
+  // 六个核心工具用工具级 force 压过组的延迟。
   for (const name of ['read', 'write', 'edit', 'pwsh', 'read_image', 'skill']) {
     assert.equal(effectiveState(pi, name), ON, `${name} 应注入`)
+    assert.equal(pi.tools[name], FORCE, `${name} 应显式强制开启`)
+  }
+  // 组只承载默认值：全部组都是延迟，没有隐藏项。
+  for (const group of ['files', 'search', 'terminal', 'interaction', 'skill', 'delegation', 'workflow', 'goal', 'schedule', 'mcp', 'platform', 'devtools', 'other']) {
+    assert.equal(pi.groups[group], DEFER, `${group} 组应以延迟为默认`)
   }
   // Pi 启动就把技能 name/description 注入 system prompt，目录消息（skill-catalog）不关。
   assert.equal(pi.channels['skill-catalog'], undefined, '技能目录消息应注入')
-  assert.equal(pi.groups.mcp, DEFER)
-  assert.equal(pi.groups.other, ON)
+  assert.equal(pi.injectDuplicateSkills, false, 'Pi 不重复注入已加载过的技能正文')
+  // tool_search 不进档位表:运行时由 planFor 按「是否有其它延迟工具」特判注入(回归 tests/refresh.test.mjs)。
   assert.equal(pi.tools.tool_search, undefined, 'tool_search 由 planFor 自动注入，不进档位表')
-  assert.equal(effectiveState(pi, 'mcp_connector_demo'), DEFER, 'MCP 工具应延迟')
-  assert.equal(effectiveState(pi, 'tool_search'), ON, 'tool_search 应直接可用')
   assert.equal(pi.sections['mcp-resource-servers'], undefined, 'MCP 资源段不应关闭')
   for (const name of [
     'apply_patch',
@@ -89,6 +93,7 @@ test('默认预设：Pi 保留默认工具与 skill，MCP 延迟并由 tool_sear
     'terminal_signal',
     'web_fetch',
     'web_search',
+    'web_extract',
     'subagent',
     'send_message',
     'workflow',
@@ -101,10 +106,10 @@ test('默认预设：Pi 保留默认工具与 skill，MCP 延迟并由 tool_sear
     'working_directory',
     'lsp',
     'session_recall',
-    'web_extract',
   ]) {
-    assert.equal(effectiveState(pi, name), OFF, `${name} 应隐藏`)
+    assert.equal(effectiveState(pi, name), DEFER, `${name} 应延迟`)
   }
+  assert.equal(effectiveState(pi, 'mcp_connector_demo'), DEFER, 'MCP 工具应延迟')
   assert.equal(pi.prompt.prefix.enabled, true)
   assert.equal(pi.prompt.prefix.override, true)
   assert.equal(pi.prompt.prefix.text, PI_PROMPT)

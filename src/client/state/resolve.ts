@@ -18,6 +18,7 @@ export function effective(profile: Partial<Profile>, tool: { name: string; group
   const serverState = tool.server ? profile.servers?.[tool.server] ?? ON : ON
   const toolState = profile.tools?.[tool.name] ?? ON
   if (groupState === FORCE) return ON
+  if (toolState === FORCE) return ON
   if (groupState === OFF) return OFF
   if (serverState === FORCE) return ON
   if (serverState === OFF) return OFF

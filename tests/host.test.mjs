@@ -51,6 +51,10 @@ test('解析优先级：终态压过子项，延迟是可被隐藏覆盖的软�
   assert.equal(effectiveState(profile({ servers: { github: 'off' }, tools: { 'mcp__github__x': 'on' } }), 'mcp__github__x'), 'off')
   // 组延迟 + 工具开启 = 延迟
   assert.equal(effectiveState(profile({ groups: { mcp: 'defer' } }), 'mcp__github__x'), 'defer')
+  // 工具级强制开启压过组的延迟与隐藏（「组全延迟 + 个别工具提回注入」的配置靠它）
+  assert.equal(effectiveState(profile({ groups: { files: 'defer' }, tools: { read: 'force' } }), 'read'), 'on')
+  assert.equal(effectiveState(profile({ groups: { files: 'off' }, tools: { read: 'force' } }), 'read'), 'on')
+  assert.equal(effectiveState(profile({ servers: { github: 'defer' }, tools: { 'mcp__github__x': 'force' } }), 'mcp__github__x'), 'on')
   // 工具隐藏压过组延迟
   assert.equal(effectiveState(profile({ groups: { mcp: 'defer' }, tools: { 'mcp__github__x': 'off' } }), 'mcp__github__x'), 'off')
   // 默认全开

@@ -28,7 +28,10 @@ export function serverOf(toolName: string): string | null {
 
 /**
  * 父级只提供默认值;隐藏与强制开启是终态,会压过子项。
- * 自上而下判定:组终态 → server 终态 → 工具终态 → 任一层的“延迟” → 注入。
+ * 自上而下判定:组终态 → 工具强制开启 → server 终态 → 工具终态 → 任一层的“延迟” → 注入。
+ *
+ * 工具级的 force 是给「其余全部延迟、只把几个工具提回注入」这种配置用的:
+ * 组只承载默认值,没有它就只能逐个把不要的工具写成 off。
  */
 export function effectiveState(profile: ContextProfile, toolName: string): string {
   const group = groupOf(toolName)
@@ -37,6 +40,7 @@ export function effectiveState(profile: ContextProfile, toolName: string): strin
   const serverState = server ? profile.servers[server] ?? ON : ON
   const toolState = profile.tools[toolName] ?? ON
   if (groupState === FORCE) return ON
+  if (toolState === FORCE) return ON
   if (groupState === OFF) return OFF
   if (serverState === FORCE) return ON
   if (serverState === OFF) return OFF

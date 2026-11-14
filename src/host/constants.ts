@@ -306,7 +306,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
   {
     id: 'pi',
     name: 'Pi',
-    description: '参考 Pi 设计理念的精简档位：默认 read / write / edit / pwsh / read_image / skill（技能目录随会话注入、正文按需加载），MCP 延迟并由 tool_search 按需加载。',
+    description: '参考 Pi 设计理念的精简档位：read / write / edit / pwsh / read_image / skill 直接可见（技能目录随会话注入、正文按需加载），其余工具一律延迟、经 tool_search 按需加载。',
     prompt: { prefix: { enabled: true, override: true, text: PI_PROMPT }, suffix: { enabled: true, override: true, text: '' } },
     contexts: {
       'sandbox:policy': false,
@@ -328,43 +328,34 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     baseline: offBaseline(),
     // Pi 启动就把技能 name/description 注入 system prompt,skill-catalog 通道不关。
     channels: {},
-    injectDuplicateSkills: true,
+    // 技能正文只按需加载一次:同一个 /技能名 手势再注入整份正文,与精简目标相反。
+    injectDuplicateSkills: false,
     groups: {
-      search: OFF,
-      interaction: OFF,
-      delegation: OFF,
-      workflow: OFF,
-      goal: OFF,
-      schedule: OFF,
-      // Pi 1.5.x 的 MCP 是内置扩展，工具默认按 codemode/deferred 暴露，不在初始声明里。
-      // DSH 没有 codemode，这里用「MCP 延迟 + tool_search」近似。
+      // 全部组以「延迟」为默认值——组只承载默认,不决定终态。Pi 的默认工具面很小,
+      // 其余工具留在 tools 数组里作为占位,模型需要时经 tool_search 取完整定义。
+      files: DEFER,
+      search: DEFER,
+      terminal: DEFER,
+      interaction: DEFER,
+      skill: DEFER,
+      delegation: DEFER,
+      workflow: DEFER,
+      goal: DEFER,
+      schedule: DEFER,
       mcp: DEFER,
-      platform: OFF,
-      devtools: OFF,
-      // other 组保留默认开启;tool_search 由 planFor 自动注入,不在档位表里配置。
-      other: ON,
+      platform: DEFER,
+      devtools: DEFER,
+      other: DEFER,
     },
-    // files / terminal / skill 三组保持默认开启,只把 Pi 没有的成员逐个关掉;
-    // read_image 是 DSH 对 Pi read 图片能力的对应实现,skill 是 Pi 按需读取技能
-    // 正文机制的 DSH 对应(目录由 skill-catalog 消息注入,DSH 目录不带路径,
-    // 模型不能像 Pi 那样直接 read SKILL.md);Pi 没有内建网络工具,web_fetch /
-    // web_search 保持关闭。MCP 组用 defer 近似 Pi 的 codemode/deferred 暴露;
-    // tool_search 由 planFor 按「是否有其它延迟工具」自动注入。
+    // 需要直接可见的六个工具用工具级 force 提回注入(压过组的延迟),其余保持延迟。
+    // tool_search 由 planFor 按「是否有其它延迟工具」自动注入,不进档位表。
     tools: {
-      apply_patch: OFF,
-      job_kill: OFF,
-      job_list: OFF,
-      job_output: OFF,
-      terminal_close: OFF,
-      terminal_list: OFF,
-      terminal_open: OFF,
-      terminal_read: OFF,
-      terminal_send: OFF,
-      terminal_signal: OFF,
-      session_recall: OFF,
-      web_extract: OFF,
-      web_fetch: OFF,
-      web_search: OFF,
+      read: FORCE,
+      write: FORCE,
+      edit: FORCE,
+      pwsh: FORCE,
+      read_image: FORCE,
+      skill: FORCE,
     },
     servers: {},
     summaries: {},

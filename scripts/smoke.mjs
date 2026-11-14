@@ -422,7 +422,7 @@ check('工具目录上方有分区标题与说明', catalogHeading?.nextElementS
 const toolRowEl = panel.querySelector('.cp-tool')
 const stateTabs = [...(toolRowEl?.querySelectorAll('[role="tab"]') ?? [])]
 const toolByName = (name) => [...panel.querySelectorAll('.cp-tool')].find((row) => row.querySelector('.cp-nm')?.textContent === name)
-check('工具状态是三元分段选择', stateTabs.length === 3 && stateTabs.filter((tab) => tab.getAttribute('aria-selected') === 'true').length === 1)
+check('工具状态是四元分段选择', stateTabs.length === 4 && stateTabs.filter((tab) => tab.getAttribute('aria-selected') === 'true').length === 1)
 check('工具行固定为 名字(含标签)/描述/状态 三列', toolRowEl?.children.length === 3, String(toolRowEl?.children.length))
 check('名字与状态标签同在一个单元格', toolRowEl?.querySelector('.cp-nameCell .cp-nm')?.textContent === 'read')
 check('每个工具都显示最终状态标签（开启 / success）', toolRowEl?.querySelector('.cp-stateTag')?.textContent === '开启' && toolRowEl?.querySelector('.cp-stateTag [data-tone]')?.getAttribute('data-tone') === 'success')
