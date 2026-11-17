@@ -312,7 +312,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 ## 开发文档
 
-- `AGENTS.md`：给编码代理的项目说明（构建、安装、坑库、注释与文档维护规则）。
+- `AGENTS.md`：给编码代理的项目说明——根文档是构建/安装/发版/全局危险区与模块索引，`src/host/AGENTS.md` 与 `src/client/AGENTS.md` 分别是 Host 机制与 Client 面板的坑与流程。
 - `docs/dsh-web-ui.md`：DSH Web UI 的设计 token、控件几何、槽位接入与验证配方——改界面先读它。
 - `../dsh-session-bridge/scripts/read-session.mjs`：会话记录解码/摘要（在该包跑 `npm run session -- --latest` 或 `--session <id>`）。会话文件是多帧 zstd，这个脚本按帧解压并列出档位、`system` 长度、user 消息 `source.kind`、`request/header` 工具数；排查「配置有没有生效」先跑它，别反复重启试。
 - `scripts/smoke.mjs`：`pnpm build && node scripts/smoke.mjs`，在 happy-dom 里渲染配置面板与两个 chip 并断言结构（依赖来自本项目 devDependencies）。
