@@ -2,7 +2,7 @@
 
 本模块文档覆盖：`src/index.ts`（插件面与装配合成）、`src/host/**`（状态/解析/应用/路由/来源等）、`src/baseline.ts`（附加规则文本层）、`src/tool-guides.ts`（复合引导段成员表）、`src/types.ts`（宿主服务面声明）。
 
-构建/安装/热重载/发版与跨模块约定见根 [`AGENTS.md`](../AGENTS.md)；Client 半边见 [`../client/AGENTS.md`](../client/AGENTS.md)。本文只记 Host 侧读代码读不出的机制取舍与坑。
+跨模块约定、构建/安装/热重载/真机验证见根 [`AGENTS.md`](../AGENTS.md)，发版见 [`docs/release.md`](../../docs/release.md)；Client 半边见 [`../client/AGENTS.md`](../client/AGENTS.md)。本文只记 Host 侧读代码读不出的机制取舍与坑。
 
 ## 组件锚点
 
@@ -107,7 +107,7 @@
 ## 改 Host 的验证流程
 
 1. `pnpm build` → `pnpm exec tsc --noEmit` → `pnpm test`；Host 产物用 `node --check lib/index.js` 抽查。
-2. Host 代码不走自动热更（根文档的 HMR 口径）：`plugin_manager` 的 `set_plugin` 对 `include:session-context-config` 关→开，返回 `application: applied` 即新 Host 已加载。
+2. Host 代码不走自动热更（根文档的热重载口径）：`plugin_manager` 的 `set_plugin` 对 `include:session-context-config` 关→开，返回 `application: applied` 即新 Host 已加载。
 3. 行为验收以会话记录为准（根文档「排查会话记录」）：看 `request/header` 的 tools 数、user 消息的 `source.kind` 与顺序、system 文本长度。
 4. 单元测试直读 `src`，不需要先 build；smoke/harness 读 `lib/`，必须先 build。
 

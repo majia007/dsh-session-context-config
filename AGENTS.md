@@ -15,22 +15,7 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 | Host 半边 | `src/index.ts`、`src/host/`、`src/baseline.ts`、`src/tool-guides.ts`、`src/types.ts` | [`src/host/AGENTS.md`](src/host/AGENTS.md) | 改档位解析/延迟/tool_search/上下文与段开关/注入消息/默认行为开关/人设/来源、或排查宿主侧行为不生效时 |
 | Client 半边 | `src/client/` | [`src/client/AGENTS.md`](src/client/AGENTS.md) | 改配置面板/卡片/开关控件/chip/浮层、或调 UI 样式与槽位时 |
 
-范围之外（`build/`、`scripts/`、`tests/`、`docs/`、包根清单）没有模块文档，知识都在本文档。目录迁入/迁出模块时同步这张表。
-
-## 关键文件（全局）
-
-| 文件 | 职责 |
-|---|---|
-| `package.json` | bundle 清单；`dsh.client` 段声明客户端注入（sidebar、layout），`exports` 决定宿主能取到哪些子路径；`publishConfig.registry` 钉住发布目标 |
-| `cordis.patch.yml` | 装载入口：只 insert 一行 `session-context-config` |
-| `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-workspace-sidebar/AGENTS.md`「与官方 preset 的偏差」） |
-| `tests/` | 直读 `src` 的单元测试：host 纯函数、附加规则快照、环境事实、不可信下载规则、v2/v3→v4 结构迁移、5 个默认预设、tool_search 自动注入/隐藏、附加规则按档位与子代理跟随、面板草稿兜底、人设开关/覆盖与占位符、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏、上下文开关/影子、`/api/state` 快照形状、注入消息分桶、工具来源解析、技能注入去重（`dedupe.test.mjs`）、发送顺序（`channels.test.mjs`）、默认行为开关默认值 |
-| `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 `lib/client.js`，喂假快照渲染面板与两个 chip 并点击；覆盖「+ 新建档位」悬停下拉与预设复制、默认行为卡三条开关 |
-| `scripts/gen-known-tools.mjs` | 从 DSH checkout 的 `docs/tool-catalog.md` 生成 `src/host/known-tools.ts`（`DSH_SRC` 可覆盖 checkout 路径） |
-| `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 `lib/client.js`，验 id/槽位注册/样式注入/inject face |
-| `locale/*.json` | 仅包级 title/description；**界面文案是硬编码中文，没走 locale 服务** |
-
-Host 与 Client 的文件级清单在各模块文档的组件锚点表。
+范围之外（`build/`、`scripts/`、`tests/`、`docs/`、包根清单）没有模块文档，知识都在本文档或 `docs/release.md`。
 
 ## 构建、安装与验证
 
@@ -61,17 +46,26 @@ node scripts/harness.mjs
 
 **看真实效果**：桌面端默认不开放调试端口；以 `--remote-debugging-port=9202` 启动后可用 `use-chrome` 技能直连（CDP 端口 9202，`node cdp.mjs eval/screenshot --port=9202`），比系统级鼠标/键盘自动化可靠。不带调试参数时退回截桌面窗口的图核对；**不要用系统级鼠标/键盘自动化**去点用户界面：会打断用户操作、留下文字选中，而且验证价值不如一次截图。
 
-**发版流程（仅在用户明确要求发布时走）**：
+## 发版
 
-1. 本地验证：`pnpm build` → `pnpm test` → `node scripts/smoke.mjs` → `node scripts/harness.mjs`，全绿再谈发布。
-2. **版本号只在发布时改**：平时本地修 bug / 加功能一律不动 `package.json` 的 `version`，也不 push、不 publish；用户要求发布时按他指定的版本号改（修 bug 升 patch，加功能升 minor），并 `pnpm build` 让 `lib/` 与版本一致。
-3. **不自行 push、不自行发版**：改动提交到本地后，先问用户「是否推送、是否发版」；用户确认后才 `git push`，再 `npm publish`。
-4. 发布：发布目标由 `package.json` 的 `publishConfig.registry`（`https://registry.npmjs.org/`）钉住——随包走，不依赖本机 `.npmrc`、nrm 当前源或执行目录；项目级 `.npmrc` 只作本机 scope 解析的兜底。在包目录执行 `npm publish`（`prepack` / `prepare` 会重建产物；`files` 已含 `lib/index.js`、`lib/client.js`、`lib/types`、`cordis.patch.yml`、`locale`、`icon`）。**2FA 卡点（同步自根 `_docs/release-process.md` §5）**：npm 的 `otplease` 先判 `process.stdin.isTTY`，助手命令通道非 TTY → 直接跑 `npm publish` 必报 `EOTP` 并退出（只打出 `auth/cli` 与 `done?authId` 两行 URL，不开浏览器、不轮询，`--auth-type=web` 无效）。所以「发布」= 写发版脚本 + `Start-Process pwsh -ArgumentList '-NoExit','-File',<脚本>` 弹可见窗口，由用户在窗口里完成浏览器授权或输 OTP（本插件先例 `.tmp/publish-scc-1.3.0.ps1`，在仓库根执行）；**不要向用户索要 6 位码，也不要用 `--otp` 代跑**。
-5. 核对（先排除 stage 与缓存，再下结论）：
-   - `npm stage list @jia-tools/dsh-session-context-config --registry=https://registry.npmjs.org/`：有 stage 说明版本还在等 2FA 批准（staged publishing，npm ≥ 11.15 / Node ≥ 22.14），用 `npm stage view/approve <id>` 处理；全新包被 stage 时会有公开占位版本 `0.0.0-stage`。**不要重复 `npm publish`**。
-   - `npm view @jia-tools/dsh-session-context-config version --registry https://registry.npmjs.org/ --prefer-online` 应返回新版本；npm 本地元数据缓存会给旧值（实测 1.3.0 已上线、`npm view` 仍报 1.2.2），必要时直接抓 `https://registry.npmjs.org/@jia-tools%2Fdsh-session-context-config` 看 `dist-tags`。
-   - 再 `remove_bundle` → `install_bundle` 让 profile 里的 link 安装重新解析。
-6. 认证失败分诊：`E401` = token 失效（重跑 `npm login --registry=https://registry.npmjs.org/`）；打 npmjs 的 **`E404` 多半是未认证的 PUT**（npmjs 对未登录方回 404 不回 401），先 `npm whoami --registry=https://registry.npmjs.org/`。token 按 registry 主机分键存，`npm login` 不带 `--registry` 会把 token 写到当时默认源那把键上，表现为「登录成功但发 npmjs 仍失败」；nrm 只改 `registry=` 行，不碰 token 键。
+**仅在用户明确要求发布时走**：平时不动 `package.json` 的 `version`，也不 push、不 publish。发布目标由 `publishConfig.registry` 钉住（随包走），`npm publish` 必须在可见终端窗口里跑（非 TTY 必报 `EOTP`）。
+
+完整流程（版本号、发布前验证、2FA 窗口脚本、staged publishing 核对、缓存陷阱、认证分诊、回滚）见 [`docs/release.md`](docs/release.md)。
+
+## 关键文件（全局）
+
+| 文件 | 职责 |
+|---|---|
+| `package.json` | bundle 清单；`dsh.client` 段声明客户端注入（sidebar、layout），`exports` 决定宿主能取到哪些子路径；`publishConfig.registry` 钉住发布目标 |
+| `cordis.patch.yml` | 装载入口：只 insert 一行 `session-context-config` |
+| `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-workspace-sidebar/AGENTS.md`「与官方 preset 的偏差」） |
+| `tests/` | 直读 `src` 的单元测试：host 纯函数、附加规则快照、环境事实、不可信下载规则、v2/v3→v4 结构迁移、5 个默认预设、tool_search 自动注入/隐藏、附加规则按档位与子代理跟随、面板草稿兜底、人设开关/覆盖与占位符、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏、上下文开关/影子、`/api/state` 快照形状、注入消息分桶、工具来源解析、技能注入去重（`dedupe.test.mjs`）、发送顺序（`channels.test.mjs`）、默认行为开关默认值 |
+| `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 `lib/client.js`，喂假快照渲染面板与两个 chip 并点击；覆盖「+ 新建档位」悬停下拉与预设复制、默认行为卡三条开关 |
+| `scripts/gen-known-tools.mjs` | 从 DSH checkout 的 `docs/tool-catalog.md` 生成 `src/host/known-tools.ts`（`DSH_SRC` 可覆盖 checkout 路径） |
+| `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 `lib/client.js`，验 id/槽位注册/样式注入/inject face |
+| `locale/*.json` | 仅包级 title/description；**界面文案是硬编码中文，没走 locale 服务** |
+
+Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 
 ## 约定
 
@@ -79,7 +73,7 @@ node scripts/harness.mjs
 - **命名**：包名 `dsh-` + kebab-case，`cordis.patch.yml` 的行 id 是包名去掉 `dsh-` 前缀；`profile`（部署档案 `$DSH_PROFILE`）、`preset`（模型/agent 预设）、`mode`（会话头部的「模式」）都是宿主已占的词，不要拿来当词根。
 - **代码注释规范**：类/函数级注释写「职责 + 为什么这么设计」；行内只写这一处代码读不出的单点约束和取舍；不写逐行翻译、不写「从哪拆来的/以前怎样」这类过程记录。注释过时比没有更糟——读到与代码矛盾的注释当场以代码为准修或删。行内注释同样用中文。
 - 单点约束写进注释，跨文件规则写进本文档（或模块文档）并互留锚点，同一约束不双份维护。
-- 本目录已是 git 仓库（origin 指向 GitHub）；提交时机是「阶段成果自验通过」时，而不是改完就提。不要自行 push。
+- 本目录已是 git 仓库（origin 指向 GitHub）；提交时机是「阶段成果自验通过」时，而不是改完就提。不要自行 push（发版纪律见 `docs/release.md`）。
 - **开关与默认值一律挂在档位（`ContextProfile`）下，不做全局配置**：面板编辑的是档位草稿，Host 按会话所属档位解析（`profileOf(agent)`）；顶层 state 只保留 `lastUsedId` / `sessions` / 顶层 `baseline` 兜底这些既有结构。档位是用户唯一可见的配置面，全局开关既没有归属、也无法按会话区分。唯一例外是 `tool_search`：它是延迟加载机制的基础设施，由 `planFor` 自动注入/隐藏，不做档位开关（见 Host 文档）。
 - **同规则双端双份**：档位解析（`effectiveState` 与三态落地）在 Host（`src/host/tools.ts`）与 Client（`src/client/state/resolve.ts`）各一份，改一侧必改另一侧；面板显示的四态必须与 Host 实际落地一致。
 - **切换档位会重建整个工具表与前缀缓存**：面向用户的确认话术写在菜单里，改这段行为时同步它。
@@ -137,6 +131,7 @@ node scripts/harness.mjs
 | `README.md` | 用户向说明 | 介绍档位模型、三态落地、数据格式与接口 |
 | `src/host/AGENTS.md` | Host 模块文档 | 改 Host 机制、排查宿主侧不生效时 |
 | `src/client/AGENTS.md` | Client 模块文档 | 改面板/chip/样式、走 UI 流程时 |
+| `docs/release.md` | 操作手册 | 发版：版本号、2FA 窗口、stage、缓存核对、认证分诊 |
 | `docs/dsh-web-ui.md` | 知识笔记 + 事实速查（根 `_docs/dsh-web-ui.md` 的同步副本） | 改 UI、抄 DSH 样式、选槽位、查 token 与几何时 |
 
 ## 本文档维护规则
@@ -145,8 +140,9 @@ node scripts/harness.mjs
 - **记**：设计决策的「为什么」（含被否决的方案）、回归坑（症状→根因→正解+验证指针）、跨模块契约与同步要求、不可复现资源（checkout 路径、profile 位置、junction 脚本）、每次都要遵守的硬约束。**不记**：方法名/行号、数值与协议标识（指向常量与源码，不抄值）、流水账与 git log 可查元数据（完成日期、版本快照、提交哈希）、进行中的临时状态。
 - **坑条目格式**：一句话断言根因（高发的硬约束用 ⚠️），下写「症状→根因→正解（+验证指针）」。
 - **锚点三性**：新锚点必须可 grep、唯一、稳定（slot key、checkout 路径、错误码这类），写入前先验证。
-- **模块拆分**：模块局部内容（该模块的设计要点、坑库、流程、组件表）**出现即写进对应模块文档**，不等根文档膨胀；根只留所有任务都需要的内容。判据是「不动这个模块的任务，踩到这条会不会受伤」：会→根，不会→模块文档。模块按知识域归组，不与目录一一对应；本文件顶部索引表与模块文档双向一致（加/删/改名同步改行），索引表后保留「范围之外=无模块文档」的兜底声明。根文档里出现只属于单个模块的坑/设计要点时，移进模块文档，不留副本。
-- **README 与 AGENTS 分工**：README 面向使用者（能力、怎么开、数据格式、接口）；根 AGENTS 面向开发（跨模块约定、构建/发版、全局危险区、诊断入口）；模块文档面向单模块改造。新机制先写对应模块文档；只有使用者会直接接触的行为、配置或接口才写 README，且 README 不展开内部判据（如 `deriveMessages` 的 surface 语义）。
+- **模块拆分**：模块局部内容（该模块的设计要点、坑库、流程、组件表）**出现即写进对应模块文档**，不等根文档膨胀；根只留所有任务都需要的内容。判据是「不动这个模块的任务，踩到这条会不会受伤」：会→根，不会→模块文档。模块按知识域归组，不与目录一一对应；本文件顶部索引表与模块文档双向一致（加/删/改名同步改行），索引表后保留「范围之外=无模块文档」的兜底声明。
+- **构建常驻、发版下沉**：构建/安装/热重载/真机验证是每次改码都要用的，**留根**；发版是低频且只在用户要求时走，流程放 `docs/release.md`，根只留「何时发、不自行 push」的纪律与指针。操作手册与根/模块文档双向登记（文档目录表、索引行），改流程两边同改。
+- **README 与 AGENTS 分工**：README 面向使用者（能力、怎么开、数据格式、接口）；根 AGENTS 面向开发（跨模块约定、构建与安装、危险区、诊断入口）；模块文档面向单模块改造；docs 面向按步骤执行的低频操作。新机制先写对应模块文档；只有使用者会直接接触的行为、配置或接口才写 README，且 README 不展开内部判据（如 `deriveMessages` 的 surface 语义）。
 - **质量自检**：改完过「新会话 5 分钟测试」——只读文档能否 (a) 完成构建与安装 (b) 找到改动落点对应的文档 (c) 说出全局危险区 (d) 知道怎么验证。再抽查 3 个反引号锚点能 grep 命中、3 个文档指针目标存在；已拆分时检查索引表每行指向存在的文件、每个模块文档都在索引里、所有任务都需要的警告仍在根。
 - **拿不准**：先核实（读代码、查 DSH 源码、问用户），核实后仍无依据才不记。
 - **代码注释规范**是「约定」节的组成部分，维护本文档时不得丢失或削弱。
@@ -158,9 +154,10 @@ node scripts/harness.mjs
 | 加新功能 / 删功能 / 行为变化 | 要 | 对应模块文档 + 根文档「添加或修改功能」表（新维度）+ 必要时 README |
 | 纯重构（重命名、拆函数），行为不变 | 不要 | 代码自解释；仅当文档锚点失效时修锚点 |
 | 修 bug / 发现新坑 | 要 | 按归属进模块文档坑库；跨模块的进根「全局危险区」；坑被修复消化就删条目，不留「已修」 |
-| 改依赖 / 构建 / 安装方式 / 权限 | 要 | 根文档「构建、安装与验证」与「全局危险区」 |
+| 改依赖 / 构建 / 安装方式 / 权限 | 要 | 根「构建、安装与验证」与「全局危险区」 |
+| 改发版流程 / 发布相关 | 要 | `docs/release.md`；根只留「何时发、不自行 push」这条纪律 |
 | 改控件几何 / 菜单结构 / 槽位用法 | 要 | `docs/dsh-web-ui.md`（权威源在根 `_docs/`，先改根再同步回本地副本） |
-| 新增/删除/改名模块文档 | 要 | 根「模块索引」表与「文档目录」双向改，grep 清死指针 |
+| 新增/删除/改名文档（模块或 docs） | 要 | 根「模块索引」与「文档目录」双向改，grep 清死指针 |
 | 读到文档与代码矛盾 | 要 | 当场以代码为准修正，两侧同修 |
 | DSH 升级 | 要 | 机制类断言按 checkout 复核（基线 0.2.2-rc.3），同步本插件文档与 `docs/dsh-web-ui.md` |
 | 拿不准 | 先核实再定 | 查代码 / DSH 源码 / 问用户；核实后仍无依据才不记 |
