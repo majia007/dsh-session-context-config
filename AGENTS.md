@@ -77,8 +77,12 @@ node scripts/harness.mjs
 1. 本地验证：`pnpm build` → `pnpm test` → `node scripts/smoke.mjs` → `node scripts/harness.mjs`，全绿再谈发布。
 2. **版本号只在发布时改**：平时本地修 bug / 加功能一律不动 `package.json` 的 `version`，也不 push、不 publish；用户要求发布时按他指定的版本号改（修 bug 升 patch，加功能升 minor），并 `pnpm build` 让 `lib/` 与版本一致。
 3. **不自行 push、不自行发版**：改动提交到本地后，先问用户「是否推送、是否发版」；用户确认后才 `git push`，再 `npm publish`。
-4. 发布：在包目录执行 `npm publish`（`prepack` / `prepare` 会重建产物；`files` 已含 `lib/index.js`、`lib/client.js`、`lib/types`、`cordis.patch.yml`、`locale`、`icon`）。**2FA 卡点（同步自根 `_docs/release-process.md` §5）**：npm 的 `otplease` 先判 `process.stdin.isTTY`，助手命令通道非 TTY → 直接跑 `npm publish` 必报 `EOTP` 并退出（只打出 `auth/cli` 与 `done?authId` 两行 URL，不开浏览器、不轮询，`--auth-type=web` 无效）。所以「发布」= 写发版脚本 + `Start-Process pwsh -ArgumentList '-NoExit','-File',<脚本>` 弹可见窗口，由用户在窗口里完成浏览器授权或输 OTP（本插件先例 `.tmp/publish-scc-1.2.2.ps1`，在仓库根执行）；**不要向用户索要 6 位码，也不要用 `--otp` 代跑**。成功后以 `npm view` 回读为准。
-5. 核对：`npm view @jia-tools/dsh-session-context-config version` 应返回新版本；再 `remove_bundle` → `install_bundle` 让 profile 里的 link 安装重新解析。
+4. 发布：发布目标由 `package.json` 的 `publishConfig.registry`（`https://registry.npmjs.org/`）钉住——随包走，不依赖本机 `.npmrc`、nrm 当前源或执行目录；项目级 `.npmrc` 只作本机 scope 解析的兜底。在包目录执行 `npm publish`（`prepack` / `prepare` 会重建产物；`files` 已含 `lib/index.js`、`lib/client.js`、`lib/types`、`cordis.patch.yml`、`locale`、`icon`）。**2FA 卡点（同步自根 `_docs/release-process.md` §5）**：npm 的 `otplease` 先判 `process.stdin.isTTY`，助手命令通道非 TTY → 直接跑 `npm publish` 必报 `EOTP` 并退出（只打出 `auth/cli` 与 `done?authId` 两行 URL，不开浏览器、不轮询，`--auth-type=web` 无效）。所以「发布」= 写发版脚本 + `Start-Process pwsh -ArgumentList '-NoExit','-File',<脚本>` 弹可见窗口，由用户在窗口里完成浏览器授权或输 OTP（本插件先例 `.tmp/publish-scc-1.3.0.ps1`，在仓库根执行）；**不要向用户索要 6 位码，也不要用 `--otp` 代跑**。
+5. 核对（先排除 stage 与缓存，再下结论）：
+   - `npm stage list @jia-tools/dsh-session-context-config --registry=https://registry.npmjs.org/`：有 stage 说明版本还在等 2FA 批准（staged publishing，npm ≥ 11.15 / Node ≥ 22.14），用 `npm stage view/approve <id>` 处理；全新包被 stage 时会有公开占位版本 `0.0.0-stage`。**不要重复 `npm publish`**。
+   - `npm view @jia-tools/dsh-session-context-config version --registry https://registry.npmjs.org/ --prefer-online` 应返回新版本；npm 本地元数据缓存会给旧值（实测 1.3.0 已上线、`npm view` 仍报 1.2.2），必要时直接抓 `https://registry.npmjs.org/@jia-tools%2Fdsh-session-context-config` 看 `dist-tags`。
+   - 再 `remove_bundle` → `install_bundle` 让 profile 里的 link 安装重新解析。
+6. 认证失败分诊：`E401` = token 失效（重跑 `npm login --registry=https://registry.npmjs.org/`）；打 npmjs 的 **`E404` 多半是未认证的 PUT**（npmjs 对未登录方回 404 不回 401），先 `npm whoami --registry=https://registry.npmjs.org/`。token 按 registry 主机分键存，`npm login` 不带 `--registry` 会把 token 写到当时默认源那把键上，表现为「登录成功但发 npmjs 仍失败」；nrm 只改 `registry=` 行，不碰 token 键。
 
 ## 约定
 
