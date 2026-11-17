@@ -164,6 +164,10 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
     channels?: unknown
     /** 是否注入重复触发的 skill;缺省=true(与宿主默认一致)。 */
     injectDuplicateSkills?: unknown
+    /** 是否把注入消息排到用户消息之前发送;缺省=false(保持宿主顺序)。 */
+    injectedFirst?: unknown
+    /** 是否对 skill 工具结果去重;缺省=false(宿主原样)。 */
+    dedupeSkillToolResults?: unknown
     /** 旧字段(语义相反):dedupeSkillInjection=true 表示不重复注入。 */
     dedupeSkillInjection?: unknown
     groups?: unknown
@@ -228,6 +232,8 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
     injectDuplicateSkills: typeof record?.injectDuplicateSkills === 'boolean'
       ? record.injectDuplicateSkills
       : record?.dedupeSkillInjection !== true,
+    injectedFirst: record?.injectedFirst === true,
+    dedupeSkillToolResults: record?.dedupeSkillToolResults === true,
     groups: normalizeGroupStates(record?.groups),
     servers: normalizeGroupStates(record?.servers),
     tools,

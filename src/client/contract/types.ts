@@ -51,6 +51,10 @@ export interface Profile {
   channels: Record<string, string>
   /** 本档位是否注入重复触发的 skill;缺省(旧宿主快照)按注入处理,false=不重复注入。 */
   injectDuplicateSkills?: boolean
+  /** 是否把注入消息排到用户消息之前发送;缺省 false=保持宿主顺序。 */
+  injectedFirst?: boolean
+  /** 是否对 skill 工具结果去重;缺省 false=宿主原样。 */
+  dedupeSkillToolResults?: boolean
   groups: Record<string, string>
   servers: Record<string, string>
   tools: Record<string, string>

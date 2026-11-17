@@ -56,6 +56,36 @@ interface SearchResult {
   message: string
 }
 
+/** 人设文本里可用的占位符;名字与宿主注册的提示词变量一致(宿主在 agent-loop 里注册 model/provider)。 */
+const PERSONA_PLACEHOLDER = /\{\{(model|provider)\}\}/g
+
+/** 装配上下文里人设占位符用到的最小面:当前 step 的模型选择,回落 agent 的初始路由(与宿主变量同一套回落)。 */
+interface PersonaScope {
+  modelSelection?: { provider?: string; model?: string }
+  agent?: { options?: { provider?: string; model?: string } }
+}
+
+/**
+ * 展开人设覆盖文本里的占位符。
+ *
+ * 覆盖段固定按 `interpolate: false` 注册——人设是自由散文,宿主的严格插值会把一个
+ * 写错的花括号变成整次装配失败(请求发不出去),代价太大;所以这里只替换认得的
+ * `{{model}}` / `{{provider}}`,未知名字与取不到值时原样保留。
+ */
+function renderPersona(text: string, scope?: PersonaScope): string {
+  const model = scope?.modelSelection?.model ?? scope?.agent?.options?.model
+  const provider = scope?.modelSelection?.provider ?? scope?.agent?.options?.provider
+  return text.replace(PERSONA_PLACEHOLDER, (whole, name: string) => {
+    const value = name === 'model' ? model : provider
+    return typeof value === 'string' && value.length > 0 ? value : whole
+  })
+}
+
+/** 没有占位符时保持静态字符串(宿主原样收下);有占位符才注册成每次装配求值的函数。 */
+function personaText(text: string): string | ((scope?: PersonaScope) => string) {
+  return text.includes('{{') ? (scope) => renderPersona(text, scope) : text
+}
+
 export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: SessionKit, note: (source: string, error: unknown) => void): ProfileRuntime {
   const applied = new Map<string, AppliedEntry>()
   const loadedByAgent = new WeakMap<object, Set<string>>()
@@ -181,7 +211,7 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
           disposers.push(agentCtx.systemPrompt.section({
             name: slot.name,
             order: agentCtx.systemPrompt.getSectionOrder(slot.orderName),
-            text: enabled ? config.text : '',
+            text: enabled ? personaText(config.text) : '',
             interpolate: false,
           }) as () => void)
         }

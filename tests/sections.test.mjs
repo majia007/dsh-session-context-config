@@ -336,6 +336,29 @@ test('都开启且不覆盖:不注册任何影子,沿用部署配置', async () 
   assert.deepEqual(sections, [])
 })
 
+test('覆盖文本的占位符按当前模型展开;未知名字/取不到值时原样保留', async () => {
+  const sections = await applyWithPrompt({
+    prefix: slot({ override: true, text: 'You are powered by {{model}} via {{provider}}. {{unknown}}' }),
+    suffix: slot(),
+  })
+  const [prefix] = sections
+  // 有占位符才注册成每次装配求值的函数(宿主按 step 的模型选择调用它)。
+  assert.equal(typeof prefix.text, 'function')
+  // 覆盖段整体仍按字面文本注册:宿主的严格插值不参与,写错的花括号不会让装配失败。
+  assert.equal(prefix.interpolate, false)
+  assert.equal(
+    prefix.text({ modelSelection: { provider: 'magpie', model: 'deepseek-v4.1-flash' } }),
+    'You are powered by deepseek-v4.1-flash via magpie. {{unknown}}',
+  )
+  // 面板的干跑装配没有 modelSelection,回落 agent 的初始路由(与宿主变量同一套回落)。
+  assert.equal(
+    prefix.text({ agent: { options: { provider: 'p', model: 'm' } } }),
+    'You are powered by m via p. {{unknown}}',
+  )
+  // 取不到值时不做严格校验:占位符原样留着。
+  assert.equal(prefix.text({}), 'You are powered by {{model}} via {{provider}}. {{unknown}}')
+})
+
 test('工具引导强绑定工具组:terminal 隐藏时 pwsh/jobs 段自动移除,read 保留', async () => {
   const { agent, events } = await applyWithProfile({ groups: { terminal: 'off' } })
   const hook = events.get('system-prompt/assemble')?.[0]

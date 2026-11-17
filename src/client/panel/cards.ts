@@ -244,7 +244,7 @@ function PersonaBlock({ option, profile, patch, chars, current }: {
         target.prompt[key].override = checked
       }),
       title: h('span', { className: styles.segmentLabel }, '覆盖部署文本'),
-      desc: '为空则不发送该槽位；不为空则替换部署文本。',
+      desc: '为空则不发送该槽位；不为空则替换部署文本。文本里的 {{model}} / {{provider}} 按当前模型展开。',
       tooltip: replaced,
     }),
     h('textarea', {
@@ -537,30 +537,83 @@ export function ObservedMessagesCard({ observed, liveCount, profile, patch }: {
 }
 
 /**
- * 跨来源技能注入去重:用户消息里写 `/技能名` 会无条件注入整份技能正文(宿主 tool-skill
- * 的 pre-step 手势),模型此前若已用 `skill` 工具加载过同一技能,正文就会出现两次。
+ * 「DSH 默认行为」卡:本插件改写发送行为的开关集合。
  *
- * 开关按档位保存,只作用于该档位的根会话;Host 按「可见历史」判定,压缩掉的不算。
- * 勾选语义与其它开关一致:勾选=注入(默认,与宿主行为一致),取消=不再重复注入。
+ * 这里的开关语义统一为「开启 = 本插件介入,关闭 = 保持宿主原样」,与其它卡里
+ * 「勾选 = 注入」的段/上下文开关相反,所以用 role=switch 的轨道开关区分,而不是
+ * 复选行:一眼能看出这是行为改写,不是内容选择。
  */
-export function SkillDedupeCard({ profile, patch }: { profile: Profile; patch: Patch }): ReactElement {
-  const on = profile.injectDuplicateSkills !== false
+function SwitchRow({ checked, onChange, title, desc, meta, tooltip }: {
+  checked: boolean
+  onChange(checked: boolean): void
+  title: ReactNode
+  desc: ReactNode
+  meta?: ReactNode
+  tooltip?: string
+}): ReactElement {
   return h(
-    MessageCard,
-    {
-      role: 'user',
-      title: '注入控制',
-      note: '用户消息里出现 /技能名 时宿主会无条件注入整份正文；若模型此前已用 skill 工具加载过同一技能，这份正文就会在上下文里出现两次。默认保持宿主的注入行为；取消勾选后，正文已在本会话可见历史里时跳过这次注入，被压缩或替换掉的正文不算，会重新注入。只对当前档位生效。',
-    },
-    h(SegmentRow, {
-      checked: on,
+    'label',
+    { className: styles.behaviorRow, title: tooltip },
+    h('input', {
+      type: 'checkbox',
+      role: 'switch',
+      className: styles.switchInput,
+      checked,
+      'aria-checked': checked,
+      onChange: (event: { target: { checked: boolean } }) => onChange(event.target.checked),
+    }),
+    h(
+      'span',
+      { className: styles.segmentBody },
+      h(
+        'span',
+        { className: styles.segmentTitle },
+        h('span', { className: styles.segmentLabel }, title),
+        meta === undefined ? null : h('span', { className: styles.segmentMeta }, meta),
+      ),
+      h('span', { className: styles.segmentDesc }, desc),
+    ),
+  )
+}
+
+export function DefaultBehaviorCard({ profile, patch }: { profile: Profile; patch: Patch }): ReactElement {
+  const injectedFirst = profile.injectedFirst === true
+  const dedupeUserSkill = profile.injectDuplicateSkills === false
+  const dedupeSkillTool = profile.dedupeSkillToolResults === true
+  return h(
+    'section',
+    { className: styles.card },
+    h('h2', { className: styles.cardTitle }, 'DSH 默认行为'),
+    h('p', { className: styles.hint }, '这里的开关改写 DSH 默认的发送行为：开启 = 由本插件介入，关闭 = 保持宿主原样。只对当前档位的根会话生效，切换档位时重新计算。'),
+    h(SwitchRow, {
+      checked: injectedFirst,
       onChange: (checked) => patch((target) => {
-        target.injectDuplicateSkills = checked
+        target.injectedFirst = checked
       }),
-      title: h('span', { className: styles.segmentLabel }, '注入重复触发的 skill'),
-      desc: '勾选时按宿主默认行为注入（可能与已加载的正文重复）；取消后同一份技能正文只留一份。只拦用户 /技能名 手势注入的那一份；模型自己调 skill 工具的结果不受影响，只能由用户触发的技能也不会被误删。',
-      meta: on ? '默认行为' : '不重复注入',
+      title: '注入消息前置',
+      meta: injectedFirst ? '上下文在前' : '用户消息在前',
+      desc: '把工作区指令、技能目录、运行时快照这三类起始上下文按固定顺序排到用户消息之前发送，跨会话时它们能落进同一段可复用前缀。时间采样（每轮都变，前移没有收益）、技能正文与运行期通知保持宿主顺序。',
+      tooltip: '开启后模型看到的顺序变了：三类上下文在前、用户消息在后。关闭时保持宿主默认顺序（用户消息在前、注入消息追加在其后）。',
+    }),
+    h(SwitchRow, {
+      checked: dedupeUserSkill,
+      onChange: (checked) => patch((target) => {
+        target.injectDuplicateSkills = !checked
+      }),
+      title: '用户 /技能名 注入去重',
+      meta: dedupeUserSkill ? '只留一份' : '宿主默认',
+      desc: '宿主在用户消息里出现 /技能名 时无条件注入整份技能正文。开启后，同一份正文已在本会话可见历史里就跳过这次注入；被压缩或替换掉的正文不算，会重新注入。',
       tooltip: '判定依据是本会话将要发送的历史（deriveMessages）：压缩或替换掉的正文不在其中，所以被压缩后会重新注入；拿不到历史时不去重（宁可重复，不丢指令）。',
+    }),
+    h(SwitchRow, {
+      checked: dedupeSkillTool,
+      onChange: (checked) => patch((target) => {
+        target.dedupeSkillToolResults = checked
+      }),
+      title: 'skill 工具结果去重',
+      meta: dedupeSkillTool ? '只回提示' : '宿主默认',
+      desc: '模型调用 skill 工具时，若同一份正文已经在可见历史里，工具结果只回一行「已加载」提示，不再重复整份正文。与上一条分开控制；只改模型看到的正文，不动技能定义与工具 schema。',
+      tooltip: '只拦 skill 工具这一条路径：正文已在历史里才替换，压缩掉后重新加载仍拿完整正文。',
     }),
   )
 }

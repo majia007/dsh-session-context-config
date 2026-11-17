@@ -9,6 +9,14 @@ export interface SessionKit {
   isRootAgent(agent: AgentLike | undefined | null): boolean
   visibleSchemas(agent: AgentLike | undefined | null): Array<{ name: string; description?: unknown; parameters?: unknown }>
   definitionsOf(agent: AgentLike | undefined | null): ToolDefinitionLike[]
+  /** 一条消息里的文本块(skill 正文与其它注入正文都按逐字相等比对)。 */
+  messageTexts(message: unknown): string[]
+  /**
+   * 本会话「将要发送」的历史里出现过的文本块。
+   * 必须走 `session.deriveMessages()`:它只按 surface 派生,压缩/替换掉的节点不在结果里,
+   * 所以被压缩后查不到、注入会补上(宁可重复,不丢指令)。拿不到会话或派生失败返回 null。
+   */
+  visibleTexts(agent: AgentLike | undefined | null): Set<string> | null
   agentFor(sessionId: string | null): AgentLike | null
 }
 
@@ -77,6 +85,34 @@ export function createSessionKit(ctx: HostContext, note: (source: string, error:
     }
   }
 
+  function messageTexts(message: unknown): string[] {
+    const content = (message as { content?: unknown } | null)?.content
+    if (!Array.isArray(content)) return []
+    const texts: string[] = []
+    for (const block of content) {
+      const item = block as { type?: unknown; text?: unknown }
+      if (item?.type === 'text' && typeof item.text === 'string' && item.text.length > 0) texts.push(item.text)
+    }
+    return texts
+  }
+
+  function visibleTexts(agent: AgentLike | undefined | null): Set<string> | null {
+    const session = agent?.session
+    const derive = session?.deriveMessages
+    if (typeof derive !== 'function') return null
+    let messages: unknown
+    try {
+      messages = derive.call(session)
+    } catch (error) {
+      note('deriveMessages', error)
+      return null
+    }
+    if (!Array.isArray(messages)) return null
+    const texts = new Set<string>()
+    for (const message of messages) for (const text of messageTexts(message)) texts.add(text)
+    return texts
+  }
+
   function agentFor(sessionId: string | null): AgentLike | null {
     if (!sessionId) return null
     for (const agent of ctx.agents.list()) {
@@ -85,5 +121,5 @@ export function createSessionKit(ctx: HostContext, note: (source: string, error:
     return null
   }
 
-  return { sessionOf, sessionIdOf, isBlank, isRootAgent, visibleSchemas, definitionsOf, agentFor }
+  return { sessionOf, sessionIdOf, isBlank, isRootAgent, visibleSchemas, definitionsOf, messageTexts, visibleTexts, agentFor }
 }

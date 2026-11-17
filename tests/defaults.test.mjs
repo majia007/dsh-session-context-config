@@ -126,10 +126,16 @@ test('默认预设：Pi 只注入六个核心工具，其余全部关闭', () =>
   assert.equal(pi.baseline.contract, false)
   assert.equal(pi.baseline.cardReceipt, false)
   assert.equal(pi.baseline.untrustedFiles, false)
+  // 行为改写开关默认全部关闭：新装的档位保持宿主默认行为。
+  for (const profile of DEFAULT_PROFILES) {
+    assert.equal(profile.injectedFirst, false, `${profile.id} 默认不调整发送顺序`)
+    assert.equal(profile.dedupeSkillToolResults, false, `${profile.id} 默认不去重 skill 工具结果`)
+  }
 })
 
 test('默认预设：Pi 提示词是 Pi 风格，但明确运行在 DeepSeek Harness，不冒充 Pi', () => {
-  assert.match(PI_PROMPT, /^You are a coding assistant running inside DeepSeek Harness with a Pi-like configuration\./)
+  // 首行声明模型：人设覆盖文本支持 {{model}} 占位符,注入时按当前 step 的模型展开。
+  assert.match(PI_PROMPT, /^You are a coding assistant powered by the \{\{model\}\} model, running inside DeepSeek Harness with a Pi-like configuration\./)
   assert.match(PI_PROMPT, /This is a Pi-style preset adapted to DSH, not Pi itself\./)
   assert.match(PI_PROMPT, /<rules>/)
   assert.match(PI_PROMPT, /Use PowerShell for file operations/)

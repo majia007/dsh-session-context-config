@@ -79,25 +79,28 @@ function fakeAgent() {
   return { agent, registrations }
 }
 
-test('通道关闭：agent 作用域过滤器包住后挂的 time-context，两类消息都被滤掉', async () => {
+/** 写一份档位状态并跑一次 pre-step 过滤器;返回交给宿主的消息序列。 */
+async function runFilter(profileExtra, messages) {
   const home = mkdtempSync(join(tmpdir(), 'scc-channels-'))
   writeFileSync(join(home, 'session-context-config.json'), JSON.stringify({
-    version: 3,
-    lastUsedId: 'chat',
+    version: 4,
+    lastUsedId: 'demo',
     profiles: [{
-      id: 'chat',
-      name: 'Chat',
+      id: 'demo',
+      name: 'Demo',
       description: '',
-      prompt: { override: true, text: '' },
+      prompt: {},
       contexts: {},
       sections: {},
-      channels: { workspaceInstructions: 'off', timeContext: 'off' },
+      channels: {},
       groups: {},
       servers: {},
       tools: {},
       summaries: {},
+      baseline: { contract: false, cardReceipt: false, untrustedFiles: false },
+      ...profileExtra,
     }],
-    sessions: {},
+    sessions: { s1: 'demo' },
     baseline: { contract: false, cardReceipt: false, untrustedFiles: false },
   }))
   const previousHome = process.env.DSH_HOME
@@ -117,18 +120,60 @@ test('通道关闭：agent 作用域过滤器包住后挂的 time-context，两�
     assert.ok(channel, 'agent/created 里没有注册 agent/pre-step 过滤器')
     assert.equal(channel.options?.prepend, true)
 
-    const decision = {
-      kind: 'enter',
-      messages: [
-        { source: { kind: 'user' } },
-        { source: { kind: 'time-context' } },
-        { source: { kind: 'agent-instructions' } },
-      ],
-    }
-    const result = await channel.listener({ agent }, async () => decision)
-    assert.deepEqual(result.messages.map((message) => message.source.kind), ['user'])
+    const result = await channel.listener({ agent }, async () => ({ kind: 'enter', messages }))
+    return result.messages
   } finally {
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome
   }
+}
+
+const kindsOf = (messages) => messages.map((message) => message.source.kind)
+
+test('通道关闭：agent 作用域过滤器包住后挂的 time-context，两类消息都被滤掉', async () => {
+  const kinds = kindsOf(await runFilter(
+    { channels: { workspaceInstructions: 'off', timeContext: 'off' } },
+    [
+      { source: { kind: 'user' } },
+      { source: { kind: 'time-context' } },
+      { source: { kind: 'agent-instructions' } },
+    ],
+  ))
+  assert.deepEqual(kinds, ['user'])
+})
+
+test('发送顺序：injectedFirst=true 按固定优先级前移起始上下文，时间采样/技能正文/用户消息保持原位', async () => {
+  const messages = await runFilter({ injectedFirst: true }, [
+    { source: { kind: 'user' } },
+    { source: { kind: 'skill-invocation' } },
+    { source: { kind: 'runtime-context' } },
+    { source: { kind: 'skill-catalog' } },
+    { source: { kind: 'time-context' } },
+    { source: { kind: 'agent-instructions', tag: 'base' } },
+    { source: { kind: 'agent-instructions', tag: 'update' } },
+    { source: { kind: 'subagent-settled' } },
+  ])
+  // 前移顺序由 LEADING_CONTEXT_KINDS 固定(全局指令 → 技能目录 → 运行时快照),不看宿主
+  // 给的先后;同类之间保持宿主顺序(指令的 baseline 与更新不能被换序)。时间采样每轮都变、
+  // 前移没有收益还会把时间戳放到它所描述的消息之前;技能正文与运行期通知同宿主顺序。
+  assert.deepEqual(messages.map((message) => `${message.source.kind}:${message.source.tag ?? ''}`), [
+    'agent-instructions:base', 'agent-instructions:update', 'skill-catalog:', 'runtime-context:',
+    'user:', 'skill-invocation:', 'time-context:', 'subagent-settled:',
+  ])
+})
+
+test('发送顺序：没有用户消息的批次（工具续跑）不前移', async () => {
+  const kinds = kindsOf(await runFilter({ injectedFirst: true }, [
+    { source: { kind: 'subagent-settled' } },
+    { source: { kind: 'runtime-context' } },
+  ]))
+  assert.deepEqual(kinds, ['subagent-settled', 'runtime-context'])
+})
+
+test('发送顺序：默认（字段缺省）保持宿主顺序', async () => {
+  const kinds = kindsOf(await runFilter({}, [
+    { source: { kind: 'user' } },
+    { source: { kind: 'agent-instructions' } },
+  ]))
+  assert.deepEqual(kinds, ['user', 'agent-instructions'])
 })

@@ -16,9 +16,10 @@ import { apply } from '../src/index.ts'
 
 const BODY = '<skill_content name="demo-skill">\n技能正文\n</skill_content>'
 
-/** 假 ctx：只实现 apply 实际用到的面，记录事件监听与 effect。 */
-function fakeHost() {
+/** 假 ctx：只实现 apply 实际用到的面，记录事件监听、effect 与工具注册。 */
+function fakeHost({ definitions = [] } = {}) {
   const events = new Map()
+  const registered = []
   const ctx = {
     get(name) {
       if (name === 'sessions') return { get: () => null }
@@ -43,9 +44,12 @@ function fakeHost() {
       return typeof dispose === 'function' ? dispose : () => {}
     },
     tools: {
-      register: () => () => {},
+      register: (definition) => {
+        registered.push(definition)
+        return () => {}
+      },
       schemas: () => [],
-      definitions: () => [],
+      definitions: () => definitions,
       view: () => ({ restrictableNames: [] }),
     },
     agents: { list: () => [], roots: () => [], turnBoundaryOf: () => ({ lastTurn: 0 }) },
@@ -55,11 +59,12 @@ function fakeHost() {
       refreshContext: (assembly) => assembly,
     },
   }
-  return { ctx, events }
+  return { ctx, events, registered }
 }
 
 function fakeAgent({ history = [], deriveThrows = false } = {}) {
   const registrations = []
+  const agentTools = []
   const ctx = {
     on(name, listener, options) {
       const registration = { name, listener, options }
@@ -69,7 +74,13 @@ function fakeAgent({ history = [], deriveThrows = false } = {}) {
         if (index >= 0) registrations.splice(index, 1)
       }
     },
-    tools: { restrict: () => () => {}, register: () => () => {} },
+    tools: {
+      restrict: () => () => {},
+      register: (definition) => {
+        agentTools.push(definition)
+        return () => {}
+      },
+    },
     systemPrompt: {
       section: () => () => {},
       context: () => () => {},
@@ -86,7 +97,7 @@ function fakeAgent({ history = [], deriveThrows = false } = {}) {
     },
   }
   const agent = { id: 's1', sessionId: 's1', session, ctx }
-  return { agent, registrations }
+  return { agent, registrations, agentTools }
 }
 
 /** 写一份档位状态；`profile` 覆盖在默认档位上，`sessions` 把会话钉在该档位。 */
@@ -184,4 +195,68 @@ test('旧字段迁移：dedupeSkillInjection=true 等同关闭注入重复正文
     history: [{ role: 'tool', content: [{ type: 'text', text: BODY }] }],
   })
   assert.deepEqual(kinds, ['user'])
+})
+
+/** 宿主的 skill 工具最小形状:execute 返回 {name, provider, content},render 出 <skill_content>。 */
+function fakeSkillTool(value) {
+  return {
+    name: 'skill',
+    description: 'Load a skill by name.',
+    parameters: {},
+    execute: async () => value,
+    output: {
+      schema: {},
+      render: (_args, loaded) => [{ type: 'text', text: `<skill_content name="${loaded.name}">\n${loaded.content}\n</skill_content>` }],
+    },
+  }
+}
+
+test('skill 工具结果去重：命中可见历史时只回一行提示，且不重注册 skill 工具', async () => {
+  const value = { name: 'demo-skill', provider: 'test', content: '技能正文' }
+  const rendered = '<skill_content name="demo-skill">\n技能正文\n</skill_content>'
+  for (const [label, extra, expected] of [
+    ['开启', { dedupeSkillToolResults: true }, true],
+    ['默认', {}, false],
+  ]) {
+    const home = mkdtempSync(join(tmpdir(), 'scc-skill-tool-'))
+    const history = [{ role: 'tool', content: [{ type: 'text', text: rendered }] }]
+    writeState(home, extra)
+    const previousHome = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    try {
+      const { ctx, events } = fakeHost({ definitions: [fakeSkillTool(value)] })
+      apply(ctx)
+      const { agent, agentTools } = fakeAgent({ history })
+      const created = events.get('agent/created')?.[0]?.listener
+      assert.equal(typeof created, 'function')
+      await created({ agent })
+      // 宿主 tool-skill 用「tools.get('skill', agent) === 它注册的定义」判断技能工具是否可见：
+      // agent 作用域同名遮蔽会让技能目录整条消失，所以这里一个工具都不许重注册。
+      assert.deepEqual(agentTools, [], `${label}：不应重注册任何工具`)
+      const hook = events.get('tools/post-execute')?.[0]
+      assert.equal(typeof hook?.listener, 'function', `${label}：应注册 tools/post-execute`)
+      // post-execute 按 exec.agent 作用域派发，root ctx 的监听器必须带 global。
+      assert.equal(hook.options?.global, true, label)
+      const exec = { name: 'skill', agent }
+      const result = { isError: false, content: [{ type: 'text', text: rendered }] }
+      const accept = async () => ({ kind: 'accept' })
+      // 历史里有同正文：工具结果只回提示，不再重复整份正文。
+      const duplicate = await hook.listener(exec, result, accept)
+      if (expected) assert.match(duplicate.content[0].text, /already in the visible conversation/, label)
+      else assert.equal(duplicate.content, undefined, `${label}：默认不动正文`)
+      // 历史里查不到（已被压缩）：不介入，宿主正文原样。
+      history.length = 0
+      assert.equal((await hook.listener(exec, result, accept)).content, undefined, label)
+      // 别的插件已阻断、或结果本身是错误：让内层决策赢。
+      assert.equal((await hook.listener(exec, result, async () => ({ kind: 'block', feedback: [] }))).kind, 'block', label)
+      assert.equal(
+        (await hook.listener(exec, { ...result, isError: true }, accept)).content,
+        undefined,
+        `${label}：错误结果不介入`,
+      )
+    } finally {
+      if (previousHome === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previousHome
+    }
+  }
 })

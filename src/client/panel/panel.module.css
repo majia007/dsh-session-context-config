@@ -897,6 +897,75 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 「DSH 默认行为」卡的行:与 .segment 同一版式,开关换成 36×20 的轨道。
+   语义是「开启=本插件介入」,与其它卡的复选行区分开,所以不复用 .segment。
+   几何按 docs/dsh-web-ui.md 的布尔开关口径:36×20 轨道、2px 内边距、16 圆点。 */
+.behaviorRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--dsw-radius-sm, 8px);
+  cursor: pointer;
+}
+
+.behaviorRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, CanvasText 6%, transparent));
+}
+
+.switchInput {
+  flex: none;
+  display: block;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l3);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: inherit;
+  corner-shape: round;
+  transition: background-color 0.15s ease;
+}
+
+.switchInput::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+  transition: transform 0.15s ease;
+}
+
+.switchInput:checked {
+  background: var(--dsw-alias-brand-primary);
+  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-brand-primary);
+}
+
+.switchInput:checked::after {
+  transform: translateX(16px);
+}
+
+.switchInput:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switchInput,
+  .switchInput::after {
+    transition: none;
+  }
+}
+
 .tags {
   display: inline-flex;
   align-items: center;

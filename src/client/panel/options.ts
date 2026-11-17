@@ -166,7 +166,7 @@ export const SECTION_OPTIONS: SectionOption[] = [
   {
     name: 'deployment:persona-prefix',
     label: '部署人设（前置）',
-    desc: '你是谁：角色、语气、能力边界与工作方式的总设定。位于固定身份声明之后、所有第一方指导之前；改它会从第一个变化 token 起失去前缀缓存。',
+    desc: '你是谁：角色、语气、能力边界与工作方式的总设定。位于固定身份声明之后、所有第一方指导之前；改它会从第一个变化 token 起失去前缀缓存。覆盖文本支持 {{model}} / {{provider}} 占位符，注入时按当前模型展开。',
     group: 'host',
     order: 0,
     persona: 'prefix',
@@ -179,7 +179,7 @@ export const SECTION_OPTIONS: SectionOption[] = [
   {
     name: 'deployment:persona-suffix',
     label: '部署人设（后缘）',
-    desc: '收尾叮嘱：环境提醒、输出格式、最后一条硬约束。位于所有第一方指导之后、提示词最尾部；改它不影响前面可复用的前缀缓存。',
+    desc: '收尾叮嘱：环境提醒、输出格式、最后一条硬约束。位于所有第一方指导之后、提示词最尾部；改它不影响前面可复用的前缀缓存。覆盖文本支持 {{model}} / {{provider}} 占位符。',
     group: 'host',
     order: 10200,
     persona: 'suffix',

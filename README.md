@@ -32,6 +32,8 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
   baseline: { contract: true, cardReceipt: true, untrustedFiles: true, custom: false, customText: '' }, // 本档位的附加规则
   channels: { timeContext: 'off' },                         // 可选：请求层拦截注入通道
   injectDuplicateSkills: true,                              // 可选：注入重复触发的 skill；false = 同一份正文不再重复注入
+  injectedFirst: false,                                     // 可选：注入消息排到用户消息之前（默认保持宿主顺序）
+  dedupeSkillToolResults: false,                            // 可选：skill 工具结果去重（默认宿主原样）
   summaries: { mcp: '…' }                                   // 兼容保留：面板不再编辑，Host 仍按它生成延迟占位摘要
 }
 ```
@@ -88,23 +90,23 @@ server = 关闭       → 关闭
 | 精简 | 在完整基础上隐藏编排与计划、调度、目标、插件开发；MCP 与第三方工具保持延迟 | 同上，不额外关闭上下文或段 |
 | 极简 | 文件、搜索、终端、平台开启；交互、技能、协作、编排、目标、调度、MCP、插件开发、第三方全部隐藏 | 人设使用插件内置的 `MINIMAL_PROMPT`；可选上下文全关 |
 | Chat | 全部组、工具、上下文、段隐藏 | 双人设槽关闭；工作区指令与时间采样两个通道关闭 |
-| Pi | 参考 Pi 设计理念的精简档位：`read` / `write` / `edit` / `pwsh` / `read_image` / `skill` 强制开启（技能目录随会话注入、正文按需加载），其余 12 个组关闭，只有 MCP 组（含三个共享资源工具）保持延迟、经 `tool_search` 按需加载 | 前置人设使用 Pi 风格提示词（首行声明运行在 DeepSeek Harness），后缘人设关闭；关闭 DSH 身份、源码、Web、文件引用段；保留 MCP 资源段 |
+| Pi | 参考 Pi 设计理念的精简档位：`read` / `write` / `edit` / `pwsh` / `read_image` / `skill` 强制开启（技能目录随会话注入、正文按需加载），其余 12 个组关闭，只有 MCP 组（含三个共享资源工具）保持延迟、经 `tool_search` 按需加载 | 前置人设使用 Pi 风格提示词（首行声明由哪个模型驱动、运行在 DeepSeek Harness），后缘人设关闭；关闭 DSH 身份、源码、Web、文件引用段；保留 MCP 资源段 |
 
-- **完整 / 精简** 沿用部署人设；**极简** 使用 `MINIMAL_PROMPT`；**Chat** 两个槽位都关闭；**Pi** 前置用 Pi 风格提示词（首行声明运行在 DeepSeek Harness），后缘关闭。
+- **完整 / 精简** 沿用部署人设；**极简** 使用 `MINIMAL_PROMPT`；**Chat** 两个槽位都关闭；**Pi** 前置用 Pi 风格提示词（首行声明 `powered by the {{model}} model` 与运行在 DeepSeek Harness），后缘关闭。
 - **baseline**：完整/精简/极简默认三段固定提示词开、自定义文本关；Chat/PI 默认全关。这是模板值，已安装档位以状态文件里的 `baseline` 为准。
 - **Chat** 是「只聊天」模板：所有工具与运行时上下文关闭，适合纯对话。
-- **Pi** 档位参考 Pi 的设计理念做精简运行时，不逐项复刻：直接可见的工具只有 `read/write/edit/pwsh/read_image/skill`（用工具级「开启」压过组的「关闭」），其余 12 个组**全部关闭**——不进 tools 数组、不占位、`tool_search` 也加载不到。唯一的延迟组是 MCP：对应 Pi 内置 MCP 的 deferred 暴露，工具默认不声明、需要时经 `tool_search` 取完整定义，`tool_search` 因此照常自动注入；MCP 组同时收三个共享资源工具（`list_mcp_resources` / `list_mcp_resource_templates` / `read_mcp_resource`），随组延迟——宿主 `mcp-resource-servers` 段会点名这三个工具，关掉它们就成了「提示词要求调用不存在的工具」。技能走「目录注入 + 正文按需加载」（`skill-catalog` 目录消息 + `skill` 工具；DSH 的技能目录不带路径，正文经 `skill` 工具加载），且同一份正文不重复注入（`injectDuplicateSkills: false`）。提示词只保留身份行与行为规则、不列工具清单——工具说明由 tools 数组与 `tool:*` 引导段自动注入，首行声明运行在 DeepSeek Harness；Pi `read` 的图片能力在 DSH 拆成独立的 `read_image`。保留的工具仍有 `tool:*` 引导段（强绑定工具状态，不能按档位单独关），沙箱/审批照常生效。
+- **Pi** 档位参考 Pi 的设计理念做精简运行时，不逐项复刻：直接可见的工具只有 `read/write/edit/pwsh/read_image/skill`（用工具级「开启」压过组的「关闭」），其余 12 个组**全部关闭**——不进 tools 数组、不占位、`tool_search` 也加载不到。唯一的延迟组是 MCP：对应 Pi 内置 MCP 的 deferred 暴露，工具默认不声明、需要时经 `tool_search` 取完整定义，`tool_search` 因此照常自动注入；MCP 组同时收三个共享资源工具（`list_mcp_resources` / `list_mcp_resource_templates` / `read_mcp_resource`），随组延迟——宿主 `mcp-resource-servers` 段会点名这三个工具，关掉它们就成了「提示词要求调用不存在的工具」。技能走「目录注入 + 正文按需加载」（`skill-catalog` 目录消息 + `skill` 工具；DSH 的技能目录不带路径，正文经 `skill` 工具加载），且同一份正文不重复注入（`injectDuplicateSkills: false`）。提示词只保留身份行与行为规则、不列工具清单——工具说明由 tools 数组与 `tool:*` 引导段自动注入，首行声明由当前模型驱动、运行在 DeepSeek Harness（`{{model}}` 由人设占位符按当前模型展开）；Pi `read` 的图片能力在 DSH 拆成独立的 `read_image`。保留的工具仍有 `tool:*` 引导段（强绑定工具状态，不能按档位单独关），沙箱/审批照常生效。
 - **新建档位**：直接点按钮使用「全启用」模板（所有组/工具/上下文/段默认注入）；悬停按钮出现下拉，列出当前插件版本的 5 个内置预设，选中后复制成 `custom-*` 新档位。两种方式都只改面板草稿，保存前不写状态文件，也不会切换当前会话的档位。
 
 状态版本为 v4：旧 v2/v3 读入只做**结构迁移**（prompt 双槽位、contexts/sections 旧字段、缺失的新字段与 version），所有档位的名称、组、提示词与开关原样保留（旧状态里的 `tools.tool_search` 读入时剪掉，由插件自动管理）；`DEFAULT_PROFILES` 不参与旧状态加载，也不会替换任何已有值。
 
 ## system 段开关（sections）
 
-配置页按**最终请求里的消息**分卡：`系统提示词`、`运行时上下文快照`、`工作区指令`、`时间采样`、`注入控制`、`其他注入消息（自动发现）`（角色由卡片右上角的 `role: developer` / `role: user` 标签表达）。每张卡里可单独配置的项都保留「checkbox + 内容说明」的统一格式；自动发现的每个 kind 也可按行关闭。
+配置页按**最终请求里的消息**分卡：`DSH 默认行为`、`系统提示词`、`运行时上下文快照`、`工作区指令`、`时间采样`、`其他注入消息（自动发现）`（角色由卡片右上角的 `role: developer` / `role: user` 标签表达）。`DSH 默认行为` 卡用轨道开关（`role="switch"`）承载改写宿主行为的开关，语义是「开启 = 本插件介入、关闭 = 宿主原样」；其余各卡里可单独配置的项保留「checkbox + 内容说明」的统一格式，自动发现的每个 kind 也可按行关闭。
 
 `system 消息` 卡内：
 
-- **两个独立的人设槽位**：`deployment:persona-prefix`（order 0，固定身份声明之后、所有第一方指导之前，"你是谁"——角色、语气、能力边界与工作方式；改它会破坏前缀缓存）与 `deployment:persona-suffix`（order 10200，所有第一方指导之后、提示词最末，"收尾叮嘱"——环境提醒、输出格式、最后一条硬约束；改它不影响前面可复用的前缀）。两者各自一条开关 + 一条「覆盖部署文本」+ 文本域：关掉 = 不发送该槽位；不覆盖 = 沿用部署 `personaPrefix` / `personaSuffix`；覆盖且文本非空 = 替换该槽位；覆盖且为空 = 不发送该槽位。
+- **两个独立的人设槽位**：`deployment:persona-prefix`（order 0，固定身份声明之后、所有第一方指导之前，"你是谁"——角色、语气、能力边界与工作方式；改它会破坏前缀缓存）与 `deployment:persona-suffix`（order 10200，所有第一方指导之后、提示词最末，"收尾叮嘱"——环境提醒、输出格式、最后一条硬约束；改它不影响前面可复用的前缀）。两者各自一条开关 + 一条「覆盖部署文本」+ 文本域：关掉 = 不发送该槽位；不覆盖 = 沿用部署 `personaPrefix` / `personaSuffix`；覆盖且文本非空 = 替换该槽位；覆盖且为空 = 不发送该槽位。覆盖文本支持 `{{model}}` 与 `{{provider}}` 占位符（与部署模板同名），注入时按当前 step 的模型选择展开，所以人设不必写死模型名；不认识的占位符原样保留。
 - 其余各段在同一个列表里按**实际装配顺序**排列（不再分「宿主固定段 / 工具使用引导」小区域）：`harness:identity`（-1000，最前）、人设前缀（0）、`context:file-reference`、`harness:source`、`app:web-surface`、人设后缘（10200）等，逐段开关。
 - **工具引导段（`tool:*`）不在这里配置**：它们强绑定工具状态——工具或组隐藏时 Host 自动从装配里移除，工具恢复（开启/延迟）时自动回来。复合段（`tool:jobs` / `tool:goal` / `tool:schedule` / `tool:session-query`）看成员工具，至少一个成员不是隐藏才保留。面板不列这些行，避免出现「段开关和工具开关打架」。
 - **条件段**：MCP 服务器指令（`mcp:<server>`）、MCP 资源服务器、PTC 模式（`tools:ptc-only` / `tools:sdk`）、计划模式（`plan:policy`）、团队协作（`team:policy`）、浏览器 / Computer Use 等，出现时才在列表里生效；未识别的新段按原始 name 自动列入。新版本/第三方插件注册段不需要改本插件即可出现。
@@ -166,7 +168,7 @@ server = 关闭       → 关闭
 
 `prompt` / `sections` / `contexts` 分别覆盖 system 消息内的人设段、其它 system 段与 runtime-context 快照：
 
-- `prompt.prefix` / `prompt.suffix` 分别控制两个部署人设槽位，各自 `enabled/override/text`：`enabled = false` → 该槽位不发送；开启且 `override = false` → 沿用部署 `personaPrefix` / `personaSuffix`；`override = true` → 用 `text` 替换该槽位（空文本 = 不发送该槽位）。两个槽位互不影响。
+- `prompt.prefix` / `prompt.suffix` 分别控制两个部署人设槽位，各自 `enabled/override/text`：`enabled = false` → 该槽位不发送；开启且 `override = false` → 沿用部署 `personaPrefix` / `personaSuffix`；`override = true` → 用 `text` 替换该槽位（空文本 = 不发送该槽位）。两个槽位互不影响。`text` 里的 `{{model}}` / `{{provider}}` 在注入时按当前模型展开，等效于部署模板的同名变量；其它 `{{…}}` 原样保留，不做严格插值（写错的花括号不会让装配失败）。
 - `sections` 按段名过滤 system 消息：identity、宿主/插件段、checkout/Web 说明、MCP/PTC/计划模式等都可逐段关闭。人设两个槽位与附加规则段受保护，分别走专用开关；**工具引导段（`tool:*`）不落 `sections`**，强绑定工具的启用状态（工具隐藏则引导隐藏），面板不提供单独开关。段顺序由宿主 `order` 固定。
 - `contexts` 把运行时上下文逐个开关：当前工作目录、沙箱/文件策略、审批策略、根代理身份、子代理委派深度、环境事实、DSH 源码 checkout、DSH Web GUI 地址；装配里出现的新 name 会自动补行。缺省=注入，只记录关掉的项。
 - 关掉的上下文在 agent 作用域注册同名非 required 空上下文遮住 required 标志，再由最外层 `system-prompt/assemble` 按名字删除；这样 `refreshContext` 不会把 required 段（如当前工作目录）补回来。关闭当前工作目录后，模型需要自己跑 `pwd` 确认目录。
@@ -202,18 +204,42 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 - **`kind` 与 `channels` 的区别**：`source.kind` 是消息上的来源标签（如 `agent-message`、`compact-checkpoint`、`runtime-context`、`skill-catalog`）；`profile.channels` 是开关表，键是 kind、值是 `'off'`。已知两条通道的键是界面 id（`workspaceInstructions` / `timeContext`），Host 会映射到 `agent-instructions` / `time-context`；其余键直接当作 `source.kind`。所以「关掉某个 kind」= 往 `channels` 里写这个 kind。
 - 已知通道行的 `title` 显示最近一次注入正文；通道关闭时提示「后续请求会滤掉该来源」。
 
-## 技能注入去重（injectDuplicateSkills）
+## DSH 默认行为改写
 
-模型已经用 `skill` 工具加载过某个技能后，如果你又在消息里写了 `/技能名`，宿主的用户手势会再注入一整份同样的正文——上下文里就出现两份。默认保持宿主行为（照常注入）；取消勾选后，重复的那一份不再追加：
+配置页顶部的「DSH 默认行为」卡里是三个**改写宿主默认行为**的开关：开启 = 由本插件介入，关闭 = 保持宿主原样。都属于档位配置，只作用于当前档位的根会话，子代理不套用。
 
-```js
-injectDuplicateSkills: false   // 默认 true
-```
+| 开关 | 档位字段 | 默认 | 开启后 |
+|---|---|---|---|
+| 注入消息前置 | `injectedFirst` | 关闭 | 工作区指令、运行时快照、技能目录这三类起始上下文排到用户消息之前，跨会话时能共享前缀缓存 |
+| 用户 /技能名 注入去重 | `injectDuplicateSkills: false` | 关闭（注入） | 同一份技能正文已在可见历史里时，跳过这次手势注入 |
+| skill 工具结果去重 | `dedupeSkillToolResults` | 关闭（原样） | 模型调 skill 工具时同正文已在可见历史里，工具结果只回一行「已加载」提示 |
 
-- 只去掉重复的那一份：模型已经能看到同一份正文时，用户手势注入的那份跳过；历史里没有（例如已被上下文压缩掉）就照常注入，不会少指令。
-- 只影响用户 `/技能名` 手势注入；模型自己调 `skill` 工具的结果、以及只能由用户触发的技能不受影响。
+### 注入消息前置（injectedFirst）
+
+宿主默认把用户消息放在第一位，随后追加工作区指令、运行时快照、技能目录、时间采样等注入消息。前缀缓存按「从 token 0 开始的最长公共前缀」命中，所以跨会话时这些注入块（实测一次约 2.5 万字符）永远接不上缓存。开启后这三类起始上下文排到用户消息之前，就能落进同一段可复用前缀。
+
+- 代价是模型看到的顺序变了（用户消息不再紧跟 system），会话记录里这些注入消息也会排在用户消息之前。
+- 只有 `agent-instructions`、`runtime-context`、`skill-catalog` 三类前移（名单在 `LEADING_CONTEXT_KINDS`，要纳入别的 kind 只能在那里加名字）。`time-context` 刻意不动：每轮重新采样，前移只会把截断点提前、把时间戳放到它所描述的那条消息之前，没有缓存收益；用户消息、`/技能名` 注入的技能正文（`skill-invocation`）与运行期通知（子代理完成、压缩检查点、agent-message 等）同样保持宿主顺序——宿主刻意把技能正文放在所有注入之后、贴着模型回答。
+- 没有用户消息的批次（工具续跑的那一步）不前移，顺序保持原样。
+- 注入块之间按**固定顺序**排列：工作区指令 → 技能目录 → 运行时快照（同类内保持宿主顺序），用户消息内部也保持原顺序。
+- 只影响**新提交到会话记录**的消息批次；已经写进历史的顺序不会重排，所以切换开关后旧会话的前缀不变。
+
+### 用户 /技能名 注入去重（injectDuplicateSkills）
+
+模型已经用 `skill` 工具加载过某个技能后，如果消息里又写了 `/技能名`，宿主的用户手势会再注入一整份同样的正文。开启后重复的那一份不再追加：
+
+- 只去掉重复的那一份：模型已经能看到同一份正文时跳过；历史里没有（例如已被上下文压缩掉）就照常注入，不会少指令。
+- 只管用户 `/技能名` 手势注入；`skill` 工具那一路由下一个开关控制。
 - 与 `channels` 按来源关闭互不冲突，可以同时使用。
-- 配置页在「注入控制」卡里，开关名「注入重复触发的 skill」且默认勾选：勾选=按宿主默认注入，取消=不重复注入；属于档位配置，子代理不套用。旧状态里的 `dedupeSkillInjection: true` 读入时按相反语义迁移成 `injectDuplicateSkills: false`。
+- 旧状态里的 `dedupeSkillInjection: true` 读入时按相反语义迁移成 `injectDuplicateSkills: false`。
+
+### skill 工具结果去重（dedupeSkillToolResults）
+
+模型调用 `skill` 工具时，如果同一份正文已经在可见历史里（例如用户刚才用 `/技能名` 注入过），工具结果只回一行「已加载，参考上文」的提示，不再重复整份正文：
+
+- 判定同样看「将要发送的历史」（`deriveMessages`），被压缩掉之后重新加载仍拿完整正文。
+- 只替换正文，不动技能定义、工具 schema 与工具名；技能未知或加载失败时原样报错。
+- 实现上监听宿主的 `tools/post-execute`，只在「结果被接受、正文未被别的插件改写」时替换正文；**不碰工具注册**（在 agent 作用域重注册同名 `skill` 会让宿主判定技能工具不可见，连技能目录一起消失）。拿不到可见历史、结果是错误或判定抛错时保持宿主原样。
 
 ## 数据
 
@@ -263,7 +289,7 @@ injectDuplicateSkills: false   // 默认 true
 | 缓存 | 加载只追加历史，不重建前缀 |
 | 上下文逐项开关 | 只关 `harness:source` 时，`contexts`/`refreshedContexts` 无该段、其余仍在；关 `working-directory:current` 时两者都无 cwd；环境事实开启时 180 字符（真机） |
 | system 段逐项开关 | 单测 + 冒烟：关 `harness:identity` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单；`tool:*` 随工具/组隐藏自动移除，不出现在可配置列表 |
-| 配置页结构 | 冒烟：按消息五张卡（system/快照/工作区指令/时间采样/其他注入消息）；人设 checkbox + 输入框；快照已知 8 项 + 动态发现项；两条通道各一行 checkbox + 说明；自动清单每行 checkbox 可按 kind 关闭；各行 `title` 给出注入正文 |
+| 配置页结构 | 冒烟：按消息六张卡（默认行为/系统提示词/快照/工作区指令/时间采样/其他注入消息）；默认行为卡三条 `role="switch"`；人设 checkbox + 输入框；快照已知 8 项 + 动态发现项；两条通道各一行 checkbox + 说明；自动清单每行 checkbox 可按 kind 关闭；各行 `title` 给出注入正文 |
 | 新建档位下拉 | 真机 + 冒烟：悬停列出 full/lean/minimal/chat/pi；选中 Pi 复制为 `custom-*`，面板显示默认工具（不含 `tool_search`，它由插件自动管理）、MCP 工具延迟；保存前状态文件与 `lastUsedId` 不变 |
 | 通道过滤顺序 | 会话 `session-f6a33b8a…` 真机实证：Chat 档 channels 全 off、tools=0、system 为空，但仍漏一条 `time-context` user 消息。根因是 preset 的 `prepend` 监听器晚于全局过滤器注册、反包住过滤器；修复为 `agent/created` 时按 agent 再注册（回归 `tests/channels.test.mjs`） |
 | 客户端 | bundle 已进 boot graph |

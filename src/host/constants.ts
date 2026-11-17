@@ -45,6 +45,14 @@ export interface ContextProfile {
   channels: Record<string, string>
   /** 是否注入用户 `/技能名` 手势触发的重复技能正文:默认 true(与宿主行为一致);false 时同一份正文已在可见历史里就不再追加。 */
   injectDuplicateSkills: boolean
+  /**
+   * 是否把三类起始上下文(工作区指令/运行时快照/技能目录)排到用户消息之前发送。
+   * 默认 false = 保持宿主顺序;时间采样等每轮变化的块、技能正文与运行期通知都不参与(见
+   * `LEADING_CONTEXT_KINDS` 里的排除理由)。
+   */
+  injectedFirst: boolean
+  /** 是否对 `skill` 工具结果去重:默认 false = 宿主原样;true 时同一份正文已在可见历史里就只回一行提示。 */
+  dedupeSkillToolResults: boolean
   groups: Record<string, string>
   servers: Record<string, string>
   tools: Record<string, string>
@@ -99,6 +107,24 @@ export const SESSIONS_LIMIT = 500
 export const CHANNELS = [
   { id: 'workspaceInstructions', source: 'agent-instructions' },
   { id: 'timeContext', source: 'time-context' },
+]
+
+/**
+ * 「注入消息前置」只前移这三类起始上下文:工作区指令、技能目录、运行时快照。它们跨会话
+ * 内容稳定、重复度高,前移后能落进共享前缀。**数组顺序就是前移后的发送顺序**——宿主自己
+ * 的顺序取决于各插件注册先后,不可靠;同类消息之间保持宿主给的相对顺序。
+ *
+ * 刻意排除,别按「非 user 消息」自行扩大:
+ * - `time-context`:每轮都重新采样,前移没有缓存收益,还会把时间戳放到它所描述的那条
+ *   用户消息之前;
+ * - `skill-invocation`:宿主刻意把 `/技能名` 的正文放在所有注入之后、贴着模型回答;
+ * - 运行期通知(子代理完成、压缩检查点、agent-message 等)与未知/新插件的 kind:
+ *   白名单不猜,一律保持宿主顺序。要纳入某个 kind 只能在这里加名字。
+ */
+export const LEADING_CONTEXT_KINDS: readonly string[] = [
+  'agent-instructions',
+  'skill-catalog',
+  'runtime-context',
 ]
 
 /** 当前工作目录的运行时上下文名;宿主标了 required,关掉它必须做同名 shadow + assemble 过滤。 */
@@ -192,7 +218,7 @@ function offBaseline(): BaselineFlags {
  * 不写死在这段 base prompt 里(Pi 的 mcp_servers 是动态段)。
  */
 export const PI_PROMPT = [
-  'You are a coding assistant running inside DeepSeek Harness with a Pi-like configuration. This is a Pi-style preset adapted to DSH, not Pi itself. Help users inspect files, run commands, and modify code.',
+  'You are a coding assistant powered by the {{model}} model, running inside DeepSeek Harness with a Pi-like configuration. This is a Pi-style preset adapted to DSH, not Pi itself. Help users inspect files, run commands, and modify code.',
   '',
   '<rules>',
   '- Use PowerShell for file operations like listing, searching, and finding files',
@@ -221,6 +247,8 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     baseline: defaultBaseline(),
     channels: {},
     injectDuplicateSkills: true,
+    injectedFirst: false,
+    dedupeSkillToolResults: false,
     groups: { workflow: DEFER, goal: DEFER, schedule: DEFER, mcp: DEFER, devtools: DEFER, other: DEFER },
     servers: {},
     tools: {},
@@ -236,6 +264,8 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     baseline: defaultBaseline(),
     channels: {},
     injectDuplicateSkills: true,
+    injectedFirst: false,
+    dedupeSkillToolResults: false,
     groups: { workflow: OFF, goal: OFF, schedule: OFF, mcp: DEFER, devtools: OFF, other: DEFER },
     servers: {},
     tools: {},
@@ -253,6 +283,8 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     baseline: defaultBaseline(),
     channels: {},
     injectDuplicateSkills: true,
+    injectedFirst: false,
+    dedupeSkillToolResults: false,
     groups: {
       interaction: OFF,
       skill: OFF,
@@ -286,6 +318,8 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     },
     channels: { workspaceInstructions: OFF, timeContext: OFF },
     injectDuplicateSkills: true,
+    injectedFirst: false,
+    dedupeSkillToolResults: false,
     sections: {
       'harness:source': false,
       'app:web-surface': false,
@@ -342,6 +376,8 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     channels: {},
     // 技能正文只按需加载一次:同一个 /技能名 手势再注入整份正文,与精简目标相反。
     injectDuplicateSkills: false,
+    injectedFirst: false,
+    dedupeSkillToolResults: false,
     groups: {
       // 参考 Pi 的精简默认：六个核心工具（工具级 force）之外一律「关闭」——不进
       // tools 数组、不占位、tool_search 也加载不到；唯独 MCP 组保持「延迟」，

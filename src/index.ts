@@ -17,7 +17,7 @@
  */
 import { BASELINE_SECTION_NAME, baselineSections, type BaselineFlags } from './baseline.ts'
 import { createBaselineRuntime } from './host/baseline-runtime.ts'
-import { CHANNELS, OFF, PERSONA_SECTION, PERSONA_SUFFIX_SECTION } from './host/constants.ts'
+import { CHANNELS, LEADING_CONTEXT_KINDS, OFF, PERSONA_SECTION, PERSONA_SUFFIX_SECTION } from './host/constants.ts'
 import { createEnvironmentRuntime } from './host/environment.ts'
 import { createInjectedMessages } from './host/injected.ts'
 import { createProfileRuntime } from './host/profiles.ts'
@@ -35,6 +35,15 @@ export const inject = ['agents', 'tools', 'systemPrompt']
 
 /** 人设段(前缀+后缀)与附加规则段由专用开关控制,不参与 profile.sections 的通配过滤。 */
 const PROTECTED_SECTION_NAMES = new Set<string>([PERSONA_SECTION, PERSONA_SUFFIX_SECTION, ...Object.values(BASELINE_SECTION_NAME)])
+
+/** 前移白名单的集合形态:每个 pre-step 都要查,不在过滤器里重建。 */
+const LEADING_CONTEXT_SET = new Set(LEADING_CONTEXT_KINDS)
+
+/** 宿主的 `skill` 工具名:工具结果去重只认这一个名字。 */
+const SKILL_TOOL_NAME = 'skill'
+
+/** 命中重复时替换进工具结果的正文:提示模型参考上文,不再重复整份技能正文。 */
+const SKILL_ALREADY_LOADED = 'The full body of this skill is already in the visible conversation (injected earlier). Refer to that block instead of sending it again; request it only if it is no longer visible.'
 
 export function apply(ctx: HostContext): void {
   /** 诊断:进程内环形缓冲 + console.warn。 */
@@ -190,41 +199,7 @@ export function apply(ctx: HostContext): void {
   const observedMessages = new WeakSet<object>()
 
   /** 消息里的文本块;技能注入只有一块,工具结果也可能带正文。 */
-  function textBlocks(message: unknown): string[] {
-    const content = (message as { content?: unknown } | null)?.content
-    if (!Array.isArray(content)) return []
-    const texts: string[] = []
-    for (const block of content) {
-      const item = block as { type?: unknown; text?: unknown }
-      if (item?.type === 'text' && typeof item.text === 'string' && item.text.length > 0) texts.push(item.text)
-    }
-    return texts
-  }
-
-  /**
-   * 本会话「将要发送」的历史里出现过的文本块,供技能注入去重比对。
-   *
-   * 必须用 `session.deriveMessages()` 而不是会话日志:它只走 surface 派生,压缩/替换掉的
-   * 节点不在结果里——正文已被压缩掉时这里就查不到,注入照旧补上(绝不丢指令)。
-   * 拿不到会话或派生失败时返回 null(= 不做去重):宁可重复,不误删。
-   * 原样经 `call` 调用,避免方法解构后丢 this。
-   */
-  function visibleTexts(agent: AgentLike): Set<string> | null {
-    const session = agent.session
-    const derive = session?.deriveMessages
-    if (typeof derive !== 'function') return null
-    let messages: unknown
-    try {
-      messages = derive.call(session)
-    } catch (error) {
-      note('deriveMessages', error)
-      return null
-    }
-    if (!Array.isArray(messages)) return null
-    const texts = new Set<string>()
-    for (const message of messages) for (const text of textBlocks(message)) texts.add(text)
-    return texts
-  }
+  const textBlocks = kit.messageTexts
 
   const channelFilter = (async (...args: never[]) => {
     const payload = args[0] as { agent?: AgentLike; signal?: AbortSignal | undefined }
@@ -262,13 +237,37 @@ export function apply(ctx: HostContext): void {
     // renderSkillContent,同一技能就是同一串文本。
     const injectDuplicates = (profile as { injectDuplicateSkills?: unknown } | null)?.injectDuplicateSkills !== false
     if (!injectDuplicates && messages.some((message) => message?.source?.kind === 'skill-invocation')) {
-      const visible = visibleTexts(payload.agent)
+      const visible = kit.visibleTexts(payload.agent)
       if (visible) {
         messages = messages.filter((message) => message?.source?.kind !== 'skill-invocation'
           || !textBlocks(message).some((text) => visible.has(text)))
       }
     }
-    return messages.length === decision.messages.length ? decision : { ...decision, messages }
+    // 发送顺序(档位开关,默认关闭 = 保持宿主顺序):只前移「起始上下文」块——工作区
+    // 指令/运行时快照/技能目录,它们跨会话内容稳定,前移后能落进共享前缀。时间采样、
+    // 用户消息、`/技能名` 注入的技能正文(skill-invocation)与运行期通知保持宿主顺序:
+    // 宿主刻意把技能正文放在所有注入之后、贴着模型回答;白名单之外不猜。
+    // 这里改的是落盘到 surface 的顺序(steer/追加都按数组顺序提交),不改历史。
+    if ((profile as { injectedFirst?: unknown } | null)?.injectedFirst === true && messages.length > 1) {
+      // 按 LEADING_CONTEXT_KINDS 的固定优先级分桶再拼(全局指令 → 技能目录 → 运行时快照),
+      // 同类内保持宿主给的相对顺序;宿主自己的先后取决于插件注册次序,不跟它。
+      const buckets = new Map<string, typeof messages>()
+      const rest: typeof messages = []
+      for (const message of messages) {
+        const kind = message?.source?.kind
+        if (typeof kind === 'string' && LEADING_CONTEXT_SET.has(kind)) {
+          const bucket = buckets.get(kind)
+          if (bucket) bucket.push(message)
+          else buckets.set(kind, [message])
+        } else rest.push(message)
+      }
+      const leading = LEADING_CONTEXT_KINDS.flatMap((kind) => buckets.get(kind) ?? [])
+      // 没有用户消息的批次(工具续跑)不前移:没有「用户消息在后」可换,顺序保持原样。
+      if (leading.length > 0 && rest.some((message) => message?.source?.kind === 'user')) {
+        messages = [...leading, ...rest]
+      }
+    }
+    return messages === decision.messages ? decision : { ...decision, messages }
   }) as unknown as (...args: never[]) => unknown
 
   /**
@@ -320,6 +319,49 @@ export function apply(ctx: HostContext): void {
   // 兜底:拿不到 agent.ctx.on 的宿主仍靠全局过滤器(代价是对预设里 prepend 的
   // time-context 无效,见 ensureChannelFilter)。
   ctx.on('agent/pre-step', channelFilter, { prepend: true })
+
+  /**
+   * `skill` 工具结果去重(档位开关 `dedupeSkillToolResults`,默认关闭)。
+   *
+   * 落点是 `tools/post-execute`:它在结果落盘前拿到 render 之后的正文,可按 `exec.agent`
+   * 所属档位改写。**不能**像延迟占位那样在 agent 作用域重注册同名 `skill`——宿主
+   * tool-skill 用「`ctx.tools.get('skill', agent) === 它注册的定义`」判断技能工具是否可见,
+   * 同名遮蔽会让技能目录整条不再发布(已发布过的还会被替换成空目录)。
+   *
+   * 判定与用户手势注入共用 `kit.visibleTexts`(deriveMessages;压缩后查不到 → 照常给全量)。
+   * 拿不到历史、结果已是错误、别的插件已阻断或改写正文时一律不动,宁可重复。
+   */
+  const skillResultDedupe = (async (...args: never[]) => {
+    const exec = args[0] as { name?: unknown; agent?: AgentLike } | undefined
+    const result = args[1] as { isError?: unknown; content?: unknown } | undefined
+    const next = args[2] as (() => Promise<unknown>) | undefined
+    // 先取内层决策:别的插件可能已经阻断或改写这次结果,我们只在「接受且正文没被换掉」时介入。
+    const decision = (typeof next === 'function' ? await next() : { kind: 'accept' }) as
+      | { kind?: unknown; content?: unknown; value?: unknown }
+      | undefined
+    if (exec?.name !== SKILL_TOOL_NAME || !result || result.isError === true) return decision
+    if (decision?.kind !== 'accept' || decision.value !== undefined) return decision
+    const profile = profileOf(exec.agent as AgentLike)
+    if ((profile as { dedupeSkillToolResults?: unknown } | null)?.dedupeSkillToolResults !== true) return decision
+    try {
+      const visible = kit.visibleTexts(exec.agent as AgentLike)
+      const content = Array.isArray(decision.content) ? decision.content : result.content
+      if (!visible || !Array.isArray(content)) return decision
+      const duplicate = content.some((block) => {
+        const item = block as { type?: unknown; text?: unknown } | null
+        return item?.type === 'text' && typeof item.text === 'string' && visible.has(item.text)
+      })
+      return duplicate ? { ...decision, content: [{ type: 'text', text: SKILL_ALREADY_LOADED }] } : decision
+    } catch (error) {
+      // 判定失败退回内层决策:宁可重复,不改坏工具结果。
+      note('skill tool dedupe', error)
+      return decision
+    }
+  }) as unknown as (...args: never[]) => unknown
+
+  // 全局注册 + 进入时按档位判定:子代理没有档位(profileOf 返回 null),自然不介入。
+  // global:true 与 assemble 过滤器同一套理由——post-execute 按 exec.agent 作用域派发。
+  ctx.on('tools/post-execute', skillResultDedupe, { global: true })
 
   // 按档位逐个过滤运行时上下文与系统段。agent 作用域里的同名非 required 空上下文
   // (host/profiles.ts)负责让 refreshContext 不把 required 段补回;工作目录服务

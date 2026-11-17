@@ -11,7 +11,7 @@ import { loadSnapshot, request, setSnapshot, emit } from '../state/store.ts'
 import { effective, formatTokens, NONE, ON, presetNames, statsFor } from '../state/resolve.ts'
 import type { CatalogTool, Profile, Snapshot } from '../contract/types.ts'
 import { GROUP_STATES, GROUP_STATE_HINT, CHANNEL_CARDS } from './options.ts'
-import { ChannelCard, ObservedMessagesCard, SectionHeading, SkillDedupeCard, SnapshotCard, SystemMessageCard } from './cards.ts'
+import { ChannelCard, DefaultBehaviorCard, ObservedMessagesCard, SectionHeading, SnapshotCard, SystemMessageCard } from './cards.ts'
 import { DEFAULT_BASELINE, draftOf, type PanelDraft } from './draft.ts'
 import { stateTag, toolRow } from './group-cards.ts'
 import { PreviewDialog } from './PreviewDialog.ts'
@@ -71,6 +71,9 @@ function allOnProfile(id: string, name: string): Profile {
     sections: {},
     baseline: { ...DEFAULT_BASELINE, customText: '' },
     channels: {},
+    injectDuplicateSkills: true,
+    injectedFirst: false,
+    dedupeSkillToolResults: false,
     groups: {},
     servers: {},
     tools: {},
@@ -610,6 +613,8 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         ),
       ),
 
+      h(DefaultBehaviorCard, { profile, patch }),
+
       h(SystemMessageCard, { profile, patch, patchBaseline, sections: snapshot.sections ?? [] }),
 
       h(SnapshotCard, { profile, patch, contexts: snapshot.contexts ?? [] }),
@@ -621,8 +626,6 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         option,
         preview: snapshot.channelsByProfile?.[profile.id]?.[option.key],
       })),
-
-      h(SkillDedupeCard, { profile, patch }),
 
       h(ObservedMessagesCard, {
         observed: snapshot.observedChannelsByProfile?.[profile.id] ?? [],
