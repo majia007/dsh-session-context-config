@@ -1,4 +1,5 @@
-import { GROUPS, SEARCH_TOOL_NAME, TOKEN_PER_CHAR } from './constants.ts'
+import { GROUPS, SEARCH_TOOL_NAME } from './constants.ts'
+import { estimateTokens } from '../tokens.ts'
 import { groupOf, serverOf } from './tools.ts'
 import type { SourceIndex, ToolSource } from './sources.ts'
 import type { HostContext } from '../types.ts'
@@ -35,7 +36,8 @@ export function createCatalog(ctx: HostContext, note: (source: string, error: un
       group: groupOf(String(schema.name ?? '')),
       server: serverOf(String(schema.name ?? '')),
       chars,
-      tokens: Math.max(1, Math.round(chars * TOKEN_PER_CHAR)),
+      // 与面板其它体量文案同一个估算器(汉字与拉丁分档),不在工具这里另立一套系数。
+      tokens: estimateTokens(String(schema.name ?? '') + String(schema.description ?? '') + parameters),
       modes: [],
     }
   }

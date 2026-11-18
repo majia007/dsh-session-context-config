@@ -22,7 +22,7 @@ export function PreviewDialog({ profile, snapshot, onClose }: { profile: Profile
           'div',
           { className: styles.statusRow, key: preset.id },
           h('span', { className: styles.nm }, preset.name),
-          h('span', { className: styles.st }, `开启 ${stats.on} · 延迟 ${stats.defer} · 关闭 ${stats.off} · ≈${formatTokens(stats.onTokens)} tokens`),
+          h('span', { className: styles.st }, `开启 ${stats.on} · 延迟 ${stats.defer} · 关闭 ${stats.off} · 约 ${formatTokens(stats.onTokens)} token`),
         ),
       ),
     ),

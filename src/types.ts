@@ -86,7 +86,9 @@ export interface HostContext {
   tools: {
     register(definition: unknown): () => void
     schemas(agent: unknown): unknown[]
-    definitions(agent: unknown): unknown[]
+    definitions(agent?: unknown): unknown[]
+    /** 按作用域取已注册定义(档位改写 ask_user_question 前要读官方定义);老宿主可能没有。 */
+    get?(name: string, scope?: unknown): unknown
     view(agent: unknown): { restrictableNames?: string[] } | undefined
   }
   agents: {

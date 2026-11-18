@@ -1,5 +1,5 @@
 /**
- * 档位模型的常量:状态字面量、组表、通道表、内置档位与 token 估算系数。
+ * 档位模型的常量:状态字面量、组表、通道表与内置档位。
  *
  * Host 与 Client 各自持有一份同规则的档位解析(见 AGENTS.md「跨端同规则双份」),
  * 这里只放 Host 侧;Client 那份在 src/client/state/resolve.ts,改一侧必须同步另一侧。
@@ -15,6 +15,12 @@ export const FORCE = 'force'
 
 /** 延迟加载的基础设施工具名:由 planFor 自动注入/隐藏,不进档位表。 */
 export const SEARCH_TOOL_NAME = 'tool_search'
+
+/**
+ * 宿主 `ask_user_question` 工具名。档位可改写它的等待行为(见 ContextProfile.askUserTimeout),
+ * 落点是 agent 作用域同名注册遮蔽——宿主 tools 注册表的既定语义,不改 preset、不写 patch。
+ */
+export const ASK_TOOL_NAME = 'ask_user_question'
 
 /**
  * 部署人设的一个固定槽位(prefix 在 order 0,紧随 harness:identity;suffix 在 10200,
@@ -53,6 +59,13 @@ export interface ContextProfile {
   injectedFirst: boolean
   /** 是否对 `skill` 工具结果去重:默认 false = 宿主原样;true 时同一份正文已在可见历史里就只回一行提示。 */
   dedupeSkillToolResults: boolean
+  /**
+   * `ask_user_question` 的档位改写(缺省 = 不介入,保持宿主 legacy 行为):
+   * - `-1`:关闭超时,无限期等待;卡片仍带调用 id(断线后保留、草稿不丢、提交失败可见)。
+   * - `N > 0`:前台等待 N 秒,到点工具返回 pending(不是跳过),问题仍可回答。
+   * 实现是 agent 作用域同名工具遮蔽,见 `host/ask-shadow.ts`;官方参数结构变化时整项自动停用。
+   */
+  askUserTimeout?: number
   groups: Record<string, string>
   servers: Record<string, string>
   tools: Record<string, string>
@@ -410,6 +423,3 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     summaries: {},
   },
 ]
-
-/** 占位定义按字符数估算 token 的系数;只用于面板里的成本提示,不参与决策。 */
-export const TOKEN_PER_CHAR = 0.28

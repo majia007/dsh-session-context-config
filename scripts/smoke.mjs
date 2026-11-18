@@ -21,12 +21,10 @@ const here = dirname(fileURLToPath(import.meta.url))
 const bundle = resolve(here, '..', 'lib', 'client.js')
 
 const require = createRequire(import.meta.url)
-const React = require('react')
-const ReactDOM = require('react-dom')
-const ReactDOMClient = require('react-dom/client')
-const ReactDOMTestUtils = require('react-dom/test-utils')
-const act = React.act ?? ReactDOMTestUtils.act
 
+// 先把 happy-dom 的 window/document 装成全局,再 require react-dom:React 在模块初始化时
+// 用 canUseDOM 决定 input 事件走原生还是 IE9 polyfill。若此时还没有 document,受控输入框的
+// input 事件不会触发 onChange,冒烟里模拟输入会静默不生效(看起来像「组件没响应输入」)。
 const { Window } = await import('happy-dom')
 const win = new Window({ url: 'http://localhost/', width: 1280, height: 800 })
 for (const key of [
@@ -42,6 +40,12 @@ for (const key of [
   }
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
+
+const React = require('react')
+const ReactDOM = require('react-dom')
+const ReactDOMClient = require('react-dom/client')
+const ReactDOMTestUtils = require('react-dom/test-utils')
+const act = React.act ?? ReactDOMTestUtils.act
 
 // happy-dom 不解析 min();把共享字号变量钉在 14px 标准档的设计值上,
 // 让 12/13px 的 computed 断言仍然可读。
@@ -338,6 +342,8 @@ check('前置覆盖默认关闭、文本不可用', prefixRow()?.nextElementSibl
 // 未覆盖时 title 是装配出的部署文本。
 check('人设行 title 显示部署文本', prefixRow()?.getAttribute('title') === '部署人设前缀' && suffixRow()?.getAttribute('title') === '部署人设后缀', `${prefixRow()?.getAttribute('title')} / ${suffixRow()?.getAttribute('title')}`)
 check('普通段 title 显示装配正文', rowByChip('harness:identity')?.getAttribute('title') === 'You are an AI agent powered by DeepSeek Harness.' && rowByChip('context:file-reference')?.getAttribute('title') === '文件引用规则正文')
+const fileRefMeta = rowByChip('context:file-reference')?.querySelector('.cp-segmentMeta')?.textContent ?? ''
+check('段体量按估算 token 写「约 N token」', /^约 [\d.]+k? token$/.test(fileRefMeta), fileRefMeta)
 await click(prefixRow()?.nextElementSibling?.querySelector('.cp-segmentLabel'))
 check('勾选前置覆盖后文本可用', prefixRow()?.nextElementSibling?.nextElementSibling?.disabled === false)
 // happy-dom 对「刚从 disabled 解禁的受控 textarea」不投递 React 合成的 input 事件
@@ -461,7 +467,7 @@ check('工具行状态选项顺序为 开启/关闭/延迟/默认', stateTabs.ma
 check('每个状态选项都带原生说明', stateTabs.every((tab) => (tab.getAttribute('title') ?? '').length > 0), stateTabs.map((tab) => tab.getAttribute('title')).join('|'))
 check('每个工具都显示最终状态标签（开启 / success）', toolRowEl?.querySelector('.cp-stateTag')?.textContent === '开启' && toolRowEl?.querySelector('.cp-stateTag [data-tone]')?.getAttribute('data-tone') === 'success')
 check('状态标签带同色描边', toolRowEl?.querySelector('.cp-stateTag .cp-stateTagInner') !== null)
-check('状态标签旁并排 token 标签（默认描边灰）', toolRowEl?.querySelector('.cp-tokenTag')?.textContent === '≈80' && toolRowEl?.querySelector('.cp-tokenTag [data-tone]')?.getAttribute('data-tone') === 'outline', toolRowEl?.querySelector('.cp-tokenTag')?.textContent)
+check('状态标签旁并排 token 标签（默认描边灰，写「约 N token」）', toolRowEl?.querySelector('.cp-tokenTag')?.textContent === '约 80 token' && toolRowEl?.querySelector('.cp-tokenTag [data-tone]')?.getAttribute('data-tone') === 'outline', toolRowEl?.querySelector('.cp-tokenTag')?.textContent)
 check('token 标签是状态标签的兄弟节点、不再有独立成本列', toolRowEl?.querySelector('.cp-nameLine > .cp-stateTag + .cp-tokenTag') !== null && toolRowEl?.querySelector('.cp-cost') === null)
 check('工具行显示来源短名与完整依据', toolRowEl?.querySelector('.cp-source')?.textContent === '来源 · 文件工具' && toolRowEl?.querySelector('.cp-source')?.getAttribute('title')?.includes('@deepseek-ai/dsh-tool-fs') === true)
 check('没有来源的工具显示未识别', toolByName('write')?.querySelector('.cp-source')?.textContent === '来源 · 未识别')
@@ -522,11 +528,49 @@ const behaviorCard = () => [...panel.querySelectorAll('.cp-card')].find((card) =
 const behaviorSwitches = () => [...(behaviorCard()?.querySelectorAll('input[role="switch"]') ?? [])]
 const cardsNow = [...panel.querySelectorAll('.cp-card')]
 check('默认行为卡排在系统提示词卡之前', cardsNow[cardsNow.indexOf(behaviorCard()) + 1]?.querySelector('.cp-msgCardTitle')?.textContent === '系统提示词')
-check('三条行为开关默认关闭（保持宿主默认行为），且是 role=switch 不是复选行', behaviorSwitches().length === 3
+check('四条行为开关默认关闭（保持宿主默认行为），且是 role=switch 不是复选行', behaviorSwitches().length === 4
   && behaviorSwitches().every((input) => input.checked === false && input.getAttribute('role') === 'switch' && input.getAttribute('aria-checked') === 'false'))
 check('行为开关用轨道样式（cp-switchInput）', behaviorSwitches().every((input) => input.classList.contains('cp-switchInput')))
+check('状态文案紧跟标题（段/上下文与行为行共用 cp-segmentMeta，提问行用 cp-askMeta）',
+  behaviorCard()?.querySelectorAll('.cp-segmentMeta').length === 3
+  && behaviorCard()?.querySelector('.cp-askMeta') !== null
+  && behaviorCard()?.querySelector('.cp-behaviorMeta') === null)
+const askRow = () => behaviorCard()?.querySelector('.cp-askRow')
+check('调整 ask_user_question 超时时间：标题带实际工具名，开关右侧写实际生效效果（不介入时只写宿主原样）', askRow()?.querySelector('.cp-askLabel')?.textContent === '调整 ask_user_question 超时时间'
+  && askRow()?.querySelector('.cp-askMeta')?.textContent === '不介入，宿主原样', askRow()?.querySelector('.cp-askMeta')?.textContent)
+check('校验通过时不显示任何状态行', askRow()?.querySelector('.cp-askHint') === null && askRow()?.querySelector('.cp-askWarn') === null)
+check('说明文案指向下方秒数框，不再说「右侧」', askRow()?.querySelector('.cp-askDesc')?.textContent?.includes('下方秒数框') === true)
+check('不介入时秒数框禁用（此时秒数不生效）', askRow()?.querySelector('.cp-askSeconds')?.disabled === true)
+await click(askRow()?.querySelector('.cp-askLabel'))
+check('开启后右侧显示不会超时，秒数框可编辑', askRow()?.querySelector('.cp-askMeta')?.textContent === '不会超时，断线可恢复'
+  && askRow()?.querySelector('.cp-askSeconds')?.disabled === false && behaviorSwitches()[3]?.checked === true,
+askRow()?.querySelector('.cp-askMeta')?.textContent)
+// 受控 number 输入同样要绕过 React 的 value tracker:原型 setter 改值再派发 input。
+const typeSeconds = async (text) => {
+  const input = askRow()?.querySelector('.cp-askSeconds')
+  await act(async () => {
+    // React 受控组件:直接设 value 会被 input value tracker 忽略,要走原型 setter。
+    Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value')?.set?.call(input, text)
+    input?.dispatchEvent(new win.Event('input', { bubbles: true }))
+  })
+  await flush()
+}
+await typeSeconds('300')
+check('开启后秒数可修改并保存，开关保持开启', askRow()?.querySelector('.cp-askMeta')?.textContent === '300 秒后返回 pending'
+  && askRow()?.querySelector('.cp-askSeconds')?.value === '300' && behaviorSwitches()[3]?.checked === true,
+askRow()?.querySelector('.cp-askMeta')?.textContent)
+await typeSeconds('')
+check('清空秒数 = 不设期限，开关仍开启', askRow()?.querySelector('.cp-askMeta')?.textContent === '不会超时，断线可恢复'
+  && askRow()?.querySelector('.cp-askSeconds')?.value === '' && behaviorSwitches()[3]?.checked === true,
+askRow()?.querySelector('.cp-askMeta')?.textContent)
 await click(behaviorCard()?.querySelectorAll('.cp-segmentLabel')[0])
 check('打开第一项后开关与 aria-checked 同步', behaviorSwitches()[0]?.checked === true && behaviorSwitches()[0]?.getAttribute('aria-checked') === 'true')
+
+// 数量口径:全页统一按估算 token 写「约 N token」,字符数与 ≈ 前缀都不再上文案。
+const tokenChips = [...panel.querySelectorAll('.cp-mini')].map((el) => el.textContent ?? '').filter((text) => text.includes('token'))
+check('档位摘要的 token 写「约 N token」', tokenChips.length > 0 && tokenChips.every((text) => /^约 .+ token$/.test(text)), tokenChips.join('|'))
+check('页面不再出现 ≈ 前缀', !panel.textContent?.includes('≈'), String(panel.textContent?.length))
+check('体量标签不再出现「N 字」', !/\d+ 字/.test(panel.textContent ?? ''))
 
 const footButton = (label) => [...panel.querySelectorAll('.cp-foot button')].find((button) => button.textContent === label)
 await click(footButton('重新读取'))

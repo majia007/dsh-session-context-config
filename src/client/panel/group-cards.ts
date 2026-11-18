@@ -32,12 +32,13 @@ export function stateTag(effectiveState: string, rowState: string): ReactElement
   )
 }
 
-/** 该工具的估算 token 占用,用默认(描边灰)标签,与状态标签并排。 */
+/** 该工具的估算 token 占用,用默认(描边灰)标签,与状态标签并排。
+ *  估算值必须带「约 N token」:精确的字符数在别处写作「N 字」,两种口径靠前缀与单位区分。 */
 function tokenTag(tokens: number): ReactElement {
   return h(
     'span',
     { className: styles.tokenTag, title: '工具定义（名字 + 描述 + 参数）的估算占用' },
-    h(Tag, null, `≈${formatTokens(tokens)}`),
+    h(Tag, null, `约 ${formatTokens(tokens)} token`),
   )
 }
 

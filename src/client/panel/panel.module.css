@@ -861,6 +861,10 @@ body {
   gap: 1px;
 }
 
+/* 标题行按**盒子中心**对齐,但三种字号的行高统一到与标题一致(20px + boost):
+   不同字号行高不同时,居中只对齐盒子中心、字框中心仍差 1~2px;行高一致后三者的字框中心重合。
+   别改成 align-items: baseline:`.tags` 不参与基线对齐,它的基线按边框盒底边合成,
+   会让胶囊标签整体下沉(实测 2px)。 */
 .segmentTitle {
   display: flex;
   align-items: center;
@@ -888,11 +892,13 @@ body {
   white-space: normal;
 }
 
+/* 状态短文案紧跟标题(不再用 margin-left:auto 推到行尾——隔半个屏,第一眼看不见)。
+   段/上下文/行为卡共用同一版式;长文案靠 .segmentTitle 的 flex-wrap 自然折行。
+   行高与标题一致(20px + boost),居中对齐时字框中心才真正重合。 */
 .segmentMeta {
-  margin-left: auto;
   flex: none;
   font-size: var(--dsh-plugin-fs-12, 12px);
-  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   font-variant-numeric: tabular-nums;
 }
@@ -964,6 +970,109 @@ body {
   .switchInput::after {
     transition: none;
   }
+}
+
+/* ask_user_question 的等待改写行:开关 + 秒数输入同一行分组,说明与校验提示在下方。
+   开关放行首(与其它行为行一致),秒数输入跟在「超时」标签后、以「秒」收尾。 */
+.askRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: var(--dsw-alias-bg-layer-1, color-mix(in srgb, CanvasText 3%, transparent));
+}
+
+.askTitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.askSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.askLabel {
+  font-size: var(--dsh-plugin-fs-13, 13px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 标题里的工具名:等宽以便与正文区分,字号沿用标题,不加胶囊底色。 */
+.askTool {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.askMeta {
+  flex: none;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+  font-variant-numeric: tabular-nums;
+}
+
+.askDesc {
+  margin: 0;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  white-space: normal;
+}
+
+.askSecondsRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.askSecondsLabel,
+.askSecondsUnit {
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
+  color: var(--dsw-alias-label-secondary);
+}
+
+.askSeconds {
+  width: 110px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--dsw-radius-sm, 6px);
+  border: 0.5px solid var(--dsw-alias-border-l3, color-mix(in srgb, CanvasText 18%, transparent));
+  background: var(--dsw-alias-bg-layer-1, Canvas);
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+}
+
+.askSeconds:disabled {
+  opacity: 0.55;
+}
+
+.askSeconds:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
+}
+
+.askHint,
+.askWarn {
+  margin: 0;
+  font-size: var(--dsh-plugin-fs-12, 12px);
+  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
+}
+
+.askHint {
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
+}
+
+/* 参数结构不匹配:整项停用,提示用告警色,与页内其它告警文案同配方。 */
+.askWarn {
+  color: var(--dsw-alias-state-warning-primary, var(--dsw-alias-label-secondary));
 }
 
 .tags {

@@ -332,6 +332,9 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
       observedChannelsByProfile: prompt.observedChannelsByProfile,
       live,
       sources: sources.report(),
+      // ask_user_question 改写的可用性(官方参数结构是否仍与基线一致):面板据此禁用控件并提示。
+      // 测试桩与旧快照可能没有这个方法,缺失时按「未提供」处理。
+      askUser: typeof profiles.askStatus === 'function' ? profiles.askStatus() : undefined,
       diagnostics: diagnostics.slice(0, 8),
       statePath: statePath(),
       clientBundle: (() => {

@@ -38,7 +38,7 @@ node scripts/smoke.mjs
 node scripts/harness.mjs
 ```
 
-`scripts/smoke.mjs` 的依赖（react/react-dom/happy-dom）来自本项目 devDependencies；它断言：触发器是 seat 结构、菜单行带 `aria-checked`、只有选中行有勾、会话头部菜单含状态块与确认块。CSS Modules 类名编译后带 `cp-` 前缀（确定性，见 `build/preset.mjs`），smoke 的类选择器与真机一致。
+`scripts/smoke.mjs` 的依赖（react/react-dom/happy-dom）来自本项目 devDependencies；它断言：触发器是 seat 结构、菜单行带 `aria-checked`、只有选中行有勾、会话头部菜单含状态块与确认块。CSS Modules 类名编译后带 `cp-` 前缀（确定性，见 `build/preset.mjs`），smoke 的类选择器与真机一致。**happy-dom 的 `window`/`document` 必须在 `require('react-dom')` 之前装成全局**：React 在模块初始化时用 `canUseDOM` 决定 `input` 事件走原生还是 IE9 polyfill，装晚了受控输入框的 `input` 事件不触发 `onChange`，模拟输入会静默不生效（断言看着绿，实际没驱动组件）。
 
 **装到 profile**：`plugin_manager` 的 `install_bundle` 指向本目录。profile 里装成 `link:`，所以改文件即时生效、不需要重装。**client bundle 有自动热更**：桌面 boot 图里有 `@deepseek-ai/dsh-client-hmr`（HMR 事件走 `/plugins/events` SSE），Host 按固定间隔 stat-poll `lib/client.js` 的 mtime/ctime/size，变化即推 `rebuilt` 帧重挂该 entry——`pnpm build` 后约 1s 新前端自动出现，**不需要刷新或重启**（改动期间本插件的主面板会因 entry 重挂而关闭，重新打开即可）。**Host 侧不会自动更新**：Host HMR 的 chokidar watch 忽略 `**/node_modules`，link: 安装的源码目录不被 watch，`lib/index.js` 改动要走下面的 `set_plugin` 关→开或重启。**不要刷新页面**：刷新属未定义行为，会刷崩 DSH（偶尔能加载新 bundle）。崩溃恢复用错误对话框的「重启」（会重新 collect 快照），**不要点「禁用第三方插件、备份 profile patch 并重启」**（会停用全部第三方插件并改写 patch）。同版本重复安装会返回 `already-installed`，要更新得先 `remove_bundle` 再 `install_bundle`（或先改 `package.json` 的 version）。安装结果以返回里的 `application: applied` 为准。
 
@@ -60,7 +60,7 @@ node scripts/harness.mjs
 | `cordis.patch.yml` | 装载入口：只 insert 一行 `session-context-config` |
 | `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-workspace-sidebar/AGENTS.md`「与官方 preset 的偏差」） |
 | `tests/` | 直读 `src` 的单元测试：host 纯函数、附加规则快照、环境事实、不可信下载规则、v2/v3→v4 结构迁移、5 个默认预设、tool_search 自动注入/隐藏、附加规则按档位与子代理跟随、面板草稿兜底、人设开关/覆盖与占位符、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏、上下文开关/影子、`/api/state` 快照形状、注入消息分桶、工具来源解析、技能注入去重（`dedupe.test.mjs`）、发送顺序（`channels.test.mjs`）、默认行为开关默认值 |
-| `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 `lib/client.js`，喂假快照渲染面板与两个 chip 并点击；覆盖「+ 新建档位」悬停下拉与预设复制、默认行为卡三条开关 |
+| `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 `lib/client.js`，喂假快照渲染面板与两个 chip 并点击；覆盖「+ 新建档位」悬停下拉与预设复制、默认行为卡四个开关（含 `ask_user_question` 等待改写行的秒数输入） |
 | `scripts/gen-known-tools.mjs` | 从 DSH checkout 的 `docs/tool-catalog.md` 生成 `src/host/known-tools.ts`（`DSH_SRC` 可覆盖 checkout 路径） |
 | `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 `lib/client.js`，验 id/槽位注册/样式注入/inject face |
 | `locale/*.json` | 仅包级 title/description；**界面文案是硬编码中文，没走 locale 服务** |
@@ -84,7 +84,7 @@ Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 
 | 加什么 | Host | Client | 文档/测试 |
 |---|---|---|---|
-| 档位开关（如三个默认行为开关） | `ContextProfile` 字段 + `DEFAULT_PROFILES` 五个预设 + `normalizeProfile` 默认值 | `contract/types.ts` 的 `Profile` + `allOnProfile` + 对应卡片控件 | README 的档位字段说明 + `tests/defaults.test.mjs` |
+| 档位开关（如四个默认行为开关） | `ContextProfile` 字段 + `DEFAULT_PROFILES` 五个预设 + `normalizeProfile` 默认值 | `contract/types.ts` 的 `Profile` + `allOnProfile` + 对应卡片控件 | README 的档位字段说明 + `tests/defaults.test.mjs` |
 | 运行时上下文 | `CONTEXT_ORDER_NAMES`/`CONTEXT_ORDER_FALLBACK` 常量 + 关闭时的同名空影子与 assemble 过滤 | `CONTEXT_SWITCHES` 的中文名/说明 | — |
 | 系统段 | 无需登记（自动发现）；受保护段走专用开关 | 需要在面板命名时补 `SECTION_OPTIONS` | — |
 | 工具/组归类 | `constants.ts` 组表 + `known-tools.ts`（重跑 `pnpm gen-known-tools`） | `translations.ts` 中文说明 | `tests/defaults.test.mjs` 的组快照 |

@@ -1,8 +1,9 @@
 /** 配置卡片:按最终请求里的消息分卡;system 卡内每段单独开关。 */
 import { createElement as h, Fragment, useState, type ReactElement, type ReactNode } from 'react'
 import { BASELINE_TEXT } from '../../baseline.ts'
-import { OFF } from '../state/resolve.ts'
-import type { ChannelPreview, ObservedChannel, Profile, PromptContextState, Snapshot } from '../contract/types.ts'
+import { estimateTokens } from '../../tokens.ts'
+import { formatTokens, OFF } from '../state/resolve.ts'
+import type { AskToolStatus, ChannelPreview, ObservedChannel, Profile, PromptContextState, Snapshot } from '../contract/types.ts'
 import { DEFAULT_BASELINE } from './draft.ts'
 import {
   CONTEXT_SWITCHES,
@@ -18,6 +19,14 @@ import {
 import styles from './panel.module.css'
 
 type Patch = (mutate: (target: Profile) => void) => void
+
+/** 一段注入正文的估算 token;面板只拿到截断后的前缀时,按全文长度比例放大。 */
+function tokensOf(text: string | undefined, fullChars?: number, truncated?: boolean): number {
+  const value = text ?? ''
+  const estimate = estimateTokens(value)
+  if (!truncated || fullChars === undefined || value.length === 0 || fullChars <= value.length) return estimate
+  return Math.max(estimate, Math.round((estimate * fullChars) / value.length))
+}
 
 type SectionEntry = Snapshot['sections'][number]
 
@@ -116,7 +125,7 @@ function baselineRows(profile: Profile, patchBaseline: (key: string, value: bool
   const customText = baseline.customText ?? ''
   const customMeta = !customOn
     ? '未勾选 · 可先编辑'
-    : customText.trim() ? `注入 · ${customText.length} 字` : '已勾选 · 空文本不发送'
+    : customText.trim() ? `注入 · 约 ${formatTokens(estimateTokens(customText))} token` : '已勾选 · 空文本不发送'
   return [
     ...rows.map((row) => h(SegmentRow, {
       key: row.key,
@@ -201,11 +210,11 @@ function orderedSections(sections: SectionEntry[], disabled: Set<string>): Secti
  * current 是当前 live 装配出的该槽位正文(没覆盖时就是部署文本),用作 tooltip;
  * 覆盖生效时用草稿文本,保证未保存的编辑也能在悬停里预览。
  */
-function PersonaBlock({ option, profile, patch, chars, current }: {
+function PersonaBlock({ option, profile, patch, tokens, current }: {
   option: SectionOption
   profile: Profile
   patch: Patch
-  chars?: number
+  tokens?: number
   current?: string
 }): ReactElement {
   const key = option.persona!
@@ -214,8 +223,8 @@ function PersonaBlock({ option, profile, patch, chars, current }: {
   const meta = !on
     ? '已关闭'
     : config.override
-      ? config.text.length > 0 ? `覆盖 · ${config.text.length} 字` : '覆盖为空 · 不发送'
-      : chars !== undefined && chars > 0 ? `沿用部署 · ≈${chars} 字` : '沿用部署'
+      ? config.text.length > 0 ? `覆盖 · 约 ${formatTokens(estimateTokens(config.text))} token` : '覆盖为空 · 不发送'
+      : tokens !== undefined && tokens > 0 ? `沿用部署 · 约 ${formatTokens(tokens)} token` : '沿用部署'
   const effective = !on
     ? '该槽位已关闭，不发送。'
     : config.override
@@ -288,7 +297,7 @@ export function SystemMessageCard({ profile, patch, patchBaseline, sections }: {
         option,
         profile,
         patch,
-        chars: chars.get(option.name),
+        tokens: tokensOf(texts.get(option.name), chars.get(option.name)),
         current: texts.get(option.name),
       })
     }
@@ -310,7 +319,7 @@ export function SystemMessageCard({ profile, patch, patchBaseline, sections }: {
       title: h('span', { className: styles.segmentLabel }, option.label, h(Tags, { names: [option.name] })),
       desc: option.desc,
       meta: on
-        ? count === undefined || count === 0 ? '当前未出现' : `≈${count} 字`
+        ? count === undefined || count === 0 ? '当前未出现' : `约 ${formatTokens(tokensOf(text, count))} token`
         : present ? '已关闭' : '已关闭 · 当前未出现',
       // 原样注入的段正文(变量已按当前装配渲染);关闭时也给出正文,便于确认关掉的是什么。
       tooltip: on
@@ -385,7 +394,7 @@ export function SnapshotCard({ profile, patch, contexts }: {
       const present = option.contexts
         .map((name) => entries.get(name))
         .filter((entry): entry is PromptContextState => entry !== undefined && entry.chars > 0)
-      const chars = present.reduce((sum, entry) => sum + entry.chars, 0)
+      const tokens = present.reduce((sum, entry) => sum + tokensOf(entry.text, entry.chars), 0)
       const text = present.map((entry) => entry.text ?? '').filter((value) => value.length > 0).join('\n\n')
       return h(SegmentRow, {
         key: option.id,
@@ -399,7 +408,7 @@ export function SnapshotCard({ profile, patch, contexts }: {
         }),
         title: h('span', { className: styles.segmentLabel }, option.label, h(Tags, { names: option.contexts })),
         desc: option.desc,
-        meta: !on ? '已关闭' : chars > 0 ? `≈${chars} 字` : '当前未出现',
+        meta: !on ? '已关闭' : tokens > 0 ? `约 ${formatTokens(tokens)} token` : '当前未出现',
         tooltip: !on
           ? '该上下文已关闭，不注入。'
           : text.length > 0 ? text : '当前未出现（条件上下文或空文本）。',
@@ -495,7 +504,7 @@ export function ObservedMessagesCard({ observed, liveCount, profile, patch }: {
           }),
           title: h('span', { className: styles.segmentLabel }, entry.kind),
           desc: '宿主或第三方插件注入的 user 消息（source.kind）；关闭后这类消息不再进入请求。',
-          meta: `${entry.count} 次${entry.chars > 0 ? ` · ${entry.chars} 字` : ''}`,
+          meta: `${entry.count} 次${entry.chars > 0 ? ` · 约 ${formatTokens(tokensOf(entry.text, entry.chars, entry.truncated))} token` : ''}`,
           tooltip: entry.text ? `${entry.text}${entry.truncated ? '\n\n…（正文已截断）' : ''}` : undefined,
         })
       })),
@@ -576,10 +585,26 @@ function SwitchRow({ checked, onChange, title, desc, meta, tooltip }: {
   )
 }
 
-export function DefaultBehaviorCard({ profile, patch }: { profile: Profile; patch: Patch }): ReactElement {
+export function DefaultBehaviorCard({ profile, patch, askUser }: { profile: Profile; patch: Patch; askUser?: AskToolStatus }): ReactElement {
   const injectedFirst = profile.injectedFirst === true
   const dedupeUserSkill = profile.injectDuplicateSkills === false
   const dedupeSkillTool = profile.dedupeSkillToolResults === true
+  // ask_user_question:官方参数结构没变才允许改写(Host 在每次快照里现算)。
+  // 开关 = 本插件是否接管等待;秒数 = 接管后的等待时长(留空 = 不设期限,落 -1)。
+  const askTimeout = typeof profile.askUserTimeout === 'number' ? profile.askUserTimeout : undefined
+  // 只有「宿主参数结构与基线不符」才禁用控件:那说明改写一定出错。没有 live 会话、该档位把
+  // 工具延迟加载、定义缺字段都不算——档位是配置面,能否生效要到对应会话创建时才定。
+  const askBlocked = askUser?.reason === 'schema'
+  const askActive = askTimeout !== undefined
+  const secondsValue = askTimeout !== undefined && askTimeout > 0 ? String(askTimeout) : ''
+  // 右上角写实际生效的等待效果。只有本插件自己接管的两档能写死(实现就是如此);
+  // 「不介入」时宿主怎么等待由版本与那行 loader 配置决定(legacy 阻塞 / timed 按行配置超时),
+  // 所以这里只陈述「宿主原样」,不推断会不会超时。
+  const askEffect = !askActive
+    ? '不介入，宿主原样'
+    : secondsValue
+      ? `${secondsValue} 秒后返回 pending`
+      : '不会超时，断线可恢复'
   return h(
     'section',
     { className: styles.card },
@@ -615,5 +640,68 @@ export function DefaultBehaviorCard({ profile, patch }: { profile: Profile; patc
       desc: '模型调用 skill 工具时，若同一份正文已经在可见历史里，工具结果只回一行「已加载」提示，不再重复整份正文。与上一条分开控制；只改模型看到的正文，不动技能定义与工具 schema。',
       tooltip: '只拦 skill 工具这一条路径：正文已在历史里才替换，压缩掉后重新加载仍拿完整正文。',
     }),
+    h(
+      'div',
+      { className: styles.askRow, 'data-ask-guard': askUser?.reason ?? 'unknown' },
+      h(
+        'div',
+        { className: styles.askTitle },
+        h(
+          'label',
+          { className: styles.askSwitch },
+          h('input', {
+            type: 'checkbox',
+            role: 'switch',
+            className: styles.switchInput,
+            checked: askActive,
+            'aria-checked': askActive,
+            disabled: askBlocked,
+            onChange: (event: { target: { checked: boolean } }) => patch((target) => {
+              target.askUserTimeout = event.target.checked ? -1 : undefined
+            }),
+          }),
+          // 标题里嵌实际工具名:一眼看出这一项改的是哪个工具,而不是笼统的「超时」。
+          h(
+            'span',
+            { className: styles.askLabel },
+            '调整 ',
+            h('span', { className: styles.askTool }, 'ask_user_question'),
+            ' 超时时间',
+          ),
+        ),
+        h('span', { className: styles.askMeta }, askEffect),
+      ),
+      h('p', { className: styles.askDesc }, '开启后由本插件接管等待：卡片带调用 id，断线重连后仍是同一张卡、草稿不丢、提交失败可见，工具调用行也能重新打开面板。在下方秒数框里填等待时间，到点工具返回 pending（不是跳过），问题仍可回答；留空则不设期限、不会超时。关闭则保持宿主原样。'),
+      h(
+        'div',
+        { className: styles.askSecondsRow },
+        h('span', { className: styles.askSecondsLabel }, '超时'),
+        h('input', {
+          type: 'number',
+          className: styles.askSeconds,
+          value: secondsValue,
+          min: 1,
+          max: 2147483,
+          placeholder: askActive ? '留空则不超时' : '',
+          disabled: askBlocked || !askActive,
+          'aria-label': '提问等待秒数',
+          onChange: (event: { target: { value: string } }) => {
+            const raw = event.target.value.trim()
+            const parsed = raw === '' ? NaN : Number(raw)
+            patch((target) => {
+              // 开关已开启(本插件接管等待):清空或非法值回到 -1「不设期限」,
+              // 不能写 undefined——那会把开关一起关掉。
+              target.askUserTimeout = Number.isInteger(parsed) && parsed >= 1 ? parsed : -1
+            })
+          },
+        }),
+        h('span', { className: styles.askSecondsUnit }, '秒'),
+      ),
+      askUser === undefined || askUser.reason === 'ok'
+        ? null
+        : h('p', { className: askBlocked ? styles.askWarn : styles.askHint }, askBlocked
+          ? `· 本项已停用：${askUser.message}`
+          : `· ${askUser.message}`),
+    ),
   )
 }

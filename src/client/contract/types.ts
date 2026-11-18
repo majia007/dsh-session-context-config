@@ -55,6 +55,8 @@ export interface Profile {
   injectedFirst?: boolean
   /** 是否对 skill 工具结果去重;缺省 false=宿主原样。 */
   dedupeSkillToolResults?: boolean
+  /** ask_user_question 等待改写:-1 关闭超时,N>0 秒数;缺省(或非法值)= 不介入,保持宿主行为。 */
+  askUserTimeout?: number
   groups: Record<string, string>
   servers: Record<string, string>
   tools: Record<string, string>
@@ -128,8 +130,19 @@ export interface Snapshot {
   channelsByProfile?: Record<string, Record<string, ChannelPreview>>
   /** 按档位分组的 user 消息注入来源(含第三方插件);面板只取当前档位。 */
   observedChannelsByProfile?: Record<string, ObservedChannel[]>
+  /** ask_user_question 改写的可用性:官方参数结构与基线一致才可配置;旧宿主可能不返回。 */
+  askUser?: AskToolStatus
   live: LiveSession[]
   diagnostics: unknown[]
+}
+
+/** 宿主 ask_user_question 参数结构的校验结果(Host 在每次快照里现算)。 */
+export interface AskToolStatus {
+  compatible: boolean
+  reason: 'ok' | 'missing' | 'deferred' | 'schema' | 'unavailable'
+  message: string
+  expected?: string
+  actual?: string | null
 }
 
 /** 会话内工具状态(GET /api/session 的返回)。 */

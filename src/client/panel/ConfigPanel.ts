@@ -603,7 +603,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
           'div',
           { className: styles.chipRow },
           h('span', { className: styles.mini }, `开启 ${s.on} · 延迟 ${s.defer} · 关闭 ${s.off}`),
-          h('span', { className: styles.mini }, `≈ ${formatTokens(s.onTokens)} tokens`),
+          h('span', { className: styles.mini }, `约 ${formatTokens(s.onTokens)} token`),
           h('button', { className: styles.link, type: 'button', onClick: () => setPreviewOpen(true) }, '预览各模式结果'),
         ),
         h(
@@ -613,7 +613,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
         ),
       ),
 
-      h(DefaultBehaviorCard, { profile, patch }),
+      h(DefaultBehaviorCard, { profile, patch, askUser: snapshot.askUser }),
 
       h(SystemMessageCard, { profile, patch, patchBaseline, sections: snapshot.sections ?? [] }),
 

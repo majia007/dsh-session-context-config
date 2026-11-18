@@ -1,4 +1,5 @@
-import { CONTEXT_ORDER_FALLBACK, CONTEXT_ORDER_NAMES, DEFER, OFF, ON, PERSONA_ORDER_NAME, PERSONA_SECTION, PERSONA_SUFFIX_ORDER_NAME, PERSONA_SUFFIX_SECTION, SEARCH_TOOL_NAME, type ContextProfile } from './constants.ts'
+import { ASK_TOOL_NAME, CONTEXT_ORDER_FALLBACK, CONTEXT_ORDER_NAMES, DEFER, OFF, ON, PERSONA_ORDER_NAME, PERSONA_SECTION, PERSONA_SUFFIX_ORDER_NAME, PERSONA_SUFFIX_SECTION, SEARCH_TOOL_NAME, type ContextProfile } from './constants.ts'
+import { createAskShadowRuntime, type AskToolStatus } from './ask-shadow.ts'
 import type { StateStore } from './state-store.ts'
 import type { SessionKit } from './sessions.ts'
 import { effectiveState, placehold, serverOf, summaryFor, groupOf, type ToolDefinitionLike } from './tools.ts'
@@ -44,6 +45,8 @@ export interface ProfileRuntime {
   /** tool_search 工具定义(只在有延迟工具时由 syncToolSearch 注册)。 */
   searchTool: ToolDefinition<SearchResult>
   syncToolSearch(): void
+  /** ask_user_question 改写的可用性(参数结构是否仍与基线一致);面板据此禁用控件。 */
+  askStatus(): AskToolStatus
   applied: Map<string, AppliedEntry>
   /** 正在执行 applyTo(重入守卫:tools/change 自己触发的变更不再回环处理)。 */
   readonly isApplying: boolean
@@ -89,6 +92,7 @@ function personaText(text: string): string | ((scope?: PersonaScope) => string) 
 export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: SessionKit, note: (source: string, error: unknown) => void): ProfileRuntime {
   const applied = new Map<string, AppliedEntry>()
   const loadedByAgent = new WeakMap<object, Set<string>>()
+  const ask = createAskShadowRuntime(ctx, kit, note)
   let toolSearchDispose: (() => void) | null = null
   let applying = 0
 
@@ -195,6 +199,23 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
       }
 
       if (profile) {
+        // ask_user_question 的档位改写:在 agent 作用域注册同名工具遮蔽宿主/preset 那份。
+        // 参数结构与基线不符时 register 抛错——记诊断并跳过(面板同时会禁用该项)。
+        const askTimeout = profile.askUserTimeout
+        if (typeof askTimeout === 'number') {
+          if (plan.deferred.has(ASK_TOOL_NAME)) {
+            // 该档位把 ask_user_question 设为延迟:上面已注册的占位就在同一层,
+            // 再注册同名遮蔽会撞名;占位本身不承载等待改写,所以延迟优先、跳过。
+            note('ask shadow', new Error(`${ASK_TOOL_NAME} 在该档位被延迟加载,跳过等待改写`))
+          } else {
+            try {
+              const dispose = ask.register(agent, askTimeout)
+              if (typeof dispose === 'function') disposers.push(dispose)
+            } catch (error) {
+              note('ask shadow', error)
+            }
+          }
+        }
         // 人设两个固定槽位各自独立(prefix order 0 / suffix order 10200):
         // - enabled=false:该槽位注册空影子 = 不发送;
         // - enabled=true 且 override:用 text(空文本 = 不发送该槽位);
@@ -538,6 +559,7 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
     loadedNamesOf,
     searchTool,
     syncToolSearch,
+    askStatus: ask.status,
     applied,
     get isApplying() {
       return applying > 0
