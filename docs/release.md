@@ -44,12 +44,17 @@ npm pack --dry-run          # 只应有 package.json/README/LICENSE/cordis.patch
 
 **2FA 卡点**：npm 的 `otplease` 先判 `process.stdin.isTTY`，助手命令通道非 TTY → 直接跑 `npm publish` 必报 `EOTP` 并退出（只打出 `auth/cli` 与 `done?authId` 两行 URL，不开浏览器、不轮询，`--auth-type=web` 无效）。
 
-所以「发布」固定为：写发版脚本（`npm publish` → `npm view` 核对，末尾 `Read-Host` 留窗），用
-`Start-Process pwsh -ArgumentList '-NoExit','-File',<脚本>` 弹可见窗口，由用户在窗口里完成浏览器授权或输 OTP。
+所以「发布」固定为一条必须在可见终端里跑的 4 步链：
 
-- 先例脚本：`.tmp/publish-scc-1.3.0.ps1`（仓库根执行）。
+1. **预检凭据**：`npm whoami --registry=https://registry.npmjs.org/`；不通过就 `npm login --registry=https://registry.npmjs.org/`，登录后再探一次，**仍不过就中止，绝不带着坏凭据去 publish**。
+2. **查版本是否已存在**：读 registry 元数据（GET `https://registry.npmjs.org/@jia-tools%2Fdsh-session-context-config` 看 `versions`）。已在就跳过——同版本不可覆盖，重发只会 `E409`。
+3. **发布**：在包目录 `npm publish`（`prepack` / `prepare` 会重建产物）。
+4. **核对**：读同一份 registry 元数据的 `dist-tags` 与该版本的 `dist.fileCount`，再 `npm stage list` 看是否进了 stage。
+
+工作区里有现成实现：`../../_docs/scripts/publish-npm.ps1 <包目录…>`（本目录被单独 clone 时按上面四步自写）；它检测到输出被重定向（非 TTY）会自己 `Start-Process pwsh -NoExit -File` 弹窗口。
+
 - **不要向用户索要 6 位码，也不要用 `--otp` 代跑**。
-- 在包目录执行 `npm publish`（`prepack` / `prepare` 会重建产物）。
+- 失败先分诊再动手：`E404`（PUT 到 npmjs）多半是**未认证**（npmjs 对未登录方回 404 而非 401），先 `npm whoami`；`E409` 是同版本已发；`EOTP` 是没有 TTY。
 
 ## 6. 核对（先排除 stage 与缓存，再下结论）
 
