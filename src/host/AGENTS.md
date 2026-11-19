@@ -2,7 +2,7 @@
 
 本模块文档覆盖：`src/index.ts`（插件面与装配合成）、`src/host/**`（状态/解析/应用/路由/来源等）、`src/baseline.ts`（附加规则文本层）、`src/tool-guides.ts`（复合引导段成员表）、`src/types.ts`（宿主服务面声明）。
 
-跨模块约定、构建/安装/热重载/真机验证见根 [`AGENTS.md`](../AGENTS.md)，发版见 [`docs/release.md`](../../docs/release.md)；Client 半边见 [`../client/AGENTS.md`](../client/AGENTS.md)。本文只记 Host 侧读代码读不出的机制取舍与坑。
+跨模块约定、构建/安装/热重载/真机验证见根 [`AGENTS.md`](../AGENTS.md)；Client 半边见 [`../client/AGENTS.md`](../client/AGENTS.md)。本文只记 Host 侧读代码读不出的机制取舍与坑。
 
 ## 组件锚点
 

@@ -2,7 +2,7 @@
 
 本模块文档覆盖：`src/client/**`（`apply.ts` 槽位装配、`panel/` 配置面板、`menu/` 浮层与席位、`chips/` 两个切换入口、`state/` 数据层、`contract/` 跨域类型）。
 
-跨模块约定、构建/热重载见根 [`AGENTS.md`](../AGENTS.md)，发版见 [`docs/release.md`](../../docs/release.md)；Host 半边见 [`../host/AGENTS.md`](../host/AGENTS.md)；设计 token、控件几何与槽位源码地图见 [`docs/dsh-web-ui.md`](../../docs/dsh-web-ui.md)（根 `_docs/dsh-web-ui.md` 的同步副本）。本文只记 Client 侧读代码读不出的设计与坑。
+跨模块约定、构建/热重载见根 [`AGENTS.md`](../AGENTS.md)；Host 半边见 [`../host/AGENTS.md`](../host/AGENTS.md)；设计 token、控件几何与槽位源码地图见 [`docs/dsh-web-ui.md`](../../docs/dsh-web-ui.md)（根 `_docs/dsh-web-ui.md` 的同步副本）。本文只记 Client 侧读代码读不出的设计与坑。
 
 ## 组件锚点
 
