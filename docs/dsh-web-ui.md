@@ -178,7 +178,7 @@ node --check lib/client.js
 node scripts/smoke.mjs        # happy-dom 里渲染配置面板与两个 chip 并点击，断言结构与语义
 ```
 
-冒烟脚本覆盖不到像素，只断言结构与语义（seat 结构、`aria-checked`、勾只在选中行、配置面板的复选行/分段选择语义与 label 可点、头部菜单含状态块与确认块）。真相看截图：截 DSH 桌面窗口，对照 2.1/2.2/2.4/8 的几何自己比。**不要用系统级鼠标/键盘自动化去点 UI**（打断用户操作、留文字选中，验证价值不如一张截图）。桌面端默认不开放调试端口；以 `--remote-debugging-port=9202` 启动后可用 `use-chrome` 技能直连（本机实例即如此：`DevToolsActivePort` 可读、`/json/version` 可连），不带调试参数时退回截桌面窗口的图核对。真渲染验证脚本（读 checkout 主题表 + 容器规则渲 HTML、无头截图量残差）先例在 `dsh-model-efforts/scripts/preview-*.mjs`。token 查询通道：`cordis_inspect_query` 的 Client `Theme.listTokens` 可用；`Slots.listSubTree` 有 input 校验 bug（无论传什么都报 `"input" must be an object`），查槽位结构直接读宿主源码。
+冒烟脚本覆盖不到像素，只断言结构与语义（seat 结构、`aria-checked`、勾只在选中行、配置面板的复选行/分段选择语义与 label 可点、头部菜单含状态块与确认块）。真相看截图：截 DSH 桌面窗口，对照 2.1/2.2/2.4/8 的几何自己比。**不要用系统级鼠标/键盘自动化去点 UI**（打断用户操作、留文字选中）。真渲染验证脚本（读 checkout 主题表 + 容器规则渲 HTML、无头截图量残差）先例在 `dsh-model-efforts/scripts/preview-*.mjs`。token 查询通道：`cordis_inspect_query` 的 Client `Theme.listTokens` 可用；`Slots.listSubTree` 有 input 校验 bug（无论传什么都报 `"input" must be an object`），查槽位结构直接读宿主源码。
 
 查宿主源码时最省事的几条命令（`DSH_SRC` 换成你的源码路径）：
 

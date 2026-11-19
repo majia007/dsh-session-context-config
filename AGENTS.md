@@ -42,19 +42,15 @@ node scripts/harness.mjs
 
 **装到 profile**：`plugin_manager` 的 `install_bundle` 指向本目录。profile 里装成 `link:`，所以改文件即时生效、不需要重装。**client bundle 有自动热更**：桌面 boot 图里有 `@deepseek-ai/dsh-client-hmr`（HMR 事件走 `/plugins/events` SSE），Host 按固定间隔 stat-poll `lib/client.js` 的 mtime/ctime/size，变化即推 `rebuilt` 帧重挂该 entry——`pnpm build` 后约 1s 新前端自动出现，**不需要刷新或重启**（改动期间本插件的主面板会因 entry 重挂而关闭，重新打开即可）。**Host 侧不会自动更新**：Host HMR 的 chokidar watch 忽略 `**/node_modules`，link: 安装的源码目录不被 watch，`lib/index.js` 改动要走下面的 `set_plugin` 关→开或重启。**不要刷新页面**：刷新属未定义行为，会刷崩 DSH（偶尔能加载新 bundle）。崩溃恢复用错误对话框的「重启」（会重新 collect 快照），**不要点「禁用第三方插件、备份 profile patch 并重启」**（会停用全部第三方插件并改写 patch）。同版本重复安装会返回 `already-installed`，要更新得先 `remove_bundle` 再 `install_bundle`（或先改 `package.json` 的 version）。安装结果以返回里的 `application: applied` 为准。
 
-**Host 侧热重载（不重启 app）**：`plugin_manager` 的 `set_plugin` 对运行中的行执行关→开（`enabled:false` 再 `true`）；target 必须是 exact entryId `include:session-context-config`（用行 id 本身会得 `unknown-plugin`），返回 `application: applied` 且 `list_plugins` 里 fiberPhase 回 `active` 即新 Host 已加载。**Windows pnpm junction 坑**：link: 安装后 profile node_modules 里的 junction 目标可能被拼坏（`profileDir\D:\...`），bundle 解析报错；修法与验证脚本在 `../dsh-model-efforts/install-to-dsh.ps1`。不要手动往 profile 的 node_modules 拷文件，也不要改 profile 的 `package.json` / `cordis.patch.yml`。
-
-**看真实效果**：桌面端默认不开放调试端口；以 `--remote-debugging-port=9202` 启动后可用 `use-chrome` 技能直连（CDP 端口 9202，`node cdp.mjs eval/screenshot --port=9202`），比系统级鼠标/键盘自动化可靠。不带调试参数时退回截桌面窗口的图核对；**不要用系统级鼠标/键盘自动化**去点用户界面：会打断用户操作、留下文字选中，而且验证价值不如一次截图。
+**Host 侧热重载（不重启 app）**：`plugin_manager` 的 `set_plugin` 对运行中的行执行关→开（`enabled:false` 再 `true`）；target 必须是 exact entryId `include:session-context-config`（用行 id 本身会得 `unknown-plugin`），返回 `application: applied` 且 `list_plugins` 里 fiberPhase 回 `active` 即新 Host 已加载。**Windows pnpm junction 坑**：link: 安装后 profile node_modules 里的 junction 目标可能被拼坏（`profileDir\D:\...`），bundle 解析报错；先确认 junction 指向本目录再排查装载。不要手动往 profile 的 node_modules 拷文件，也不要改 profile 的 `package.json` / `cordis.patch.yml`。
 
 ## 发版
 
 **仅在用户明确要求发布时走**，本仓库只保三条纪律：
 
 - 平时不动 `package.json` 的 `version`；发版时按「修 bug 升 patch、加功能升 minor」，用户指定优先。
-- 发布目标由 `publishConfig.registry` 钉住（随包走），不要换成别的源——缺这个字段时 npm 会静默发到本机默认源。
+- 发布目标由 `publishConfig.registry` 钉住（随包走），不要换成别的源——缺这个字段时 npm 会按执行环境的默认 registry 发，目标不可控。
 - 不自行 `git push`、不自行 `npm publish`：改动先落到本地提交，要发版先问用户。
-
-环境与账号级步骤（凭据、2FA、registry、staged publishing）属工作区级约定，不在本插件文档里重复。
 
 ## 关键文件（全局）
 
@@ -62,7 +58,7 @@ node scripts/harness.mjs
 |---|---|
 | `package.json` | bundle 清单；`dsh.client` 段声明客户端注入（sidebar、layout），`exports` 决定宿主能取到哪些子路径；`publishConfig.registry` 钉住发布目标 |
 | `cordis.patch.yml` | 装载入口：只 insert 一行 `session-context-config` |
-| `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-workspace-sidebar/AGENTS.md`「与官方 preset 的偏差」） |
+| `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；复刻 client factory 形态、平台基线 externals 与 CSS Modules 注入） |
 | `tests/` | 直读 `src` 的单元测试：host 纯函数、附加规则快照、环境事实、不可信下载规则、v2/v3→v4 结构迁移、5 个默认预设、tool_search 自动注入/隐藏、附加规则按档位与子代理跟随、面板草稿兜底、人设开关/覆盖与占位符、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏、上下文开关/影子、`/api/state` 快照形状、注入消息分桶、工具来源解析、技能注入去重（`dedupe.test.mjs`）、发送顺序（`channels.test.mjs`）、默认行为开关默认值、会话是否套档位的决策（`session-decision.test.mjs`） |
 | `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 `lib/client.js`，喂假快照渲染面板与两个 chip 并点击；覆盖「+ 新建档位」悬停下拉与预设复制、默认行为卡四个开关（含 `ask_user_question` 等待改写行的秒数输入） |
 | `scripts/gen-known-tools.mjs` | 从 DSH checkout 的 `docs/tool-catalog.md` 生成 `src/host/known-tools.ts`（`DSH_SRC` 可覆盖 checkout 路径） |
@@ -108,7 +104,7 @@ Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 
 ## 排查会话记录（通道/档位是否生效）
 
-解码脚本在 `../dsh-session-bridge/scripts/read-session.mjs`（在该包跑 `npm run session -- --latest`，或 `--session session-<id>` / `--session <file>.zstd`）。它解码 `$DSH_HOME/sessions/**/session.v4.jsonl.zstd`，打印：session 头、该会话在 `session-context-config.json` 里的档位（prompt override、sections off、channels off、contexts off、baseline）、每个 step 的 system 文本长度、user 消息的 `source.kind`、`request/header` 的 tools 数量。
+解码 `$DSH_HOME/sessions/**/session.v4.jsonl.zstd`（多帧 zstd，切帧规则见下），打印：session 头、该会话在 `session-context-config.json` 里的档位（prompt override、sections off、channels off、contexts off、baseline）、每个 step 的 system 文本长度、user 消息的 `source.kind`、`request/header` 的 tools 数量。
 
 判读口径：
 
@@ -145,7 +141,7 @@ Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 - **坑条目格式**：一句话断言根因（高发的硬约束用 ⚠️），下写「症状→根因→正解（+验证指针）」。
 - **锚点三性**：新锚点必须可 grep、唯一、稳定（slot key、checkout 路径、错误码这类），写入前先验证。
 - **模块拆分**：模块局部内容（该模块的设计要点、坑库、流程、组件表）**出现即写进对应模块文档**，不等根文档膨胀；根只留所有任务都需要的内容。判据是「不动这个模块的任务，踩到这条会不会受伤」：会→根，不会→模块文档。模块按知识域归组，不与目录一一对应；本文件顶部索引表与模块文档双向一致（加/删/改名同步改行），索引表后保留「范围之外=无模块文档」的兜底声明。
-- **构建常驻、发版只留纪律**：构建/安装/热重载/真机验证是每次改码都要用的，**留根**；发版是低频且只在用户要求时走，本仓库只留「何时发、怎么记版本、不自行 push」三条纪律；环境与账号级步骤（凭据、2FA、registry、staged publishing）属工作区级，不进本插件文档。
+- **构建常驻、发版只留纪律**：构建/安装/热重载/真机验证是每次改码都要用的，**留根**；发版是低频且只在用户要求时走，本仓库只留「何时发、怎么记版本、不自行 push」三条纪律。
 - **README 与 AGENTS 分工**：README 面向使用者（能力、怎么开、数据格式、接口）；根 AGENTS 面向开发（跨模块约定、构建与安装、危险区、诊断入口）；模块文档面向单模块改造；docs 面向按步骤执行的低频操作。新机制先写对应模块文档；只有使用者会直接接触的行为、配置或接口才写 README，且 README 不展开内部判据（如 `deriveMessages` 的 surface 语义）。
 - **质量自检**：改完过「新会话 5 分钟测试」——只读文档能否 (a) 完成构建与安装 (b) 找到改动落点对应的文档 (c) 说出全局危险区 (d) 知道怎么验证。再抽查 3 个反引号锚点能 grep 命中、3 个文档指针目标存在；已拆分时检查索引表每行指向存在的文件、每个模块文档都在索引里、所有任务都需要的警告仍在根。
 - **拿不准**：先核实（读代码、查 DSH 源码、问用户），核实后仍无依据才不记。
