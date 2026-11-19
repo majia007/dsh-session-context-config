@@ -41,14 +41,14 @@
 }
 
 .checkLabel {
-  font-size: var(--dsh-plugin-fs-13, 13px);
-  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-13, 13px);
+  line-height: calc(20px + var(--cp-font-boost, 0px));
   color: var(--dsw-alias-label-primary);
 }
 
 .checkDesc {
-  font-size: var(--dsh-plugin-fs-12, 12px);
-  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-12, 12px);
+  line-height: calc(18px + var(--cp-font-boost, 0px));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
 }
 
@@ -78,15 +78,15 @@
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  font-size: var(--dsh-plugin-fs-12, 12px);
-  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-12, 12px);
+  line-height: calc(18px + var(--cp-font-boost, 0px));
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
   white-space: nowrap;
 }
 
 .menuNote {
   margin-left: auto;
-  font-size: var(--dsh-plugin-fs-12, 12px);
+  font-size: var(--cp-fs-12, 12px);
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   overflow: hidden;
   text-overflow: ellipsis;
@@ -123,14 +123,14 @@
 }
 
 .rowName {
-  font-size: var(--dsh-plugin-fs-13, 13px);
-  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-13, 13px);
+  line-height: calc(20px + var(--cp-font-boost, 0px));
   color: var(--dsw-alias-label-primary);
 }
 
 .rowDesc {
-  font-size: var(--dsh-plugin-fs-12, 12px);
-  line-height: calc(16px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-12, 12px);
+  line-height: calc(16px + var(--cp-font-boost, 0px));
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   white-space: normal;
 }
@@ -138,8 +138,8 @@
 .rowCount {
   flex: none;
   margin-top: 1px;
-  font-size: var(--dsh-plugin-fs-11, 11px);
-  line-height: calc(18px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-11, 11px);
+  line-height: calc(18px + var(--cp-font-boost, 0px));
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   font-variant-numeric: tabular-nums;
 }
@@ -180,7 +180,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--dsh-plugin-fs-12, 12px);
+  font-size: var(--cp-fs-12, 12px);
   padding: 2px 0;
 }
 
@@ -206,7 +206,7 @@
 
 .statusRow .nm {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--dsh-plugin-fs-12, 12px);
+  font-size: var(--cp-fs-12, 12px);
 }
 
 .statusRow .st {
@@ -215,7 +215,7 @@
 }
 
 .mini {
-  font-size: var(--dsh-plugin-fs-12, 12px);
+  font-size: var(--cp-fs-12, 12px);
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -233,8 +233,8 @@
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: var(--dsh-plugin-fs-14, 14px);
-  line-height: calc(22px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-14, 14px);
+  line-height: calc(22px + var(--cp-font-boost, 0px));
   cursor: pointer;
 }
 
@@ -272,8 +272,8 @@
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: var(--dsh-plugin-fs-13, 13px);
-  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-13, 13px);
+  line-height: calc(20px + var(--cp-font-boost, 0px));
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -303,8 +303,8 @@
 
 .seatCount {
   flex: none;
-  font-size: var(--dsh-plugin-fs-12, 12px);
-  line-height: calc(20px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-12, 12px);
+  line-height: calc(20px + var(--cp-font-boost, 0px));
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-secondary));
   font-variant-numeric: tabular-nums;
 }
@@ -325,8 +325,8 @@
   padding: 0 4px 0 2px;
   border-radius: var(--dsw-radius-xs, 4px);
   background: var(--dsw-alias-fill-tsp-secondary);
-  font-size: var(--dsh-plugin-fs-12, 12px);
-  line-height: calc(22px + var(--dsh-plugin-font-boost, 0px));
+  font-size: var(--cp-fs-12, 12px);
+  line-height: calc(22px + var(--cp-font-boost, 0px));
   font-weight: 400;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -337,7 +337,7 @@
 }
 
 .seat[data-compact="1"] .seatCount {
-  line-height: calc(22px + var(--dsh-plugin-font-boost, 0px));
+  line-height: calc(22px + var(--cp-font-boost, 0px));
 }
 
 /* 新会话行把插件选项推到行尾(宿主 .heroOptions 带 margin-left:auto)。

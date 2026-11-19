@@ -6,4 +6,7 @@
  * 装配在 apply.ts(唯一跨域装配点);域目录:state(数据与解析)/ menu(浮层与席位
  * 原语)/ panel(配置面板)/ chips(hero 与会话头部 chip)/ contract(域间类型)。
  */
+// 共享字号变量块(生成文件,勿手改):两张样式表的 --cp-fs-* 由它提供。
+import './tokens.module.css'
+
 export { apply, inject } from './apply.ts'

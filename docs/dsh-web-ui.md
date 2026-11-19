@@ -43,27 +43,32 @@
 
 ## 2. 控件几何（抄自宿主，用来对齐观感）
 
-> 表里的字号 / 行高是**标准档（界面字号 14–15px）的设计值**，且是宿主抄写值。代码里小字号只有四档，按信息层级取：**11** = 角标/计数/代码片段/标签胶囊，**12** = 辅助说明与元信息（描述、提示、状态行、工具名、分组标题、时间），**13** = 正文与行标题，**14** = 输入框与按钮文字；原先 10px 的并入 11 或 12，不再出现 10px。实现一律写 `font-size: var(--dsh-plugin-fs-N, Npx)`、行高写 `calc(Npx + var(--dsh-plugin-font-boost, 0px))`，16px 以上的标题用 `calc(16px + var(--dsh-plugin-font-boost, 0px))`。变量定义集中在 `panel.module.css` 顶部的 `body` 规则，`menu.module.css` 共用同一份（同一 bundle 一起注入）；规则原文与理由见下面 2.0。
+> 表里的字号 / 行高是**标准档（界面字号 14–15px）的设计值**，且是宿主抄写值。代码里小字号只有四档，按信息层级取：**11** = 角标/计数/代码片段/标签胶囊，**12** = 辅助说明与元信息（描述、提示、状态行、工具名、分组标题、时间），**13** = 正文与行标题，**14** = 输入框与按钮文字；原先 10px 的并入 11 或 12，不再出现 10px。实现一律写 `font-size: var(--<前缀>-fs-N, Npx)`、行高写 `calc(Npx + var(--<前缀>-font-boost, 0px))`，16px 以上的标题用 `calc(16px + var(--<前缀>-font-boost, 0px))`。变量块是**生成文件** `src/client/tokens.module.css`（规范源在根仓 `_shared/css/tokens.css`，同步时按包加前缀）；规则原文与理由见下面 2.0。
 
 ### 2.0 字号响应（全插件统一）
 
-字号随设置里的界面字号 `--dsh-content-font-size`（标准 14px）缩放。14/15px 用各控件的设计字号；用户调到更小，用户字号是上限（允许低于 11/12 的设计下限）；调到更大，按 `max(0, 用户字号 - 15px)` 的增量上调。实现统一走 `body` 上的共享变量（**每个插件一份**，贴在该插件主 CSS 顶部；同插件的多个 CSS 文件共用这一份、同一 bundle 一起注入，值必须一致）：
+字号随设置里的界面字号 `--dsh-content-font-size`（标准 14px）缩放。14/15px 用各控件的设计字号；用户调到更小，用户字号是上限（允许低于 11/12 的设计下限）；调到更大，按 `max(0, 用户字号 - 15px)` 的增量上调。
+
+**变量块是生成文件，不要手写进插件的 CSS**：规范源在根仓 `_shared/css/tokens.css`（**不带前缀**，块内自洽），同步脚本按 `_shared/manifest.json` 里的每包前缀生成 `src/client/tokens.module.css`，随包提交。规范源长相如下（下面以 `dsh-me` 为例，其它包把自己的前缀替换进去；生成文件的变量名形如 `--<前缀>-font-boost` / `--<前缀>-fs-11..14`）：
 
 ```css
 body {
-  --dsh-plugin-font-boost: max(0px, calc(var(--dsh-content-font-size, 14px) - 15px));
-  --dsh-plugin-fs-11: min(var(--dsh-content-font-size, 14px), calc(11px + var(--dsh-plugin-font-boost)));
-  --dsh-plugin-fs-12: min(var(--dsh-content-font-size, 14px), calc(12px + var(--dsh-plugin-font-boost)));
-  --dsh-plugin-fs-13: min(var(--dsh-content-font-size, 14px), calc(13px + var(--dsh-plugin-font-boost)));
-  --dsh-plugin-fs-14: min(var(--dsh-content-font-size, 14px), calc(14px + var(--dsh-plugin-font-boost)));
+  --dsh-me-font-boost: max(0px, calc(var(--dsh-content-font-size, 14px) - 15px));
+  --dsh-me-fs-11: min(var(--dsh-content-font-size, 14px), calc(11px + var(--dsh-me-font-boost)));
+  --dsh-me-fs-12: min(var(--dsh-content-font-size, 14px), calc(12px + var(--dsh-me-font-boost)));
+  --dsh-me-fs-13: min(var(--dsh-content-font-size, 14px), calc(13px + var(--dsh-me-font-boost)));
+  --dsh-me-fs-14: min(var(--dsh-content-font-size, 14px), calc(14px + var(--dsh-me-font-boost)));
 }
 ```
 
+**为什么必须带前缀**：这些变量定义在 `body` 上，落在全局命名空间；多个插件写同名属性时按 `<style>` 出现顺序后者赢，且所有消费方读同一个值——插件发布时间错峰时，升级一方会改掉另一方的界面。
+
 - **小字号只有四档**（11/12/13/14），按**信息层级**选档，不照抄宿主某个控件的 px：**11** = 角标 / 计数 / 代码片段 / 标签胶囊；**12** = 辅助说明与元信息（描述、提示、状态行、工具名、分组标题、时间）；**13** = 正文与行标题；**14** = 输入框与按钮文字。原先 10px 的一律并入 11 或 12，不再出现 10px。
-- 11–14px 文本一律 `font-size: var(--dsh-plugin-fs-N, Npx)`（N 取上面四档之一），不要写死。16px 及以上的标题/触屏输入用 `calc(16px + var(--dsh-plugin-font-boost, 0px))`（结构字号，不参与小字号收缩）。
-- 固定 `line-height` 同步 `calc(Npx + var(--dsh-plugin-font-boost, 0px))`；正文已经用 `--dsh-content-font-delta` 的行高不要重复加。
+- 11–14px 文本一律 `font-size: var(--<前缀>-fs-N, Npx)`（N 取上面四档之一），不要写死。16px 及以上的标题/触屏输入用 `calc(16px + var(--<前缀>-font-boost, 0px))`（结构字号，不参与小字号收缩）。
+- 固定 `line-height` 同步 `calc(Npx + var(--<前缀>-font-boost, 0px))`；正文已经用 `--dsh-content-font-delta` 的行高不要重复加。
 - 下面的几何速查表记的是**宿主抄写值**（13/20、12/22、11/15），都是 14/15px 标准档的设计值；本仓库插件按四档归并，个别控件因此与宿主差 1px（如分组标题行宿主 11/15 → 插件 12/18）。以「同一层级同一档」为先，不为逐像素一致退回写死 px。
-- `happy-dom` 不解析 `min()`（会把 `min(12px,14px)` 算成 16px）；只用它做结构断言的测试要显式把 `--dsh-plugin-fs-*` 覆盖成设计值（先例：`dsh-session-context-config/scripts/smoke.mjs`）。
+- ⚠️ **漏前缀不报错、不崩，只会静默回退到设计值（字号不缩放）**——这是共享变量方案唯一的陷阱，由每包 `tests/shared-vendored.test.mjs` 的三道门禁兜住（哈希、CSS 变量前缀、产物里的变量名）。
+- `happy-dom` 不解析 `min()`（会把 `min(12px,14px)` 算成 16px）；只用它做结构断言的测试要显式把 `--<前缀>-fs-*` 覆盖成设计值（先例：`dsh-session-context-config/scripts/smoke.mjs`）。
 
 ### 2.1 触发器 chip —— 对应宿主的 `.workspace`（工作区）与 `.seat`（模式）
 

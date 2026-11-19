@@ -1,0 +1,22 @@
+/* generated from _shared/css/tokens.css@0fee0d8ae8cfabb70cd72e33615085ceccafcc486bc341e8bf1c22831cd31eb4 — do not edit */
+/*
+ * 插件字号变量块(规范源)。同步脚本给每个变量名加上本包前缀后写进各子包。
+ *
+ * 口径:字号随设置里的界面字号缩放——14/15px 用设计值,更小以用户字号为上限,更大按
+ * 正文增量上调。四档按信息层级取:11 = 角标/计数/代码片段/标签胶囊;12 = 辅助说明与
+ * 元信息;13 = 正文与行标题;14 = 输入框/按钮文字。
+ *
+ * 为什么定义在 body 上还要带前缀:这些变量落在全局命名空间,多个插件写同名属性按
+ * <style> 出现顺序后者赢,所有消费方读的都是同一个值;插件发布时间错峰时,升级一方会
+ * 改掉另一方的界面。前缀让每个插件只碰自己那份。
+ *
+ * 消费方一律写 var(--PREFIX-fs-12, 12px) 与 calc(16px + var(--PREFIX-font-boost, 0px));
+ * 漏掉前缀不报错、不崩,只会静默回退到设计值(字号不缩放)——这是本方案唯一的陷阱。
+ */
+body {
+  --cp-font-boost: max(0px, calc(var(--dsh-content-font-size, 14px) - 15px));
+  --cp-fs-11: min(var(--dsh-content-font-size, 14px), calc(11px + var(--cp-font-boost)));
+  --cp-fs-12: min(var(--dsh-content-font-size, 14px), calc(12px + var(--cp-font-boost)));
+  --cp-fs-13: min(var(--dsh-content-font-size, 14px), calc(13px + var(--cp-font-boost)));
+  --cp-fs-14: min(var(--dsh-content-font-size, 14px), calc(14px + var(--cp-font-boost)));
+}

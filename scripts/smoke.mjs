@@ -48,9 +48,9 @@ const ReactDOMTestUtils = require('react-dom/test-utils')
 const act = React.act ?? ReactDOMTestUtils.act
 
 // happy-dom 不解析 min();把共享字号变量钉在 14px 标准档的设计值上,
-// 让 12/13px 的 computed 断言仍然可读。
+// 让 12/13px 的 computed 断言仍然可读。变量名带本包前缀(cp),与生成文件 tokens.module.css 一致。
 for (const px of [11, 12, 13, 14]) {
-  win.document.body.style.setProperty(`--dsh-plugin-fs-${px}`, `${px}px`)
+  win.document.body.style.setProperty(`--cp-fs-${px}`, `${px}px`)
 }
 
 /* ── 假数据：两个档位、十五个工具（超过可视行数，验证不截断）、一个空白会话 ── */

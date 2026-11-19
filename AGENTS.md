@@ -17,6 +17,18 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 范围之外（`build/`、`scripts/`、`tests/`、包根清单）没有模块文档，知识都在本文档与「文档目录」列出的 docs。
 
+## 共享基础设施（vendored 副本）
+
+三份**生成文件**（全仓一份规范源，同步渲染后随包提交；勿手改——同步会覆盖，门禁会失败）：
+
+| 文件 | 作用 |
+|---|---|
+| `build/preset-kernel.mjs` | 构建 preset 的稳定内核；`build/preset.mjs` 只写本包差异（`cp-` 前缀、单表即注） |
+| `src/host/connection-fence.ts` | connection 信任栅栏（路由的 `guard()` 包一层 `fenceRequest`，回退 403） |
+| `src/client/tokens.module.css` | 共享字号变量块，按 `cp-` 前缀生成 |
+
+`tests/shared-vendored.test.mjs` 是配套门禁：头行 `@<sha256>` = 正文（LF 归一）内容哈希；CSS 里禁止 `--dsh-plugin-*` 与裸 `--fs-*` / `--font-boost`；`lib/client.js` 里只允许带 `cp-` 前缀的名字。门禁读 `lib/` 产物，`pnpm test` 前先 `pnpm build`。
+
 ## 构建、安装与验证
 
 构建形态（TS + tsdown）：`pnpm build` 产出 `lib/index.js`（Host 单文件）、`lib/client.js`（浏览器 factory bundle，CSS Modules 编译进产物）、`lib/types/**`；`lib/` **禁止入 git**（`.gitignore` 已忽略，需要时 `pnpm build`；测试/smoke 加载的就是它，克隆/清理后先 build）。

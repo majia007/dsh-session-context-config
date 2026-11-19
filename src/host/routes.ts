@@ -1,5 +1,6 @@
 import { CHANNELS, DEFAULT_PROFILES, DEFER, OFF, ON, SEARCH_TOOL_NAME, VERSION, type ContextProfile } from './constants.ts'
 import { createCatalog } from './catalog.ts'
+import { fenceRequest } from './connection-fence.ts'
 import { collectInjected, type InjectedChannel, type InjectedMessages } from './injected.ts'
 import { effectiveState, groupOf, serverOf } from './tools.ts'
 import { messageOf, normalizeState, recordSession, statePath, type PluginState } from './state.ts'
@@ -90,60 +91,18 @@ function sendJson(response: HttpResponse, status: number, value: unknown): void 
   response.end(body)
 }
 
-/**
- * 回退校验(宿主没有 connection 服务时):只认回环 Host。IPv6 的 Host 是
- * “[[::1]]:port” 形态,剥端口要先找 ']',直接 split(':') 会切出 '['。
- */
-function loopbackOnly(request: HttpRequest): boolean {
-  const raw = String(request.headers.host ?? '').toLowerCase()
-  const host = raw.startsWith('[') ? raw.slice(0, raw.indexOf(']') + 1) : raw.split(':')[0]
-  return !raw || ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host)
-}
-
 export function createRoutes(deps: RoutesDeps): RoutesRuntime {
   const { ctx, store, kit, profiles, sources, translations, injected, note, diagnostics } = deps
   const catalog = createCatalog(ctx, note, sources)
 
   /**
-   * 信任栅栏:宿主 webServer 对直接 register 的路由不做任何认证,官方做法是
-   * 借 connection 服务的 Host/Origin/浏览器会话检查(open-in-app 同款)。拿得到
-   * 就完全以它为准(它也放行受信的非回环 Host,如 dsh web --host 局域网场景),
-   * 拿不到才退回 loopbackOnly。
+   * 信任栅栏:宿主 webServer 对直接 register 的路由不做任何认证,每个 handler 先过这层
+   * (connection 服务的 Host/Origin/浏览器会话检查;拿不到该服务才回退回环 Host)。
+   * 判定实现在 `src/host/connection-fence.ts`(生成文件,全仓一份规范源)。
+   * @returns true = 放行(`fenceRequest` 的返回值是「已拒绝」,这里取反)。
    */
   function guard(request: HttpRequest, response: HttpResponse): boolean {
-    // connection 不在 inject 名单里,不能按属性取:Cordis 对未声明服务的属性访问会直接抛
-    // `cannot get property "connection" without inject`;ctx.get 在缺失时返回 undefined。
-    let fence: {
-      /** 请求准入:rc.1 起返回 `{ peer }` 或 `{ rejection }`(master 只保留它)。 */
-      admit?: (request: HttpRequest) => { readonly rejection?: number }
-      requestRejection?: (request: HttpRequest) => number | undefined
-    } | undefined
-    try {
-      fence = ctx.get('connection') as typeof fence
-    } catch (error) {
-      note('connection', error)
-      fence = undefined
-    }
-    // 准入统一走 admit(rc.1→master 都有);老构建只有 requestRejection,作兜底。
-    const admission = fence?.admit?.(request)
-    if (admission !== undefined) {
-      if (admission.rejection === undefined) return true
-      sendJson(response, admission.rejection, { ok: false, error: 'rejected' })
-      return false
-    }
-    if (typeof fence?.requestRejection === 'function') {
-      const rejection = fence.requestRejection(request)
-      if (rejection !== undefined) {
-        sendJson(response, rejection, { ok: false, error: 'rejected' })
-        return false
-      }
-      return true
-    }
-    if (!loopbackOnly(request)) {
-      sendJson(response, 403, { ok: false, error: 'loopback only' })
-      return false
-    }
-    return true
+    return !fenceRequest(ctx, request, response, note)
   }
 
   /** 该根会话当前生效的 preset 名;拿不到返回 null(目录去重与 live 列表共用)。 */

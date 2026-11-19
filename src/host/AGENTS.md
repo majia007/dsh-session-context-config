@@ -27,7 +27,8 @@
 | `src/host/catalog.ts` | agent preset 目录枚举（15s 缓存）+ 每个工具附来源标注（把整批工具交给 `sources.ts` 解析） |
 | `src/host/sources.ts` | 工具来源解析：`tools.register` 拦截 + 调用栈定位包名、官方工具目录、入口产物扫描、MCP 命名约定；`/api/state` 的 `sources` 是它的诊断自报告 |
 | `src/host/known-tools.ts` | **生成文件**：DSH 官方「工具名 → 提供包」，来自 checkout 的 `docs/tool-catalog.md`；宿主升级后重跑 `pnpm gen-known-tools` |
-| `src/host/routes.ts` | 五条 HTTP 路由（state/session/preview/assemble/translate，connection 栅栏 + loopback 回退）与快照/预览；快照带 `defaults`（当前插件版本的内置预设模板），`promptCatalog` 干跑装配返回段/上下文正文，`observedChannels` 按档位汇总注入消息 |
+| `src/host/routes.ts` | 五条 HTTP 路由（state/session/preview/assemble/translate，信任栅栏在生成的 `connection-fence.ts`）与快照/预览；快照带 `defaults`（当前插件版本的内置预设模板），`promptCatalog` 干跑装配返回段/上下文正文，`observedChannels` 按档位汇总注入消息 |
+| `src/host/connection-fence.ts` | **生成文件**：connection 信任栅栏（两代准入 + 回环回退），全仓一份规范源，勿手改 |
 | `src/host/injected.ts` | 注入消息清单：`agent/pre-step` 观察 + 会话历史聚合，**按档位分桶**，按 `source.kind` 记次数与最新正文（供面板按 kind 开关） |
 | `src/tool-guides.ts` | 复合 `tool:*` 引导段的别名组与成员表（jobs/goal/schedule/session-query），成员全隐藏才隐藏 |
 

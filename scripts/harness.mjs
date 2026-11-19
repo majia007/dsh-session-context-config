@@ -54,6 +54,6 @@ const heroFace = registrations.get('conversation.hero.options').options.inject('
 assert.equal(heroFace.sessionId, 's-live', 'hero 槽位的 inject face 要提供当前会话 id')
 const mainFace = registrations.get('main').options.inject()
 assert.equal(typeof mainFace.closePanel, 'function')
-assert.ok(appended.length >= 2 && appended.every((css) => css.includes('.cp-')), '两个 module.css 的样式都要注入')
+assert.ok(appended.length >= 3 && appended.every((css) => css.includes('.cp-') || css.includes('--cp-')), '三份 module.css(menu + panel + tokens)的样式都要注入')
 
 console.log('harness: lib/client.js 离线激活 OK(id=%s, 槽位 %d 个, 样式 %d 份)', captured.id, registrations.size, appended.length)
