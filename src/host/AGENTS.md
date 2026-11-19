@@ -116,7 +116,7 @@
 > 正解：**强绑定工具状态，不单独配置**。`host/tools.ts` 的 `hiddenToolGuide` 在同一 assemble 过滤器里按工具/组终态裁掉；复合段走 `tool-guides.ts` 的别名组与成员表（`jobs`/`goal`/`schedule`/`session-query`），成员全隐藏才隐藏，`defer` 不算隐藏。**判定必须统一交给 `effectiveState`，不要先用「组 = OFF」短路**：工具级 `force` 能把成员提回注入，先短路会得到「工具在、引导段没了」的不一致（回归 `tests/host.test.mjs` 的 force 用例）。
 > 验证：`tests/host.test.mjs`（组/单工具/复合/延迟）、`tests/sections.test.mjs`（terminal 隐藏时 pwsh/jobs 被移除、read 保留）、`scripts/smoke.mjs`（工具段不出现在可配置列表）。
 
-- **webServer 路由不自带鉴权**：宿主 webServer 对直接 `register` 的路由不做任何认证/Origin 检查，每个 handler 必须先过 `ctx.connection` 的 `requestRejection`（官方 open-in-app 同款）；宿主无 connection 服务才回退回环 Host 校验。POST 另要求 `application/json`，掐掉 text/plain 简单请求的跨站提交。
+- **webServer 路由不自带鉴权**：宿主 webServer 对直接 `register` 的路由不替插件做业务判定，每个 handler 必须先过 `ctx.connection` 的 `admit`（rc.1 起就有；master 删除 `requestRejection` 后只剩它，插件保留其兜底分支）；宿主无 connection 服务才回退回环 Host 校验。POST 另要求 `application/json`，掐掉 text/plain 简单请求的跨站提交。
 - **宿主服务方法解构后再调用会丢 `this`**：`const acquire = registry.acquireScope; await acquire(id)` 把方法从服务对象上摘了下来，当前宿主实现内部用 `this.retain`，严格模式下 `this` 为 `undefined`；目录枚举又是软失败（catch 后记诊断继续），症状只表现为「配置面板的工具区整块没了、`tools: 0`」。正解：始终 `registry.acquireScope(id)` 原样调用；租约释放优先 `Symbol.asyncDispose`，同时兜住 `.dispose()`。回归 `tests/catalog.test.mjs`。
 - **未 inject 的服务不能用属性访问**：`Reflect.get(ctx, 'connection')` 与 `ctx.connection` 一样会触发 Cordis 的注入检查，`connection` 是可选的、不在 `inject` 名单里，配置页会打不开（`cannot get property "connection" without inject`）。正解：可选服务一律走 `ctx.get(name)`（缺失返回 `undefined`），方法先判存在。验证：`Invoke-WebRequest http://127.0.0.1:<port>/session-context-config/api/state` 应得到 **401**（栅栏拒绝），而不是 400 的注入错误。
 

@@ -113,12 +113,23 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
   function guard(request: HttpRequest, response: HttpResponse): boolean {
     // connection 不在 inject 名单里,不能按属性取:Cordis 对未声明服务的属性访问会直接抛
     // `cannot get property "connection" without inject`;ctx.get 在缺失时返回 undefined。
-    let fence: { requestRejection?: (request: HttpRequest) => number | undefined } | undefined
+    let fence: {
+      /** 请求准入:rc.1 起返回 `{ peer }` 或 `{ rejection }`(master 只保留它)。 */
+      admit?: (request: HttpRequest) => { readonly rejection?: number }
+      requestRejection?: (request: HttpRequest) => number | undefined
+    } | undefined
     try {
       fence = ctx.get('connection') as typeof fence
     } catch (error) {
       note('connection', error)
       fence = undefined
+    }
+    // 准入统一走 admit(rc.1→master 都有);老构建只有 requestRejection,作兜底。
+    const admission = fence?.admit?.(request)
+    if (admission !== undefined) {
+      if (admission.rejection === undefined) return true
+      sendJson(response, admission.rejection, { ok: false, error: 'rejected' })
+      return false
     }
     if (typeof fence?.requestRejection === 'function') {
       const rejection = fence.requestRejection(request)

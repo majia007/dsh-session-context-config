@@ -145,6 +145,11 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
    * `restrictableNames` 恰好只含继承层:注册在本作用域里的东西(延迟占位)不在其中。
    * 因此它还能回答「占位背后是否还有真实实现」——`definitionsOf` 里本作用域的影子会让
    * 该名字永远可见,看不出真实实现已经卸载。
+   *
+   * ⚠️ 宿主把 `tools.view()` 标成 TS `private`(rc.5 与 master 一致),运行时方法仍在。
+   * 公开面 `definitions()` 拿不到 `restrictableNames`,没有等价替代;此处按「依赖私有
+   * 成员」处理:两处都判空 + try/catch,宿主改成 `#view` 或改名时降级为 undefined
+   * (planFor 按「拿不到继承层名单」走),不会崩。宿主升级后按 checkout 复核这个入口。
    */
   function inheritedNames(agent: AgentLike): Set<string> | null {
     try {
