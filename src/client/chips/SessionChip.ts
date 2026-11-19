@@ -38,6 +38,15 @@ export function SessionChip(props: ChipProps): ReactElement | null {
 
   if (!picker.snapshot || !picker.sessionId) return null
 
+  // 旧 Host 的快照不带 applied:缺字段时按「已套用」显示,与旧行为一致。
+  const applied = status?.applied !== false
+  // 档位名与勾选以 /api/session 的实时状态为准:整页共享的快照可能是本会话创建之前
+  // 取的(新建/ fork 的会话在旧快照的 sessions、live 里都没有),那时回落 lastUsedId
+  // 会把别的档位名挂到本会话上(实测 fork 后显示「Chat」,而实际生效的是「完整」)。
+  const statusProfileId = typeof status?.profileId === 'string' ? status.profileId : null
+  const selectedId = statusProfileId ?? picker.currentId
+  const selected = picker.snapshot.profiles.find((item) => item.id === selectedId) ?? null
+
   return h(
     Fragment,
     null,
@@ -46,8 +55,8 @@ export function SessionChip(props: ChipProps): ReactElement | null {
       compact: true,
       open: picker.open,
       onClick: () => picker.setOpen(!picker.open),
-      title: '本会话的工具档位',
-      label: picker.current?.name ?? '不处理',
+      title: applied ? '本会话的工具档位' : '本会话未套用档位：工具按模式原样注入',
+      label: selected?.name ?? '不处理',
       count: status ? status.tools.filter((tool) => tool.state === ON).length : null,
     }),
     picker.open
@@ -64,13 +73,21 @@ export function SessionChip(props: ChipProps): ReactElement | null {
             ? h(
                 'div',
                 { className: menuStyles.status },
-                h(
-                  'div',
-                  { className: menuStyles.statusRow },
-                  h('span', null, `开启 ${status.tools.filter((tool) => tool.state === ON).length}`),
-                  h('span', null, `延迟 ${status.tools.filter((tool) => tool.state === DEFER).length}`),
-                  h('span', null, `关闭 ${status.tools.filter((tool) => tool.state === 'off').length}`),
-                ),
+                // 未套用档位时不列「开启/延迟/关闭」:那三组数字统计的是已应用的 plan,
+                // 未应用的会话恒显示「全开启」,读起来像某个档位真的生效了。
+                applied
+                  ? h(
+                      'div',
+                      { className: menuStyles.statusRow },
+                      h('span', null, `开启 ${status.tools.filter((tool) => tool.state === ON).length}`),
+                      h('span', null, `延迟 ${status.tools.filter((tool) => tool.state === DEFER).length}`),
+                      h('span', null, `关闭 ${status.tools.filter((tool) => tool.state === 'off').length}`),
+                    )
+                  : h(
+                      'div',
+                      { className: menuStyles.statusRow },
+                      h('span', null, status.blank ? '尚未开始 · 选中档位后从第一条消息起生效' : '未套用档位 · 工具按模式原样注入'),
+                    ),
                 // 全部工具都进清单,区域高度固定、里面自己滚——不靠截断。
                 h(
                   'div',
@@ -81,7 +98,13 @@ export function SessionChip(props: ChipProps): ReactElement | null {
                       { className: menuStyles.statusRow, key: tool.name },
                       h('span', { className: menuStyles.sw, 'data-s': tool.state }),
                       h('span', { className: menuStyles.nm }, tool.name),
-                      h('span', { className: menuStyles.st }, tool.state === DEFER && tool.loaded ? '延迟 · 已取定义' : STATE_LABEL[tool.state]),
+                      h(
+                        'span',
+                        { className: menuStyles.st },
+                        applied
+                          ? tool.state === DEFER && tool.loaded ? '延迟 · 已取定义' : STATE_LABEL[tool.state]
+                          : '原样',
+                      ),
                     ),
                   ),
                 ),
@@ -91,7 +114,7 @@ export function SessionChip(props: ChipProps): ReactElement | null {
           ...picker.chips.map((chip) =>
             h(MenuRow, {
               key: chip.id,
-              selected: chip.id === picker.currentId,
+              selected: chip.id === selectedId,
               name: chip.name,
               desc: chip.desc,
               count: chip.stats ? chip.stats.on + chip.stats.defer : null,

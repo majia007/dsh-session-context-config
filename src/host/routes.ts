@@ -307,6 +307,8 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         preset,
         blank: kit.isBlank(agent),
         profileId: entry?.profileId ?? (sessionId ? state.sessions[sessionId] : undefined) ?? null,
+        // 档位真的作用在这个会话上才为 true:有 applied 条目、且不是显式的「不处理」。
+        applied: entry !== undefined && entry.profileId !== 'none',
         deferred: entry?.plan?.deferred?.size ?? 0,
         hidden: entry?.plan?.hidden?.length ?? 0,
         loaded: profiles.loadedNamesOf(agent).size,
@@ -410,8 +412,10 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         const sessionId = url.searchParams.get('id') ?? ''
         const agent = kit.agentFor(sessionId)
         if (!agent) return sendJson(response, 404, { ok: false, error: 'session not live' })
-        const recorded = store.state.sessions[sessionId] ?? store.state.lastUsedId
         const entry = profiles.applied.get(sessionId)
+        // 不回落 lastUsedId:那是「新会话会用的默认档位」,拿它当本会话的档位会把
+        // 「本插件没处理这个会话」显示成一个生效中的档位。applied 才是事实来源。
+        const recorded = store.state.sessions[sessionId] ?? null
         const deferred = entry?.plan?.deferred ?? new Map()
         const hidden = new Set(entry?.plan?.hidden ?? [])
         const loaded = profiles.loadedNamesOf(agent)
@@ -427,7 +431,8 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         return sendJson(response, 200, {
           ok: true,
           sessionId,
-          profileId: recorded,
+          profileId: entry?.profileId ?? recorded,
+          applied: entry !== undefined && entry.profileId !== 'none',
           blank: kit.isBlank(agent),
           tools,
         })

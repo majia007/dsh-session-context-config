@@ -15,6 +15,12 @@ export interface AgentLike {
     header?: Record<string, unknown> | null
     /** 即将发送的历史(只走 surface 派生);技能注入去重按它判定。老宿主可能没有。 */
     deriveMessages?: () => unknown
+    /** fork 继承前缀的事件条数(seeded 会话);fork 认亲按它切前缀。老宿主可能没有。 */
+    inheritedEventCount?: unknown
+    /** 按 seq 读一个日志事件;fork 认亲逐条比对 seq|type|time。老宿主可能没有。 */
+    eventAt?: (seq: number) => unknown
+    /** 日志快照(eventAt 不可用时的回退)。老宿主可能没有。 */
+    snapshotEvents?: () => unknown[]
   } | null
   ctx?: AgentContext | null
 }

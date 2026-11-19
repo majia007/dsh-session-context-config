@@ -96,7 +96,28 @@ function harness() {
     note: (source, error) => diagnostics.push({ source, error: String(error) }),
     diagnostics,
   })
-  return { routes, diagnostics, agent }
+  return { routes, diagnostics, agent, state, profiles }
+}
+
+/** 直接调 /api/session 的 GET:假 request/response,走回环 Host 的信任栅栏。 */
+async function sessionStatus(routes, id) {
+  const request = {
+    method: 'GET',
+    url: `http://127.0.0.1:29697/session-context-config/api/session?id=${encodeURIComponent(id)}`,
+    headers: { host: '127.0.0.1:29697' },
+  }
+  const response = {
+    status: 0,
+    body: '',
+    writeHead(status) {
+      this.status = status
+    },
+    end(body) {
+      this.body = String(body ?? '')
+    },
+  }
+  await routes.handleSession(request, response)
+  return { status: response.status, body: JSON.parse(response.body) }
 }
 
 test('snapshot:内置预设来自当前插件版本,不是已安装档位', async () => {
@@ -262,4 +283,33 @@ test('preview:tool_search 不进档位作用面,清单与 total 都不列它', (
   assert.deepEqual(preview.deferred, ['mcp__srv__call'])
   assert.deepEqual(preview.visible, ['read'])
   assert.equal(preview.hidden.includes('tool_search'), false)
+})
+
+test('session 状态:未套用档位的会话不回落 lastUsedId', async () => {
+  const { routes, state, profiles } = harness()
+  const applied = await sessionStatus(routes, 's1')
+  assert.equal(applied.status, 200)
+  assert.equal(applied.body.profileId, 'full')
+  assert.equal(applied.body.applied, true)
+
+  // 模拟宿主 fork:没有会话记录、也没有 applied 条目(插件装载前就在跑)。
+  delete state.sessions.s1
+  profiles.applied.delete('s1')
+  const untouched = await sessionStatus(routes, 's1')
+  assert.equal(untouched.body.profileId, null, '不能把 lastUsedId 冒充成本会话的档位')
+  assert.equal(untouched.body.applied, false)
+  // 未套用时一个工具都不处在隐藏/延迟态(否则就是拿别的会话的 plan 在汇报)。
+  assert.deepEqual(untouched.body.tools.map((tool) => tool.state), ['on', 'on'])
+})
+
+test('snapshot:live 用 applied 区分「套了档位」与「只是有记录」', async () => {
+  const { routes, profiles } = harness()
+  const applied = (await routes.snapshot()).live[0]
+  assert.equal(applied.profileId, 'full')
+  assert.equal(applied.applied, true)
+
+  profiles.applied.delete('s1')
+  const recordedOnly = (await routes.snapshot()).live[0]
+  assert.equal(recordedOnly.profileId, 'full', '记录仍在:它说明用户选过什么')
+  assert.equal(recordedOnly.applied, false, '没有 applied 条目 = 实际上没套')
 })

@@ -59,7 +59,7 @@ node scripts/harness.mjs
 | `package.json` | bundle 清单；`dsh.client` 段声明客户端注入（sidebar、layout），`exports` 决定宿主能取到哪些子路径；`publishConfig.registry` 钉住发布目标 |
 | `cordis.patch.yml` | 装载入口：只 insert 一行 `session-context-config` |
 | `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；偏差清单见 `../dsh-workspace-sidebar/AGENTS.md`「与官方 preset 的偏差」） |
-| `tests/` | 直读 `src` 的单元测试：host 纯函数、附加规则快照、环境事实、不可信下载规则、v2/v3→v4 结构迁移、5 个默认预设、tool_search 自动注入/隐藏、附加规则按档位与子代理跟随、面板草稿兜底、人设开关/覆盖与占位符、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏、上下文开关/影子、`/api/state` 快照形状、注入消息分桶、工具来源解析、技能注入去重（`dedupe.test.mjs`）、发送顺序（`channels.test.mjs`）、默认行为开关默认值 |
+| `tests/` | 直读 `src` 的单元测试：host 纯函数、附加规则快照、环境事实、不可信下载规则、v2/v3→v4 结构迁移、5 个默认预设、tool_search 自动注入/隐藏、附加规则按档位与子代理跟随、面板草稿兜底、人设开关/覆盖与占位符、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏、上下文开关/影子、`/api/state` 快照形状、注入消息分桶、工具来源解析、技能注入去重（`dedupe.test.mjs`）、发送顺序（`channels.test.mjs`）、默认行为开关默认值、会话是否套档位的决策（`session-decision.test.mjs`） |
 | `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 `lib/client.js`，喂假快照渲染面板与两个 chip 并点击；覆盖「+ 新建档位」悬停下拉与预设复制、默认行为卡四个开关（含 `ask_user_question` 等待改写行的秒数输入） |
 | `scripts/gen-known-tools.mjs` | 从 DSH checkout 的 `docs/tool-catalog.md` 生成 `src/host/known-tools.ts`（`DSH_SRC` 可覆盖 checkout 路径） |
 | `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 `lib/client.js`，验 id/槽位注册/样式注入/inject face |
@@ -122,6 +122,7 @@ Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 - 系统段顺序由宿主 `order` 固定，面板只能包含/排除，不能改先后。
 - 工作区指令只能整组关：宿主已把同一批 AGENTS.md/CLAUDE.md 拼成一条 `<system-reminder>`，无法按文件过滤；要排除某类文件名只能在部署级配 `instructionFileCandidates` / `maxBytes`。
 - 新建下拉的模板是当前插件版本的 `defaults`；复制结果在面板草稿里是 `custom-*`，保存前不写 state。
+- fork 的来源是**按日志内容认的**：宿主 fork 不写 `parentSession`（会话头只有 `isSeeded`），插件用「继承前缀指纹」（前 `inheritedEventCount` 个事件的 `seq|type|time`）先在活会话里找，再按最新优先回读最多 6 条已结束会话（600ms 预算）。来源日志已被清理/迁移失败、或超出回查范围时认不出来，该 fork 记「不处理」，需要在 chip 上手动选一次。
 - 工具来源只能回溯「本插件装载后」的注册：装载前就注册、又不在官方目录/入口产物里的工具显示「未识别」；官方静态表随 checkout 生成，宿主升级后要重跑 `pnpm gen-known-tools`。
 
 ## 文档目录

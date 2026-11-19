@@ -69,6 +69,8 @@ export interface LiveSession {
   preset: string | null
   blank: boolean
   profileId: string | null
+  /** 档位是否真的作用在本会话上;旧 Host 不返回该字段时按 true 处理。 */
+  applied: boolean
   deferred: number
   hidden: number
   loaded: number
@@ -149,7 +151,10 @@ export interface AskToolStatus {
 export interface SessionStatus {
   ok: boolean
   sessionId: string
-  profileId: string
+  /** 本插件对这个会话的记录(可能是 'none');旧 Host 会回落 lastUsedId。 */
+  profileId: string | null
+  /** 档位是否真的作用在本会话上;旧 Host 不返回该字段时按 true 处理。 */
+  applied: boolean
   blank: boolean
   tools: Array<{ name: string; group: string; server: string | null; state: string; loaded: boolean }>
 }

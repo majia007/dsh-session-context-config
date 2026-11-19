@@ -19,6 +19,7 @@ import { BASELINE_SECTION_NAME, baselineSections, type BaselineFlags } from './b
 import { createBaselineRuntime } from './host/baseline-runtime.ts'
 import { CHANNELS, LEADING_CONTEXT_KINDS, OFF, PERSONA_SECTION, PERSONA_SUFFIX_SECTION } from './host/constants.ts'
 import { createEnvironmentRuntime } from './host/environment.ts'
+import { createForkInheritance } from './host/fork-inherit.ts'
 import { createInjectedMessages } from './host/injected.ts'
 import { createProfileRuntime } from './host/profiles.ts'
 import { ROUTES, createRoutes } from './host/routes.ts'
@@ -59,6 +60,14 @@ export function apply(ctx: HostContext): void {
   const store = createStateStore(note)
   const kit = createSessionKit(ctx, note)
   const profiles = createProfileRuntime(ctx, store, kit, note)
+  // fork 认亲:宿主不写来源会话 id,只能按继承前缀的日志指纹反查(见 host/fork-inherit.ts)。
+  const forkInheritance = createForkInheritance({
+    ctx,
+    kit,
+    recordedProfile: (sessionId) => profiles.applied.get(sessionId)?.profileId ?? store.state.sessions[sessionId] ?? null,
+    recordedIds: () => Object.keys(store.state.sessions),
+    note,
+  })
   const baseline = createBaselineRuntime(ctx, store, kit, profiles, note)
   const environment = createEnvironmentRuntime(ctx, kit, note)
   const translations = createTranslationRuntime(ctx, note)
@@ -111,7 +120,7 @@ export function apply(ctx: HostContext): void {
     }
   })
 
-  ctx.on('agent/created', (...args: never[]) => {
+  ctx.on('agent/created', async (...args: never[]) => {
     try {
       const payload = args[0] as { agent?: AgentLike } | undefined
       const agent = payload?.agent as AgentLike
@@ -127,7 +136,22 @@ export function apply(ctx: HostContext): void {
         profiles.applyTo(agent, recorded)
         return
       }
-      if (!kit.isBlank(agent)) return
+      if (!kit.isBlank(agent)) {
+        // 不是新会话:fork 先按继承前缀找回来源会话的档位(见 host/fork-inherit.ts);
+        // 不是 fork、或来源已不可读时显式记成「不处理」——留空会让客户端回落到
+        // lastUsedId 冒充它的档位(实测 fork 后 chip 写着「完整」,而该会话一条延迟
+        // 占位都没有)。记录之后 UI 直接标「未套用」,由用户自己点一下切换。
+        const inherited = await forkInheritance.inheritedProfile(agent)
+        // 来源记录的档位可能已经被删掉(用户删了自定义档位):认不出这个 id 就按
+        // 「不处理」——记一个不存在的档位会让 applyTo 给出空 plan,而 UI 却显示那个名字。
+        const profileId = inherited === null
+          ? 'none'
+          : inherited === 'none' || profiles.profileById(inherited) !== null ? inherited : 'none'
+        profiles.applyTo(agent, profileId)
+        recordSession(store.state, sessionId, profileId)
+        store.persistSoon()
+        return
+      }
       profiles.applyTo(agent, store.state.lastUsedId)
       recordSession(store.state, sessionId, store.state.lastUsedId)
       store.persistSoon()

@@ -631,6 +631,32 @@ check('选项行完整', headerRows.length === 3)
 await click(headerRows.find((row) => row.querySelector('.cp-rowName')?.textContent === '精简'))
 check('点档位后出现确认块', lastMenu()?.textContent?.includes('确认切换？') === true)
 
+console.log('\n[session header] 档位名以实时状态为准')
+// 快照整页共享:本会话若在快照之后创建,sessions 里就没有它。此时标签必须跟
+// /api/session 的实时 profileId 走,不能回落 lastUsedId(实测 fork 后显示「Chat」,
+// 而实际生效的是「完整」)。
+const savedSessions = snapshot.sessions
+snapshot.sessions = {}
+sessionState.profileId = 'lean'
+const headerStale = await mount('conversation.session.header.actions')
+const staleLabel = headerStale.querySelector('button.cp-seat .cp-seatLabel')?.textContent
+check('快照缺本会话时标签取实时 profileId', staleLabel === '精简', staleLabel)
+snapshot.sessions = savedSessions
+delete sessionState.profileId
+
+console.log('\n[session header] 未套用档位')
+// 未套用(applied=false + 非空白):弹层首行换成一句状态说明,逐行工具标「原样」,
+// 不能再打印「开启/延迟/关闭」那组会被读成「某个档位生效了」的数字。
+sessionState.applied = false
+sessionState.blank = false
+const headerUntouched = await mount('conversation.session.header.actions')
+await click(headerUntouched.querySelector('button.cp-seat'))
+const untouchedMenu = lastMenu()
+const untouchedRows = [...(untouchedMenu?.querySelectorAll('.cp-statusRow') ?? [])]
+const untouchedCells = untouchedRows.slice(1).map((row) => row.querySelector('.cp-st')?.textContent)
+check('未套用:首行是状态说明而不是三态数字', untouchedRows[0]?.textContent?.includes('未套用档位') === true, untouchedRows[0]?.textContent)
+check('未套用:每个工具都标「原样」', untouchedCells.length === tools.length && untouchedCells.every((text) => text === '原样'), untouchedCells.join(','))
+
 check('只拉取了快照接口', fetches.every((url) => url.startsWith('/session-context-config/api/')))
 
 if (failures.length > 0) {
