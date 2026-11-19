@@ -37,7 +37,7 @@ export function usePicker(props: ChipProps, options?: { fallbackBlank?: boolean 
   const currentId = recorded ?? (untouched ? NONE : snapshot?.lastUsedId ?? NONE)
   const current = snapshot?.profiles?.find((item) => item.id === currentId) ?? null
 
-  // 快照是整页共享的(store 为空时才拉一次):本会话若在快照之后才创建,
+  // 快照是整页共享的(store 为空时、或打开配置面板时才重读):本会话若在快照之后才创建,
   // sessions / live 里都没有它,上面的回落就会把 lastUsedId 当成它的档位。
   // 这里按会话补拉一次(明确不相干时不拉,避免每轮都重算整份快照)。
   const covered = snapshot === null || sessionId === null || recorded !== null || live !== null

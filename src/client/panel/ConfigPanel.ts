@@ -183,6 +183,16 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     })
   }, [snapshot, draft, anchor])
 
+  // 打开面板先重读一次:工具目录、段、上下文与注入消息都由宿主动态生成,而 store 里的
+  // 快照可能是很久以前挂载留下的(不轮询、chip 也不刷新)——不重读就会出现「工具表里
+  // 明明有、面板里没有」。槽位是 keyed 的,每次打开都是一次新挂载,所以挂在 mount 上即可;
+  // 在途请求由 store 单飞复用,首次打开不会打两份;刷新失败保留旧快照,只在脚注提示。
+  useEffect(() => {
+    loadSnapshot().catch((cause: unknown) => {
+      setStatus(`重新读取失败：${(cause as Error).message || String(cause)}`)
+    })
+  }, [])
+
   const profile = useMemo(
     () => draft?.profiles?.find((item) => item.id === selectedId) ?? null,
     [draft, selectedId],
@@ -349,7 +359,7 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const reload = useCallback(async () => {
     setBusy(true)
     try {
-      const fresh = await loadSnapshot(true)
+      const fresh = await loadSnapshot()
       const next = draftOf(fresh)
       setAnchor(JSON.stringify(next))
       setDraft(next)

@@ -43,8 +43,12 @@ export async function request<T>(url: string, options?: { method?: string; body?
   return parsed as T & { ok: boolean; snapshot?: Snapshot }
 }
 
-export function loadSnapshot(force?: boolean): Promise<Snapshot> {
-  if (store.inflight && !force) return store.inflight
+/**
+ * 读一次快照。**单飞**:已有在途请求就直接复用它——在途请求本身就带着最新数据,
+ * 再发一份只会让两个响应的到达顺序决定 store 里留下哪一份(旧响应覆盖新响应)。
+ */
+export function loadSnapshot(): Promise<Snapshot> {
+  if (store.inflight) return store.inflight
   store.inflight = request<Snapshot>(API_STATE)
     .then((snapshot) => {
       store.snapshot = snapshot
@@ -54,7 +58,9 @@ export function loadSnapshot(force?: boolean): Promise<Snapshot> {
       return snapshot
     })
     .catch((error: unknown) => {
-      store.error = (error as Error).message || String(error)
+      // 已经有快照时这只是一次刷新失败:旧数据还能用,由调用方提示,不能把整个面板
+      // 换成错误卡;没有快照才是「从来没读到过」,那才进错误态。
+      if (!store.snapshot) store.error = (error as Error).message || String(error)
       store.inflight = null
       emit()
       throw error

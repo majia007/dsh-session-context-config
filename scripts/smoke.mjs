@@ -657,6 +657,18 @@ const untouchedCells = untouchedRows.slice(1).map((row) => row.querySelector('.c
 check('未套用:首行是状态说明而不是三态数字', untouchedRows[0]?.textContent?.includes('未套用档位') === true, untouchedRows[0]?.textContent)
 check('未套用:每个工具都标「原样」', untouchedCells.length === tools.length && untouchedCells.every((text) => text === '原样'), untouchedCells.join(','))
 
+// 打开面板即重读:快照里的工具目录是宿主动态生成的,不能停在页面早期那份旧数据上。
+// 给假快照追加一个新注册的 MCP 工具后挂一个新面板,断言它直接出现(不再需要手点「重新读取」)。
+console.log('\n[panel] 打开即重读快照')
+const storedTools = snapshot.tools
+snapshot.tools = [...storedTools, { name: 'mcp__fresh__ping', description: 'Freshly registered MCP tool.', group: 'mcp', server: 'fresh', chars: 40, tokens: 20 }]
+const panelRefresh = await mount('main')
+const refreshedServers = [...panelRefresh.querySelectorAll('.cp-serverRow .cp-srv')].map((el) => el.textContent)
+check('打开面板即重读快照（新出现的 MCP server 直接列出）', refreshedServers.includes('fresh'), refreshedServers.join('/'))
+// store 是整页共享的:重读结果也会推给已经挂着的面板(chip 同理)。
+check('重读结果经共享 store 同步到已挂载的面板', [...panel.querySelectorAll('.cp-serverRow .cp-srv')].map((el) => el.textContent).includes('fresh'))
+snapshot.tools = storedTools
+
 check('只拉取了快照接口', fetches.every((url) => url.startsWith('/session-context-config/api/')))
 
 if (failures.length > 0) {
