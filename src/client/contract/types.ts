@@ -55,6 +55,8 @@ export interface Profile {
   injectedFirst?: boolean
   /** 是否对 skill 工具结果去重;缺省 false=宿主原样。 */
   dedupeSkillToolResults?: boolean
+  /** 是否跳过已完整 read 过的同内容工作区指令;缺省 false=宿主原样。 */
+  dedupeReadInstructions?: boolean
   /** ask_user_question 等待改写:-1 关闭超时,N>0 秒数;缺省(或非法值)= 不介入,保持宿主行为。 */
   askUserTimeout?: number
   groups: Record<string, string>

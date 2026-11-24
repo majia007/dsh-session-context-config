@@ -130,6 +130,7 @@ test('默认预设：Pi 只注入六个核心工具，其余全部关闭', () =>
   for (const profile of DEFAULT_PROFILES) {
     assert.equal(profile.injectedFirst, false, `${profile.id} 默认不调整发送顺序`)
     assert.equal(profile.dedupeSkillToolResults, false, `${profile.id} 默认不去重 skill 工具结果`)
+    assert.equal(profile.dedupeReadInstructions, false, `${profile.id} 默认不跳过已读工作区指令`)
     assert.equal(profile.askUserTimeout, undefined, `${profile.id} 默认不改写 ask_user_question`)
   }
 })

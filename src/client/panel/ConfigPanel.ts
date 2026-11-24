@@ -14,7 +14,9 @@ import { GROUP_STATES, GROUP_STATE_HINT, CHANNEL_CARDS } from './options.ts'
 import { ChannelCard, DefaultBehaviorCard, ObservedMessagesCard, SectionHeading, SnapshotCard, SystemMessageCard } from './cards.ts'
 import { DEFAULT_BASELINE, draftOf, type PanelDraft } from './draft.ts'
 import { stateTag, toolRow } from './group-cards.ts'
+import { ProfileTabs } from './ProfileTabs.ts'
 import { PreviewDialog } from './PreviewDialog.ts'
+import { useStuck } from './sticky.ts'
 import styles from './panel.module.css'
 import menuStyles from '../menu/menu.module.css'
 
@@ -74,6 +76,7 @@ function allOnProfile(id: string, name: string): Profile {
     injectDuplicateSkills: true,
     injectedFirst: false,
     dedupeSkillToolResults: false,
+    dedupeReadInstructions: false,
     groups: {},
     servers: {},
     tools: {},
@@ -162,6 +165,11 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const presetCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 悬停下拉读的是宿主快照里的当前插件内置预设,不是 state.profiles 里的已安装档位。
   const defaultPresets = snapshot?.defaults ?? []
+  // 吸顶检测读实时矩形:回调 ref 把元素放进 state,面板从错误/加载态切成正文时元素
+  // 换了一棵子树,effect 会因此重新挂上。
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
+  const [barEl, setBarEl] = useState<HTMLElement | null>(null)
+  const stuck = useStuck(scrollEl, barEl)
 
   useEffect(() => () => {
     if (presetCloseTimer.current) clearTimeout(presetCloseTimer.current)
@@ -293,6 +301,11 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     cancelPresetClose()
     setPresetMenuOpen(false)
   }, [cancelPresetClose])
+
+  // 吸顶后「+ 新建档位 / 删除当前」整组收起:预设下拉要一起关掉,不能挂在不可见的锚点上。
+  useEffect(() => {
+    if (stuck) setPresetMenuOpen(false)
+  }, [stuck])
 
   const openPresetMenu = useCallback(() => {
     if (defaultPresets.length === 0) return
@@ -491,24 +504,18 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     h(PanelHead, { closePanel: props?.closePanel }),
     h(
       'div',
-      { className: styles.scroll },
+      { className: styles.scroll, ref: setScrollEl },
       h(
-        'section',
-        { className: styles.card },
+        'div',
+        {
+          className: styles.profileBar,
+          'data-stuck': stuck ? '1' : undefined,
+          ref: setBarEl,
+        },
         h(
           'div',
           { className: styles.chipRow },
-          h(
-            'div',
-            { className: styles.segWrap },
-            h(SegmentedControl, {
-              id: 'scc-profile',
-              value: profile.id,
-              options: draft.profiles.map((item) => ({ value: item.id, label: item.name })),
-              onChange: setSelectedId,
-              label: '档位',
-            }),
-          ),
+          h(ProfileTabs, { profiles: draft.profiles, value: profile.id, onSelect: setSelectedId }),
           h(
             'div',
             {
@@ -569,6 +576,10 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
           ),
           h('button', { className: styles.link, type: 'button', onClick: removeProfile, disabled: draft.profiles.length <= 1 }, '删除当前'),
         ),
+      ),
+      h(
+        'section',
+        { className: styles.card },
         h(
           'div',
           { className: styles.field },

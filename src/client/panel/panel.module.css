@@ -92,6 +92,80 @@
   padding: 14px 16px;
 }
 
+/* ── 档位 tab 栏吸顶 ─────────────────────────────────────────────────────── */
+
+/* 档位 tab 那一行不套卡片,直接当工具栏钉在滚动区顶上:配置页很长,切档位不该先滚回
+   顶部。sticky 的活动范围限于自己的包含块,所以 tab 必须与下面的「名称/描述」卡分开成
+   独立元素,不能和它们挤在同一张卡里。 */
+.profileBar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  /* 不套卡片、也不铺底色:遮挡挂在页签轨道上(见 .profileTabs 的柔光),正文从页签后面
+     滑过去、在轨道周围淡出,读起来是页签浮在正文上,而不是被一条白带整块切断。 */
+  padding: 0;
+}
+
+/* 吸顶时只留 tab:同一行里的新建/删除入口收起(行高由页签决定,收起不改变行高,
+   吸顶瞬间不带位移)。 */
+.profileBar[data-stuck='1'] .chipRow > :not(.profileTabs) {
+  display: none;
+}
+
+/* 档位页签:几何抄 dsh-skill-mcp-command-manager 的页签行(与宿主 SegmentedTabs 的
+   sm 档同口径)——轨道 2px 内距 + 30px 段,选中片抬成 bg-layer-3 并补 0.5px 描边。
+   页签多的档位横向滚动兜底,不把行撑破。 */
+.profileTabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: calc(var(--dsw-radius-md, 8px) + 2px);
+  background: var(--dsw-alias-bg-module-platform, color-mix(in srgb, CanvasText 6%, transparent));
+  /* 遮挡靠这一圈页面底色柔光:轨道自带底色,柔光只在轨道外侧可见,把从后面滑过去的
+     正文在轨道周围淡出去——既分开层级(悬浮),又不把整条正文带切断。 */
+  box-shadow: 0 0 10px 10px var(--dsw-alias-bg-base);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.profileTab {
+  appearance: none;
+  border: 0.5px solid transparent;
+  box-sizing: border-box;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 16px;
+  border-radius: var(--dsw-radius-md, 8px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, GrayText);
+  font-family: inherit;
+  font-size: var(--cp-fs-13, 13px);
+  line-height: calc(20px + var(--cp-font-boost, 0px));
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.profileTab:hover {
+  color: var(--dsw-alias-label-primary, CanvasText);
+}
+
+.profileTabActive {
+  background: var(--dsw-alias-bg-layer-3, Canvas);
+  border-color: var(--dsw-alias-border-l3, color-mix(in srgb, CanvasText 12%, transparent));
+  color: var(--dsw-alias-label-primary, CanvasText);
+  font-weight: 600;
+}
+
+.profileTab:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
 .cardTitle {
   margin: 0 0 10px;
   font-size: var(--cp-fs-13, 13px);
@@ -103,14 +177,6 @@
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-}
-
-/* 档位行用宿主 SegmentedControl(ui-primitives):等宽网格 + nowrap 不换行,
-   极端长档位名/档位过多时横向滚动兜底(会裁掉组件自身的 soft 阴影,可接受)。 */
-.segWrap {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
 }
 
 .link {

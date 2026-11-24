@@ -60,6 +60,12 @@ export interface ContextProfile {
   /** 是否对 `skill` 工具结果去重:默认 false = 宿主原样;true 时同一份正文已在可见历史里就只回一行提示。 */
   dedupeSkillToolResults: boolean
   /**
+   * 是否跳过「已完整 read 过的同一份工作区指令」的再次注入:默认 false = 宿主原样;
+   * true 时 pre-step 过滤器剔除与已读内容摘要相同的 `Additional instructions from:`
+   * (文件改动后的 Updated 与删除通知保留)。
+   */
+  dedupeReadInstructions: boolean
+  /**
    * `ask_user_question` 的档位改写(缺省 = 不介入,保持宿主 legacy 行为):
    * - `-1`:关闭超时,无限期等待;卡片仍带调用 id(断线后保留、草稿不丢、提交失败可见)。
    * - `N > 0`:前台等待 N 秒,到点工具返回 pending(不是跳过),问题仍可回答。
@@ -262,6 +268,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     injectDuplicateSkills: true,
     injectedFirst: false,
     dedupeSkillToolResults: false,
+    dedupeReadInstructions: false,
     groups: { workflow: DEFER, goal: DEFER, schedule: DEFER, mcp: DEFER, devtools: DEFER, other: DEFER },
     servers: {},
     tools: {},
@@ -279,6 +286,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     injectDuplicateSkills: true,
     injectedFirst: false,
     dedupeSkillToolResults: false,
+    dedupeReadInstructions: false,
     groups: { workflow: OFF, goal: OFF, schedule: OFF, mcp: DEFER, devtools: OFF, other: DEFER },
     servers: {},
     tools: {},
@@ -298,6 +306,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     injectDuplicateSkills: true,
     injectedFirst: false,
     dedupeSkillToolResults: false,
+    dedupeReadInstructions: false,
     groups: {
       interaction: OFF,
       skill: OFF,
@@ -333,6 +342,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     injectDuplicateSkills: true,
     injectedFirst: false,
     dedupeSkillToolResults: false,
+    dedupeReadInstructions: false,
     sections: {
       'harness:source': false,
       'app:web-surface': false,
@@ -391,6 +401,7 @@ export const DEFAULT_PROFILES: ContextProfile[] = [
     injectDuplicateSkills: false,
     injectedFirst: false,
     dedupeSkillToolResults: false,
+    dedupeReadInstructions: false,
     groups: {
       // 参考 Pi 的精简默认：六个核心工具（工具级 force）之外一律「关闭」——不进
       // tools 数组、不占位、tool_search 也加载不到；唯独 MCP 组保持「延迟」，

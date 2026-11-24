@@ -34,6 +34,7 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
   injectDuplicateSkills: true,                              // 可选：注入重复触发的 skill；false = 同一份正文不再重复注入
   injectedFirst: false,                                     // 可选：注入消息排到用户消息之前（默认保持宿主顺序）
   dedupeSkillToolResults: false,                            // 可选：skill 工具结果去重（默认宿主原样）
+  dedupeReadInstructions: false,                            // 可选：跳过已完整 read 过的同内容 AGENTS.md 再注入（默认宿主原样）
   summaries: { mcp: '…' }                                   // 兼容保留：面板不再编辑，Host 仍按它生成延迟占位摘要
 }
 ```
@@ -210,13 +211,14 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 ## DSH 默认行为改写
 
-配置页顶部的「DSH 默认行为」卡里是四个**改写宿主默认行为**的开关：开启 = 由本插件介入，关闭 = 保持宿主原样。都属于档位配置，只作用于当前档位的根会话，子代理不套用。
+配置页顶部的「DSH 默认行为」卡里是五个**改写宿主默认行为**的开关：开启 = 由本插件介入，关闭 = 保持宿主原样。都属于档位配置，只作用于当前档位的根会话，子代理不套用。
 
 | 开关 | 档位字段 | 默认 | 开启后 |
 |---|---|---|---|
 | 注入消息前置 | `injectedFirst` | 关闭 | 工作区指令、运行时快照、技能目录这三类起始上下文排到用户消息之前，跨会话时能共享前缀缓存 |
 | 用户 /技能名 注入去重 | `injectDuplicateSkills: false` | 关闭（注入） | 同一份技能正文已在可见历史里时，跳过这次手势注入 |
 | skill 工具结果去重 | `dedupeSkillToolResults` | 关闭（原样） | 模型调 skill 工具时同正文已在可见历史里，工具结果只回一行「已加载」提示 |
+| 已读工作区指令去重 | `dedupeReadInstructions` | 关闭（原样） | 模型已用 read 完整读过的 AGENTS.md，宿主后续文件触碰再注入同一份内容时跳过；文件改动后的更新与删除通知仍保留 |
 | 调整 ask_user_question 超时时间 | `askUserTimeout` | 不介入（宿主原样） | 开启后由本插件接管等待：秒数框留空 = 无限期等待（timeout -1，卡片带调用 id），填 N = N 秒后返回 pending |
 
 ### 注入消息前置（injectedFirst）
@@ -244,6 +246,15 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 - 判定同样看「将要发送的历史」（`deriveMessages`），被压缩掉之后重新加载仍拿完整正文。
 - 只替换正文，不动技能定义、工具 schema 与工具名；技能未知或加载失败时原样报错。
 - 实现上监听宿主的 `tools/post-execute`，只在「结果被接受、正文未被别的插件改写」时替换正文；**不碰工具注册**（在 agent 作用域重注册同名 `skill` 会让宿主判定技能工具不可见，连技能目录一起消失）。拿不到可见历史、结果是错误或判定抛错时保持宿主原样。
+
+### 已读工作区指令去重（dedupeReadInstructions）
+
+宿主的 `agent-instructions` 会在文件触碰（read/write/edit）后，把被触碰文件目录链上的 `AGENTS.md` 以「Additional instructions from」再注入一次。模型刚用 `read` 完整读过同一份全文时，这次注入就是纯重复。开启后：
+
+- 只删 `Additional instructions from:` 这一种 section，且要求「路径 + 内容摘要」都一致：read 之后文件被改过时摘要不同，注入保留——旧 read 已过时，不能吞掉新指令。
+- 文件的更新通知（`Updated instructions from:`）与删除通知（`Instructions removed:`）永远保留。
+- 「完整读取」= read 从第 1 行读到最后一行、没有行内截断；用 offset/limit 只读了一段不算。
+- 记录只在本进程内、按会话保存；重启桌面或恢复会话后需要重新读过才生效。只作用于根会话（子代理自己的 read 不记录，因为它的结果不在父会话历史里）。
 
 ### 调整 ask_user_question 超时时间（askUserTimeout）
 
@@ -310,7 +321,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 | 缓存 | 加载只追加历史，不重建前缀 |
 | 上下文逐项开关 | 只关 `harness:source` 时，`contexts`/`refreshedContexts` 无该段、其余仍在；关 `working-directory:current` 时两者都无 cwd；环境事实开启时 180 字符（真机） |
 | system 段逐项开关 | 单测 + 冒烟：关 `harness:identity` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单；`tool:*` 随工具/组隐藏自动移除，不出现在可配置列表 |
-| 配置页结构 | 冒烟：按消息六张卡（默认行为/系统提示词/快照/工作区指令/时间采样/其他注入消息）；默认行为卡三条 `role="switch"`；人设 checkbox + 输入框；快照已知 8 项 + 动态发现项；两条通道各一行 checkbox + 说明；自动清单每行 checkbox 可按 kind 关闭；各行 `title` 给出注入正文 |
+| 配置页结构 | 冒烟：按消息六张卡（默认行为/系统提示词/快照/工作区指令/时间采样/其他注入消息）；默认行为卡五条 `role="switch"`；人设 checkbox + 输入框；快照已知 8 项 + 动态发现项；两条通道各一行 checkbox + 说明；自动清单每行 checkbox 可按 kind 关闭；各行 `title` 给出注入正文 |
 | 新建档位下拉 | 真机 + 冒烟：悬停列出 full/lean/minimal/chat/pi；选中 Pi 复制为 `custom-*`，面板显示默认工具（不含 `tool_search`，它由插件自动管理）、MCP 工具延迟；保存前状态文件与 `lastUsedId` 不变 |
 | 通道过滤顺序 | 会话 `session-f6a33b8a…` 真机实证：Chat 档 channels 全 off、tools=0、system 为空，但仍漏一条 `time-context` user 消息。根因是 preset 的 `prepend` 监听器晚于全局过滤器注册、反包住过滤器；修复为 `agent/created` 时按 agent 再注册（回归 `tests/channels.test.mjs`） |
 | 客户端 | bundle 已进 boot graph |

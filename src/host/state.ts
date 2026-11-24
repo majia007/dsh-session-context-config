@@ -168,6 +168,8 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
     injectedFirst?: unknown
     /** 是否对 skill 工具结果去重;缺省=false(宿主原样)。 */
     dedupeSkillToolResults?: unknown
+    /** 是否跳过已完整 read 过的同内容工作区指令;缺省=false(宿主原样)。 */
+    dedupeReadInstructions?: unknown
     /** ask_user_question 等待改写:-1 关闭超时,N>0 秒数;缺省=不介入。 */
     askUserTimeout?: unknown
     /** 旧字段(语义相反):dedupeSkillInjection=true 表示不重复注入。 */
@@ -236,6 +238,7 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
       : record?.dedupeSkillInjection !== true,
     injectedFirst: record?.injectedFirst === true,
     dedupeSkillToolResults: record?.dedupeSkillToolResults === true,
+    dedupeReadInstructions: record?.dedupeReadInstructions === true,
     // ask_user_question 改写:只接受 -1 或正整数秒;其它值(0、负数、小数、字符串)读入即丢,
     // 落回「不介入」——宁可保持宿主行为,也不要拿坏值去注册遮蔽工具。
     ...(typeof record?.askUserTimeout === 'number' && Number.isInteger(record.askUserTimeout)

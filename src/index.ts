@@ -21,6 +21,7 @@ import { CHANNELS, LEADING_CONTEXT_KINDS, OFF, PERSONA_SECTION, PERSONA_SUFFIX_S
 import { createEnvironmentRuntime } from './host/environment.ts'
 import { createForkInheritance } from './host/fork-inherit.ts'
 import { createInjectedMessages } from './host/injected.ts'
+import { createReadInstructionTracker, pruneInstructionMessages } from './host/instructions.ts'
 import { createProfileRuntime } from './host/profiles.ts'
 import { ROUTES, createRoutes } from './host/routes.ts'
 import { createSessionKit } from './host/sessions.ts'
@@ -59,6 +60,8 @@ export function apply(ctx: HostContext): void {
   const sources = createSourceIndex(ctx, note)
   const store = createStateStore(note)
   const kit = createSessionKit(ctx, note)
+  // 已读工作区指令去重:记录模型完整读过的文件与内容摘要(见 host/instructions.ts)。
+  const readInstructions = createReadInstructionTracker(kit, note)
   const profiles = createProfileRuntime(ctx, store, kit, note)
   // fork 认亲:宿主不写来源会话 id,只能按继承前缀的日志指纹反查(见 host/fork-inherit.ts)。
   const forkInheritance = createForkInheritance({
@@ -167,6 +170,8 @@ export function apply(ctx: HostContext): void {
     baseline.release(agent)
     environment.releaseEnvironment(agent)
     profiles.release(agent)
+    const sessionId = kit.sessionIdOf(agent)
+    if (sessionId) readInstructions.release(sessionId)
   })
 
   // 工具表变化只做增量刷新(不走 applyTo):整份 release→重注册会让当前 step 的准入集
@@ -186,6 +191,12 @@ export function apply(ctx: HostContext): void {
         }
       }
     }, 300)
+  })
+
+  // 已读工作区指令去重(档位开关 dedupeReadInstructions,默认关):read 的结果只在
+  // 工具执行后出现,pre-step 看不到,所以先按 tools/result 记录「完整读取 + 内容摘要」。
+  ctx.on('tools/result', (...args: never[]) => {
+    readInstructions.observe(args[0], args[1])
   })
 
   /* 通道拦截 */
@@ -265,6 +276,17 @@ export function apply(ctx: HostContext): void {
       if (visible) {
         messages = messages.filter((message) => message?.source?.kind !== 'skill-invocation'
           || !textBlocks(message).some((text) => visible.has(text)))
+      }
+    }
+    // 已读工作区指令去重(档位开关,默认关):宿主的 agent-instructions 在文件触碰后
+    // 会把同一份 AGENTS.md 再注入一次;模型已用 read 完整读过时,同内容的
+    // `Additional instructions from:` 直接剔除。只删这一种——文件改动后的 Updated 与
+    // 删除通知仍要进入上下文。判据是内容摘要,不是只看路径(见 host/instructions.ts)。
+    if ((profile as { dedupeReadInstructions?: unknown } | null)?.dedupeReadInstructions === true) {
+      try {
+        messages = pruneInstructionMessages(messages, payload.agent as AgentLike, readInstructions, kit)
+      } catch (error) {
+        note('read instruction dedupe', error)
       }
     }
     // 发送顺序(档位开关,默认关闭 = 保持宿主顺序):只前移「起始上下文」块——工作区

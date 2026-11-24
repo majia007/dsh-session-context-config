@@ -21,7 +21,7 @@
 | 主文字 | `--dsw-alias-label-primary` | neutral-bluish-1000 |
 | 次文字 | `--dsw-alias-label-secondary` / `-tertiary` | 700 / 600 |
 | 说明文字 | `--dsw-alias-label-caption` | neutral-bluish-400 |
-| 禁用文字 | `--dsw-alias-label-quaternary` | 更低对比 |
+| 禁用文字 | `--dsw-alias-label-quaternary` | **无定义**（全 UI 源码只被引用、无赋值，实际等于继承；与 `fill-tsp-secondary` 同类） |
 | 菜单图标 | `--dsw-alias-menu-icon` | neutral-bluish-800 |
 | 悬停底色 | `--dsw-alias-interactive-bg-hover` | `rgba(38,49,72,.06)` |
 | 按下底色 | `--dsw-alias-interactive-bg-active` | `rgba(38,49,72,.1)` |
@@ -112,7 +112,7 @@ body {
 
 ### 2.4 复选行与分段选择
 
-复选行是本项目自绘（原生 checkbox）；分段选择直接用宿主 `SegmentedControl`（`ui-primitives`，第 0 节，选项表在 `src/client/panel/options.ts` 的 `GROUP_STATES` / `TOOL_STATES`），档位行、组 / server、工具行渲染的都是同一个宿主组件。
+复选行是本项目自绘（原生 checkbox）；分段选择直接用宿主 `SegmentedControl`（`ui-primitives`，第 0 节，选项表在 `src/client/panel/options.ts` 的 `GROUP_STATES` / `TOOL_STATES`），组 / server、工具行渲染的都是这个宿主组件；**档位行是自绘的配置页页签**（`src/client/panel/ProfileTabs.ts`，几何抄 `dsh-skill-mcp-command-manager` 的页签行，与第 8 节「页面页签行」同口径）——两个配置页的页签必须同一套观感，分段选择留给组 / server / 工具行。
 
 - **复选行**：`<label>` 包住 `input[type=checkbox]` + 文字，点整行文字即可切换。勾选框 16×16、`accent-color: var(--dsw-alias-brand-primary)`、与文字 `gap: 8px`；DSH 原版 gap 是 6px，本项目 13px 字号用 8px。出处 `ui-primitives/src/Checkbox.tsx` + `Checkbox.module.css`。对应 `.cp-check` / `.cp-checkBody`。
 - **分段选择（宿主组件的观感抄写值）**：轨道 `padding: 4px`、`border-radius: var(--dsw-radius-md)`、底色 `--dsw-alias-interactive-bg-hover`；选中片高 28px、底色 `--dsw-alias-bg-layer-1`、`box-shadow: var(--dsw-elevation-soft)`（表面把 `--dsw-elevation-stroke-color` 重绑到 `border-l1`）、圆角 `--dsw-radius-sm`；未选中文字 `label-secondary`，选中 `label-primary`。出处 `ui-primitives/src/SegmentedControl.tsx` + `SegmentedControl.module.css`。
@@ -167,7 +167,7 @@ div:has(> [data-slot="conversation.hero.options"]) { margin-left: 0 }
 | `.cp-menu` | `MenuSurface` + `Menu.module.css` 的 `.list` | 材质、圆角、4px 内边距、阴影缝合变量 |
 | `.cp-pop` / `.cp-popHead` | `MenuSurface`（同上） | 预览浮层：半径、材质、阴影与菜单一致（无描边、`--dsw-specific-menu` + backdrop、`--dsw-elevation-prominent`），只有位置由 JS 量算 |
 | `.cp-menuHead` / `.cp-menuNote` | `.label`（分组标题） | 右侧说明是本项目加的 |
-| 宿主 `SegmentedControl`（直接 import） | `SegmentedControl` | 档位行、组 / server、工具行的分段选择都用宿主组件，tablist 语义随组件自带 |
+| 宿主 `SegmentedControl`（直接 import） | `SegmentedControl` | 组 / server、工具行的分段选择用宿主组件，tablist 语义随组件自带；档位行改用配置页页签（`.cp-profileTabs` / `.cp-profileTab`，几何见第 2.4 节） |
 | `.cp-check` / `.cp-checkBody` | `Checkbox` | label 包 input，点文字即切换；标题 13/20 + 说明 12/18 |
 | `.cp-groupHead` / `.cp-sep` / `.cp-sectionHead` / `.cp-sectionTitle` | 无直接对应 | 工具分组标题行、档位卡内分隔线、分区小标题（附加规则 / 工具目录） |
 | `.cp-btn` | `ui-primitives` 的 Button | md 档：36px 高、14px 字、radius-md、`0 14px`；主按钮 `--dsw-alias-button-primary-fill` + 前景色（不是品牌色 + `#fff`） |
@@ -246,7 +246,7 @@ rg -n "menu-surface-fill|radius-sm" packages/client/ui-theme/src/styles
 | 区段 | 几何 / 规则 |
 |---|---|
 | 页头 | 34×34 图标（radius-sm、`bg-layer-2`）+ 标题 16/24 600 + 说明 12/18 `label-secondary`；内距 `14px 22px 12px`，合计约 70px，**底部分隔线归页头**；关闭钮 30×30 radius-sm 贴右。**页面页签不进这里** |
-| 页面页签行 | 页头**分隔线之下**的正文首行（body 的第一个子元素），不占页头高度、行底不再画线。几何抄宿主 `SegmentedTabs` 的 `sm` 档：轨道 padding 2px、radius `md+2`、底色 `bg-module-platform`；tab 30px 高、`0 16px`、13/20、未选 500/`label-secondary`；选中片 `bg-layer-3` + 0.5px `border-l3`、600 |
+| 页面页签行 | 页头**分隔线之下**的正文首行（body 的第一个子元素），不占页头高度、行底不再画线。几何抄宿主 `SegmentedTabs` 的 `sm` 档：轨道 padding 2px、radius `md+2`、底色 `bg-module-platform`；tab 30px 高、`0 16px`、13/20、未选 500/`label-secondary`；选中片 `bg-layer-3` + 0.5px `border-l3`、600。SCC 的档位页签复用这套几何（自绘 `ProfileTabs`），整行吸顶：遮挡挂在页签轨道上（一圈页面底色柔光 `box-shadow: 0 0 10px 10px`），行自身透明，吸顶时只留页签（新建/删除收起） |
 | 正文 | 卡片承载：0.5px `border-l4` + `bg-layer-1` + `radius-lg` + `14px 16px` 内距 |
 | 卡片头 | 标题行 + 可选描述行，**各占一行**：标题 13/20 600，描述 12/18 `label-tertiary`（**允许换行**，不 nowrap）；统计/徽标紧跟标题同一行。无描述时标题上下居中（头上下 padding 相等）。头与正文之间画 `0.5px` `border-l4` 分割线。**卡片本体不设内距**（`padding:0`），上下留白分别由头（`12px 16px`）和正文容器（`8px 16px 14px`）自己控制——不要给卡片再叠一层 padding，否则头/正文各多一段留白 |
 | 折叠卡 | 头与普通卡片头同构（标题行 + 可选描述），折叠时只显示头、**不画分割线**；展开时头与 content 之间画 `0.5px` `border-l4`。头内距 `12px 16px`，content `10px 16px 14px` |

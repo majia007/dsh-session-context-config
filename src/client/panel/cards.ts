@@ -589,6 +589,7 @@ export function DefaultBehaviorCard({ profile, patch, askUser }: { profile: Prof
   const injectedFirst = profile.injectedFirst === true
   const dedupeUserSkill = profile.injectDuplicateSkills === false
   const dedupeSkillTool = profile.dedupeSkillToolResults === true
+  const dedupeRead = profile.dedupeReadInstructions === true
   // ask_user_question:官方参数结构没变才允许改写(Host 在每次快照里现算)。
   // 开关 = 本插件是否接管等待;秒数 = 接管后的等待时长(留空 = 不设期限,落 -1)。
   const askTimeout = typeof profile.askUserTimeout === 'number' ? profile.askUserTimeout : undefined
@@ -639,6 +640,16 @@ export function DefaultBehaviorCard({ profile, patch, askUser }: { profile: Prof
       meta: dedupeSkillTool ? '只回提示' : '宿主默认',
       desc: '模型调用 skill 工具时，若同一份正文已经在可见历史里，工具结果只回一行「已加载」提示，不再重复整份正文。与上一条分开控制；只改模型看到的正文，不动技能定义与工具 schema。',
       tooltip: '只拦 skill 工具这一条路径：正文已在历史里才替换，压缩掉后重新加载仍拿完整正文。',
+    }),
+    h(SwitchRow, {
+      checked: dedupeRead,
+      onChange: (checked) => patch((target) => {
+        target.dedupeReadInstructions = checked
+      }),
+      title: '已读工作区指令去重',
+      meta: dedupeRead ? '跳过已读' : '宿主默认',
+      desc: '模型用 read 完整读过某个 AGENTS.md 后，宿主在后续文件触碰时仍会把同一份正文再注入一次。开启后，与已读内容相同的「Additional instructions from」不再注入；文件改动后的更新与删除通知仍保留。',
+      tooltip: '判定依据是本会话里 read 完整读过（从头读到尾、无截断）且内容摘要一致；只作用于根会话，记录不落盘，重启或恢复会话后需要重新读过才生效。',
     }),
     h(
       'div',

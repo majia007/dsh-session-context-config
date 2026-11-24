@@ -316,8 +316,13 @@ check('未选中行也留了勾位（计数不跳）', heroRows.find((row) => ro
 
 console.log('\n[panel] 配置面板')
 const panel = await mount('main')
-const profileTabs = [...panel.querySelectorAll('.cp-chipRow [role="tab"]')]
-check('档位行用宿主分段选择渲染全部档位', profileTabs.length === 2 && profileTabs.map((tab) => tab.textContent).join('/') === '完整/精简', profileTabs.map((tab) => tab.textContent).join('/'))
+const profileTabs = [...panel.querySelectorAll('.cp-profileTabs [role="tab"]')]
+check('档位行用配置页页签渲染全部档位（与 SMC 页签同款）', profileTabs.length === 2 && profileTabs.map((tab) => tab.textContent).join('/') === '完整/精简', profileTabs.map((tab) => tab.textContent).join('/'))
+const profileBar = panel.querySelector('.cp-profileBar')
+const nameCard = profileBar?.nextElementSibling
+check('档位 tab 栏是裸工具栏（不套卡片），后面紧跟「名称/描述」卡', profileBar !== null && profileBar.classList.contains('cp-card') === false && nameCard?.classList.contains('cp-card') === true && nameCard?.querySelector('.cp-fieldLabel') !== null)
+check('未吸顶时栏不带吸顶标记', profileBar?.getAttribute('data-stuck') === null)
+check('档位 tab 渲染在吸顶栏里', profileBar?.querySelector('.cp-profileTabs [role="tab"]') !== null)
 const systemCard = [...panel.querySelectorAll('.cp-card')].find((card) => card.querySelector('.cp-msgCardTitle')?.textContent === '系统提示词')
 check('system 卡存在', systemCard !== undefined)
 check('system 卡不再有提示词来源 tablist', systemCard?.querySelector('[role="tablist"]') == null)
@@ -393,7 +398,7 @@ const fixedBaselineRows = () => baselineLabels.slice(0, 3).map(rowByText)
 check('附加规则前三段各是一行且默认全开', fixedBaselineRows().every((row) => row?.querySelector('input[type="checkbox"]')?.checked === true))
 check('附加规则行标了本档位', baselineRows().every((row) => row?.textContent?.includes('本档位')))
 check('附加规则排在所有段之后', segmentRows().slice(-4).every((row, index) => row.querySelector('.cp-segmentLabel')?.textContent?.includes(baselineLabels[index]) === true))
-const tabByText = (label) => [...panel.querySelectorAll('.cp-chipRow [role="tab"]')].find((tab) => tab.textContent === label)
+const tabByText = (label) => [...panel.querySelectorAll('.cp-profileTabs [role="tab"]')].find((tab) => tab.textContent === label)
 await click(tabByText('精简'))
 check('附加规则按档位读取（精简全关）', fixedBaselineRows().every((row) => row?.querySelector('input[type="checkbox"]')?.checked === false))
 await click(tabByText('完整'))
@@ -528,11 +533,11 @@ const behaviorCard = () => [...panel.querySelectorAll('.cp-card')].find((card) =
 const behaviorSwitches = () => [...(behaviorCard()?.querySelectorAll('input[role="switch"]') ?? [])]
 const cardsNow = [...panel.querySelectorAll('.cp-card')]
 check('默认行为卡排在系统提示词卡之前', cardsNow[cardsNow.indexOf(behaviorCard()) + 1]?.querySelector('.cp-msgCardTitle')?.textContent === '系统提示词')
-check('四条行为开关默认关闭（保持宿主默认行为），且是 role=switch 不是复选行', behaviorSwitches().length === 4
+check('五条行为开关默认关闭（保持宿主默认行为），且是 role=switch 不是复选行', behaviorSwitches().length === 5
   && behaviorSwitches().every((input) => input.checked === false && input.getAttribute('role') === 'switch' && input.getAttribute('aria-checked') === 'false'))
 check('行为开关用轨道样式（cp-switchInput）', behaviorSwitches().every((input) => input.classList.contains('cp-switchInput')))
 check('状态文案紧跟标题（段/上下文与行为行共用 cp-segmentMeta，提问行用 cp-askMeta）',
-  behaviorCard()?.querySelectorAll('.cp-segmentMeta').length === 3
+  behaviorCard()?.querySelectorAll('.cp-segmentMeta').length === 4
   && behaviorCard()?.querySelector('.cp-askMeta') !== null
   && behaviorCard()?.querySelector('.cp-behaviorMeta') === null)
 const askRow = () => behaviorCard()?.querySelector('.cp-askRow')
@@ -543,7 +548,7 @@ check('说明文案指向下方秒数框，不再说「右侧」', askRow()?.que
 check('不介入时秒数框禁用（此时秒数不生效）', askRow()?.querySelector('.cp-askSeconds')?.disabled === true)
 await click(askRow()?.querySelector('.cp-askLabel'))
 check('开启后右侧显示不会超时，秒数框可编辑', askRow()?.querySelector('.cp-askMeta')?.textContent === '不会超时，断线可恢复'
-  && askRow()?.querySelector('.cp-askSeconds')?.disabled === false && behaviorSwitches()[3]?.checked === true,
+  && askRow()?.querySelector('.cp-askSeconds')?.disabled === false && behaviorSwitches()[4]?.checked === true,
 askRow()?.querySelector('.cp-askMeta')?.textContent)
 // 受控 number 输入同样要绕过 React 的 value tracker:原型 setter 改值再派发 input。
 const typeSeconds = async (text) => {
@@ -557,11 +562,11 @@ const typeSeconds = async (text) => {
 }
 await typeSeconds('300')
 check('开启后秒数可修改并保存，开关保持开启', askRow()?.querySelector('.cp-askMeta')?.textContent === '300 秒后返回 pending'
-  && askRow()?.querySelector('.cp-askSeconds')?.value === '300' && behaviorSwitches()[3]?.checked === true,
+  && askRow()?.querySelector('.cp-askSeconds')?.value === '300' && behaviorSwitches()[4]?.checked === true,
 askRow()?.querySelector('.cp-askMeta')?.textContent)
 await typeSeconds('')
 check('清空秒数 = 不设期限，开关仍开启', askRow()?.querySelector('.cp-askMeta')?.textContent === '不会超时，断线可恢复'
-  && askRow()?.querySelector('.cp-askSeconds')?.value === '' && behaviorSwitches()[3]?.checked === true,
+  && askRow()?.querySelector('.cp-askSeconds')?.value === '' && behaviorSwitches()[4]?.checked === true,
 askRow()?.querySelector('.cp-askMeta')?.textContent)
 await click(behaviorCard()?.querySelectorAll('.cp-segmentLabel')[0])
 check('打开第一项后开关与 aria-checked 同步', behaviorSwitches()[0]?.checked === true && behaviorSwitches()[0]?.getAttribute('aria-checked') === 'true')
@@ -582,7 +587,7 @@ console.log('\n[panel] 新建档位下拉')
 const panelMenu = await mount('main')
 const newProfileButton = [...panelMenu.querySelectorAll('button')].find((button) => button.textContent?.includes('+ 新建档位'))
 check('新建按钮带下拉提示', newProfileButton?.getAttribute('aria-haspopup') === 'menu' && newProfileButton?.textContent?.includes('▾') === true, newProfileButton?.textContent)
-const tabsBeforeMenu = panelMenu.querySelectorAll('.cp-chipRow [role="tab"]').length
+const tabsBeforeMenu = panelMenu.querySelectorAll('.cp-profileTabs [role="tab"]').length
 // React 从 mouseover 合成 onMouseEnter,与 header chip 的悬停测试同一手法。
 await act(async () => { newProfileButton?.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true })) })
 await flush()
@@ -591,14 +596,14 @@ check('悬停展开内置预设菜单', presetMenu?.textContent?.includes('从�
 const presetRows = [...(presetMenu?.querySelectorAll('.cp-row') ?? [])]
 check('菜单列出插件内置预设', presetRows.length === 2 && presetRows.map((row) => row.querySelector('.cp-rowName')?.textContent).join('/') === 'PI/Chat', presetRows.map((row) => row.querySelector('.cp-rowName')?.textContent).join('/'))
 await click(presetRows.find((row) => row.querySelector('.cp-rowName')?.textContent === 'PI'))
-const tabsAfterCopy = [...panelMenu.querySelectorAll('.cp-chipRow [role="tab"]')]
+const tabsAfterCopy = [...panelMenu.querySelectorAll('.cp-profileTabs [role="tab"]')]
 check('选中预设后复制为新档位并选中', tabsAfterCopy.length === tabsBeforeMenu + 1 && tabsAfterCopy.some((tab) => tab.textContent === 'PI'), tabsAfterCopy.map((tab) => tab.textContent).join('/'))
 check('复制只改草稿,保存前不碰已安装档位', panelMenu.querySelector('.cp-footNote')?.textContent?.includes('未保存') === true)
 
 const panelBlank = await mount('main')
 const blankButton = [...panelBlank.querySelectorAll('button')].find((button) => button.textContent?.includes('+ 新建档位'))
 await click(blankButton)
-const blankTabs = [...panelBlank.querySelectorAll('.cp-chipRow [role="tab"]')]
+const blankTabs = [...panelBlank.querySelectorAll('.cp-profileTabs [role="tab"]')]
 check('直接点击按钮 = 全启用预设新建', blankTabs.length === 3 && blankTabs.some((tab) => tab.textContent === '档位 3'), blankTabs.map((tab) => tab.textContent).join('/'))
 
 console.log('\n[session header] 会话头部 chip')
