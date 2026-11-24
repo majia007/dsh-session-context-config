@@ -129,12 +129,12 @@ body {
 
 - 样式写在 `*.module.css` 里，构建期由 preset 的 lightningcss 插件编译进 bundle、factory 求值期注入带 `data-plugin-css` tag 的 `<style>`（skip-if-present 幂等；官方 preset 同款取舍：卸载后样式残留）。
 - **禁止 inline style 对象**：hover / focus ring / 箭头旋转 / 折叠动画 inline 表达不了。
-- 类名空间每插件专属前缀（`dsws-` 先例，`dsh-me-` 恒等——前提见根 `_docs/plugin-build.md` 的 CSS Modules 条目）。
+- 类名空间每插件专属前缀（`dsws-` 先例，`dsh-me-` 恒等——前提是构建 preset 把类名编成带本包前缀的确定性名字，见本插件 `build/preset.mjs` 与 vendored 内核）。
 - 顺序敏感的多张表用显式有序清单钉注入顺序（`CSS_SHEET_ORDER`），新增文件必须登记。
 
 ## 3. 槽位接入
 
-本节留注册时必须遵守的通用规则，以及与视觉落地直接相关的两条。完整挂载点清单与「换组件」先例是另一份速查（根 `_docs/slot-mount-points.md`），改到未列出的槽位时再查。
+本节留注册时必须遵守的通用规则，以及与视觉落地直接相关的两条。未在本节列出的槽位按宿主声明处查（DSH checkout 里 `slots.declare` / `slots.register` 的调用点），本副本不穷举挂载点清单。
 
 - **注册一律包 `ctx.slots.inject(slot, () => ctx.slots.register(...))`**：冷启动时声明方可能晚于插件激活，裸 `register` 抛错会让 fiber failed、web-boot 门禁拒绝启动。
 - **keyed 槽必须带 `options.key`**（运行时检查）；**list 条目必须带 `id`**（不是 key）；single 槽不同优先级互相遮蔽、同优先级才 throw；卸载插件自动还原官方注册。
