@@ -1,6 +1,6 @@
 # DSH Web UI 样式与接入速查
 
-> **本文是同步副本，权威源在仓库根 `_docs/dsh-web-ui.md`**。子项目独立 checkout 时用本文；改设计语言先改根文档，再同步回本文，两边内容必须一致。
+> **本文是权威源（仓库根 `_docs/dsh-web-ui.md`）**。各插件的 `docs/dsh-web-ui.md` 是同步副本，供子项目独立 checkout 时自足；改设计语言先改本文，再把改动同步到副本，两边内容必须一致。文中「本项目」指先例插件 `dsh-session-context-config`（`.cp-*` 是它的 CSS 前缀，`panel.module.css` / `menu.module.css` 等文件名同属它）。
 
 改本插件的界面、抄宿主样式、挑槽位之前读这篇。内容来自对 DSH 源码（`packages/client/*`）的核对，用于**对齐外观**，不是 DSH 官方 API 承诺。
 
@@ -39,7 +39,7 @@
 - **阴影依赖缝合变量**：`--dsw-elevation-*` 里的那圈 0.5px 描边读的是 `--dsw-elevation-stroke-color`。宿主菜单会在卡片上把它重绑成 `--dsw-alias-border-l1`（深色主题用 `l3`）。自己画浮层时要照做，否则描边色会继承到别处。
 - **高层级表面不画 border**：宿主的做法是 `border: 0` + elevation 阴影自带描边，避免描边占布局。
 
-宿主自带的 14 个 alias token 也能用检查工具拿：`cordis_inspect_query` 的 Client `Theme.listTokens`（这个通道可用；`Slots` 那个有 input 校验 bug：无论传什么都报 `"input" must be an object`，查槽位结构直接读宿主源码）。
+宿主自带的 alias token 也能用检查工具拿：`cordis_inspect_query` 的 Client `Theme.listTokens`（这个通道可用；`Slots` 那个有 input 校验 bug：无论传什么都报 `"input" must be an object`，查槽位结构直接读宿主源码）。
 
 ## 2. 控件几何（抄自宿主，用来对齐观感）
 
@@ -115,7 +115,7 @@ body {
 复选行是本项目自绘（原生 checkbox）；分段选择直接用宿主 `SegmentedControl`（`ui-primitives`，第 0 节，选项表在 `src/client/panel/options.ts` 的 `GROUP_STATES` / `TOOL_STATES`），组 / server、工具行渲染的都是这个宿主组件；**档位行是自绘的配置页页签**（`src/client/panel/ProfileTabs.ts`，几何抄 `dsh-skill-mcp-command-manager` 的页签行，与第 8 节「页面页签行」同口径）——两个配置页的页签必须同一套观感，分段选择留给组 / server / 工具行。
 
 - **复选行**：`<label>` 包住 `input[type=checkbox]` + 文字，点整行文字即可切换。勾选框 16×16、`accent-color: var(--dsw-alias-brand-primary)`、与文字 `gap: 8px`；DSH 原版 gap 是 6px，本项目 13px 字号用 8px。出处 `ui-primitives/src/Checkbox.tsx` + `Checkbox.module.css`。对应 `.cp-check` / `.cp-checkBody`。
-- **分段选择（宿主组件的观感抄写值）**：轨道 `padding: 4px`、`border-radius: var(--dsw-radius-md)`、底色 `--dsw-alias-interactive-bg-hover`；选中片高 28px、底色 `--dsw-alias-bg-layer-1`、`box-shadow: var(--dsw-elevation-soft)`（表面把 `--dsw-elevation-stroke-color` 重绑到 `border-l1`）、圆角 `--dsw-radius-sm`；未选中文字 `label-secondary`，选中 `label-primary`。出处 `ui-primitives/src/SegmentedControl.tsx` + `SegmentedControl.module.css`。
+- **分段选择（宿主组件的观感抄写值）**：轨道 `padding: 4px`、`border-radius: var(--dsw-radius-md)`、底色 `--dsw-alias-interactive-bg-hover`；选中片高 28px、底色 `--dsw-alias-bg-layer-1`、`box-shadow: var(--dsw-elevation-soft)`、圆角 `--dsw-radius-sm`；未选中文字 `label-secondary`，选中 `label-primary`。出处 `ui-primitives/src/SegmentedControl.tsx` + `SegmentedControl.module.css`。
 - **选中态不是实心品牌色**：DSH 的分段选中片是「抬起的浅色面」，靠阴影和轨道底色分离；状态色调（开启/延迟/关闭）只染选中段文字，取 `state-success/warn/*` token。不要把选中段做成黑底白字。四态标签字面接近（组的「开启」与「默认」都是全开），差别靠每个选项的原生 `title` 说明，组头另放一个 `?` 标记承载总说明。
 - 键盘行为：宿主 `SegmentedControl` 自带 tablist + roving tabindex（方向键走位、`aria-selected`），冒烟脚本断言的就是这套 DOM 契约；本项目不再自绘 radio 版本。
 
@@ -129,14 +129,39 @@ body {
 
 - 样式写在 `*.module.css` 里，构建期由 preset 的 lightningcss 插件编译进 bundle、factory 求值期注入带 `data-plugin-css` tag 的 `<style>`（skip-if-present 幂等；官方 preset 同款取舍：卸载后样式残留）。
 - **禁止 inline style 对象**：hover / focus ring / 箭头旋转 / 折叠动画 inline 表达不了。
-- 类名空间每插件专属前缀（`dsws-` 先例，`dsh-me-` 恒等——前提是构建 preset 把类名编成带本包前缀的确定性名字，见本插件 `build/preset.mjs` 与 vendored 内核）。
+- 类名空间每插件专属前缀（`dsws-` 先例，`dsh-me-` 恒等——前提见 `plugin-build.md` 的 CSS Modules 条目）。
 - 顺序敏感的多张表用显式有序清单钉注入顺序（`CSS_SHEET_ORDER`），新增文件必须登记。
+
+### 2.7 对话框（`ui-primitives` 的 `Modal`）
+
+宿主所有对话框都走它（重命名会话、停止并归档、风险确认）；`ui-primitives` 在平台种子表里，插件直接 import。四个座位由组件提供，**不要 `headless` 自绘**：
+
+| 区段 | 几何 |
+|---|---|
+| 层 | overlay `fixed inset:0`、`padding: max(24px,var(--dsh-frame-overlay-top,24px)) 24px`；mask 底色 `--dsw-alias-bg-mask-1`、`backdrop-filter: var(--dsw-mask-blur)` |
+| 卡片 | `width:min(380px,100%)`、`padding:0 0 24px`、`gap:20px`、`border-radius:var(--dsw-radius-panel)`、底色 `--dsw-alias-bg-layer-2`、阴影 `--dsw-elevation-prominent`、`overflow:hidden` |
+| header（标题栏） | `padding:22px 24px 12px` → 高 58px；标题 16/24、字重 500、`label-primary`；关闭钮 28×28、`radius-sm`、`label-secondary`、图标 14、hover `interactive-bg-hover` |
+| description 座位 | 14/22、`label-primary`、`padding:0 24px`（主说明句写这里，别在正文里自己排一段） |
+| body 座位 | `padding:0 24px`；紧跟 header 时 `margin-top:8px`，有 description 时 `margin-top:20px` |
+| footer 座位 | `display:flex; justify-content:flex-end; gap:8px; padding:0 24px`，卡片底部自带 24px |
+
+正文（body 里的内容）约定：
+
+- **不要再套一层带左右内边距的卡片**：24px 已是宿主缩进，里面再加 10/12px 会变成 34–36px，和宿主弹窗明显不一样（`dsh-workspace-sidebar` 的快速归档弹窗踩过）。只有需要滚动或分组时才用边框/底色，且左右不为装饰再加内边距（整块的滚动交给 `contentClassName`）。
+- 说明句 14/22 `label-secondary`（`RiskConfirmation`）；列表 13/20 `label-primary`、`padding-left:18px`、`<li>` 允许换行（`ui-workspace` 的 `.archiveActivity`）；状态行 12/18 `label-secondary`；错误 12/18 错误色（重命名对话框的 `.renameError`）。
+- **正文块间距**：块与块之间 12px（宿主在 8–16 之间取值：列表到其后的错误/状态 8、主体段之间 16，本仓库统一取 12）；字段内「标签 → 控件」6px（`settings-form`）；不要给单个块再加 `margin-top` 把间距叠成 20+。
+- 输入框两种既有形态，按场景二选一、不要自造第三套：对话框内单行输入 44 高 / `padding:7px 14px` / `radius-lg` / 14px（重命名会话）；表单字段 34 高 / `padding:0 12px` / `radius-md` / 13px + 底色 `bg-layer-3`（`settings-form`）。简单控件优先直接用 `Input`（32 高 / 14-22 / `bg-layer-1` / `radius-md`），它的 `className` 落在包裹层上、只用来定宽。**数字输入用 `type="text"` + `inputMode="numeric"`**（宿主 `settings-form` 口径），不用 `type="number"`：后者会带出各平台的步进器、并让滚轮/本地化数字影响取值，合法性由调用方的解析规则自己判。
+- 初始焦点用 `data-modal-autofocus`（组件据此保留返回焦点），**不要** React `autoFocus`。
+- 按钮：footer 用默认尺寸（36 高、14/22、`0 14px`），成对「outline 取消 + primary 确认」；紧凑的行内快捷键用 `size="sm"`（28 高、12/18、`0 10px`、`radius-sm`）。危险动作把文字染 `state-error-primary`（宿主 `.deleteAction` 先例）。
+- **加宽**：`className` 传双类名 `min(440px,100%)`（`RiskConfirmation` 先例）+ `max-height:100%` + `overflow:hidden`，滚动区交给 `contentClassName`；双类名是为了不依赖插件样式表与宿主样式表的注入先后。
+
+出处：`ui-primitives/src/{Modal.tsx,Modal.module.css,RiskConfirmation.module.css,Button.module.css,Input.module.css,settings-form/fields.module.css}`、`ui-workspace/src/client/session-actions/{RenameSession.tsx,ArchiveSession.tsx}`。
 
 ## 3. 槽位接入
 
-本节留注册时必须遵守的通用规则，以及与视觉落地直接相关的两条。未在本节列出的槽位按宿主声明处查（DSH checkout 里 `slots.declare` / `slots.register` 的调用点），本副本不穷举挂载点清单。
+本节留注册时必须遵守的通用规则，以及与视觉落地直接相关的两条。完整挂载点清单与「换组件」先例是另一份速查（`slot-mount-points.md`），改到未列出的槽位时再查。
 
-- **注册一律包 `ctx.slots.inject(slot, () => ctx.slots.register(...))`**：冷启动时声明方可能晚于插件激活，裸 `register` 抛错会让 fiber failed、web-boot 门禁拒绝启动。
+- **注册一律包 `ctx.slots.inject(slot, () => ctx.slots.register(...))`**：冷启动时声明方可能晚于插件激活，裸 `register` 抛错会让该 entry fiber failed（rc.2 非 required 条目只 warning，rc.1 会整体拒绝启动）。
 - **keyed 槽必须带 `options.key`**（运行时检查）；**list 条目必须带 `id`**（不是 key）；single 槽不同优先级互相遮蔽、同优先级才 throw；卸载插件自动还原官方注册。
 - **session 作用域注册项的 `inject` 首参是 sessionId**（`runInject` 把 binding.key 当实参）；标准 props 也会经 `BUILTIN_SOURCE` 送达 sessionId，两条通道并存。
 - **`[data-slot="<key>"]` 是唯一稳定结构锚点**（外层 `display:contents`），CSS Module 类名带哈希、不可当契约。
@@ -144,18 +169,15 @@ body {
 
 ### 3.1 新会话 hero 行的插件选项：不要自己选父层
 
-宿主把插件选项包在 `.heroOptions`（`margin-left:auto`）里推到行尾。**本插件不再反选这一层**：行级排布由 `dsh-remote-web-ui` 独占（摊平 `.heroOptions` 为 `display:contents` + CSS 区号）；多个插件各改一次会互相踩，胜负还取决于样式注入顺序。
-
-其它插件的义务只有两条：
-
-- **槽位 `order` 管块内先后**（步长 10 留空；并列号 = 装载序，不可依赖）：0–9 入口类、10–19 只读状态标记（本插件 10、工作组 chip 11）、20–29 其它、30+ 预留。
-- **CSS `order` 只在确需换区时用**：只改自己的根元素，双类名 + 预留区号（10–19 / 30–39），如 `.myEntry.myEntry { order: 10 }`——双类名压过 owner 的默认规则，不依赖样式注入顺序。
-
-owner 的默认区：工作区 chip（宿主默认 0）→ 前置区（10）→ 模式选择器（20）→ 后置默认区（30，槽内所有条目）；负区 −10 在工作区 chip 左侧，目前由工作组 chip 占用（最左只有一个位置，别的插件不要占）。owner 不在时没有摊平，选项回到宿主默认位置。
+宿主把插件选项包在 `.heroOptions`（`margin-left:auto`）里推到行尾。**不要用锚点反选这一层，也不要给整块定 order**：多个插件各改一次会互相踩，胜负还取决于样式注入顺序。行级排布由 `dsh-remote-web-ui` 独占（摊平 `.heroOptions` + CSS 区号）；其它插件只用槽位 `order`，确需换区时只在自己的根元素上写双类名 `order`。分段表与硬规则见 `slot-mount-points.md` 的「hero 行 order 契约」。
 
 ### 3.2 浮层怎么放
 
 宿主用 CSS anchor positioning（`position-anchor` + `anchor()` + `position-try-fallbacks`）。我们这套是手写实现的简化版：`portal` 到 `body` + `position:fixed`，**渲染后量自己的尺寸再定坐标**，右侧与底部都夹在视口内，下方放不下就翻到触发器上方。要重做定位时优先沿用「先量后放」，别退回「渲染前估算」。**「先量后放」必须带同值 bail**：`useLayoutEffect` 量完再 setState，新坐标与上一个 state 相等时返回上一个 state——否则每轮 set 新对象 → 重渲染 → 再测量，死循环。
+
+### 3.3 会话头部右上角的常驻按钮
+
+`conversation.session.header.utilities` 是唯一能贴右上角的 list 槽：ui-conversation 先渲染它、再渲染「...」菜单按钮（`ConversationSession.tsx`），所以条目落在「...」左侧。`conversation.session.header.corner` 在「...」右侧，是 single 槽且已被 `ui-sidebar-right` 占用，不要抢。常驻入口用 chip 而不是纯图标：28 高、`padding:0 8px`、`gap:6px`、radius-sm、13/20 字重 500、图标 16px、名字超宽省略号（几何同「工作区 / 模式」chip）；先例 `dsh-header-open-in-app`（点击直启、悬停换应用）。
 
 ## 4. 本项目对宿主样式的复刻对照
 
@@ -279,7 +301,7 @@ rg -n "menu-surface-fill|radius-sm" packages/client/ui-theme/src/styles
 
 ## 9. 布局与交互实现细节
 
-**焦点时机**：MenuSurface 首帧是测量态（`visibility:hidden`）不可聚焦——焦点等定位落定后再给（`useEffect` 依赖 `[open, menuPos]`），且**每次 open 只给一次**（滚动列表重新定位时不抢用户正在点的行）。
+**焦点时机**：宿主的弹层定位已改为 CSS anchor-positioning（`position-anchor` + `position-try-fallbacks`），列表渲染由 `positioned` 门控（`portal` 时等锚点就绪；`Menu.tsx` 的 `positioned`），`autoFocus` 只在 `open && positioned` 时生效——焦点等到列表真正挂上才给，且**每次 open 只给一次**（滚动列表重新定位时不抢用户正在点的行）。
 
 **折叠区的两个根因**（缺一个漏一条空白带）：① grid `0fr` 只压轨道项高度、不裁其自身 padding——轨道项必须是无 padding 的 clip 层，内容放内层 body；② 折叠容器若同时挂有带 gap 的基类，必须显式 `gap: 0` 覆盖。
 

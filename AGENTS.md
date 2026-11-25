@@ -1,5 +1,7 @@
 # AGENTS.md — @jia-tools/dsh-session-context-config（上下文档位）
 
+## 项目概述
+
 DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪段系统提示词。Host 做档位解析与装配，Client 在 Web UI 里出一个配置面板和两个切换 chip。
 
 **权限与作用边界**：所有 HTTP 路由先过宿主 connection 信任栅栏（Host/Origin/浏览器会话认证；宿主无该服务时回退回环 Host 校验）；状态落 `~/.dsh/session-context-config.json`（新文件不存在时，首次启动把 `context-profile.json` 迁入并留成 `.migrated`；`DSH_HOME` 存在时以它为准）；工具/上下文/系统段档位只作用于根会话，子代理不套用；附加规则例外——子代理沿 `parentSession` 跟随所属根会话的 `profile.baseline`。
@@ -19,13 +21,14 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 ## 共享基础设施（vendored 副本）
 
-三份**生成文件**（全仓一份规范源，同步渲染后随包提交；勿手改——同步会覆盖，门禁会失败）：
+四份**生成文件**（全仓一份规范源，同步渲染后随包提交；勿手改——同步会覆盖，门禁会失败）：
 
 | 文件 | 作用 |
 |---|---|
 | `build/preset-kernel.mjs` | 构建 preset 的稳定内核；`build/preset.mjs` 只写本包差异（`cp-` 前缀、单表即注） |
 | `src/host/connection-fence.ts` | connection 信任栅栏（路由的 `guard()` 包一层 `fenceRequest`，回退 403） |
 | `src/client/tokens.module.css` | 共享字号变量块，按 `cp-` 前缀生成 |
+| `tests/host-schema.mjs` | 宿主 `tools.register` 的 **output schema** 方言镜像（`assertHostOutputSchema`）：给假 `tools.register` 用，只校验 `definition.output.schema` |
 
 `tests/shared-vendored.test.mjs` 是配套门禁：头行 `@<sha256>` = 正文（LF 归一）内容哈希；CSS 里禁止 `--dsh-plugin-*` 与裸 `--fs-*` / `--font-boost`；`lib/client.js` 里只允许带 `cp-` 前缀的名字。门禁读 `lib/` 产物，`pnpm test` 前先 `pnpm build`。
 
@@ -33,14 +36,14 @@ DSH 的持久插件（bundle）：给新会话选择注入哪些工具、用哪�
 
 构建形态（TS + tsdown）：`pnpm build` 产出 `lib/index.js`（Host 单文件）、`lib/client.js`（浏览器 factory bundle，CSS Modules 编译进产物）、`lib/types/**`；`lib/` **禁止入 git**（`.gitignore` 已忽略，需要时 `pnpm build`；测试/smoke 加载的就是它，克隆/清理后先 build）。
 
-**client 产物必须单文件，源码可多模块**：浏览器只服务 `dsh.client` 声明的入口（批量资源 URL `plugins/??<id>/client.js,…&rev=<hash>` 中的资源名），但构建形态下源码在 `src/client/` 拆成多模块（contract/state/menu/panel/chips + apply.ts），由 tsdown 打成单文件 `lib/client.js`。改客户端源码后 `pnpm build` 即可，桌面自带 client HMR 会在约 1s 内自动重挂该 entry；不要刷新页面。
+**client 产物必须单文件，源码可多模块**：浏览器只服务 `dsh.client` 声明的入口，但源码在 `src/client/` 拆成多模块（contract/state/menu/panel/chips + apply.ts），由 tsdown 打成单文件 `lib/client.js`。改客户端源码后 `pnpm build` 即可，桌面自带 client HMR 会在约 1s 内自动重挂该 entry；不要刷新页面。
 
 ```bash
 pnpm install && pnpm build
 node --check lib/index.js && node --check lib/client.js
 pnpm exec tsc --noEmit
 
-# 单元测试（直读 src）：host 纯函数、附加规则快照、环境事实与 git 探测、不可信下载规则
+# 单元测试（直读 src；宿主侧装配与解析、附加规则快照、客户端纯函数）
 pnpm test
 
 # 逻辑/DOM 冒烟：happy-dom 里装一遍 lib/client.js，喂假快照渲染面板与两个 chip 并点击
@@ -70,8 +73,8 @@ node scripts/harness.mjs
 |---|---|
 | `package.json` | bundle 清单；`dsh.client` 段声明客户端注入（sidebar、layout），`exports` 决定宿主能取到哪些子路径；`publishConfig.registry` 钉住发布目标 |
 | `cordis.patch.yml` | 装载入口：只 insert 一行 `session-context-config` |
-| `build/` | 本地构建 preset（复刻官方 tsdown.client.ts 产物契约，含 CSS Modules 编译与基线校验；复刻 client factory 形态、平台基线 externals 与 CSS Modules 注入） |
-| `tests/` | 直读 `src` 的单元测试：host 纯函数、附加规则快照、环境事实、不可信下载规则、v2/v3→v4 结构迁移、5 个默认预设、tool_search 自动注入/隐藏、附加规则按档位与子代理跟随、面板草稿兜底、人设开关/覆盖与占位符、system 段过滤（含 `global:true` 注册断言）、工具引导自动隐藏、上下文开关/影子、`/api/state` 快照形状、注入消息分桶、工具来源解析、技能注入去重（`dedupe.test.mjs`）、已读工作区指令去重（`instructions.test.mjs`）、发送顺序（`channels.test.mjs`）、默认行为开关默认值、会话是否套档位的决策（`session-decision.test.mjs`） |
+| `build/` | 本地构建 preset：复刻官方 client 产物契约（client factory 形态、平台基线 externals、CSS Modules 编译与样式注入）并做基线校验 |
+| `tests/` | 直读 `src` 的单元测试（宿主侧装配与解析、状态迁移、快照形状、客户端纯函数）；回归入口按主题命名（`host` / `sections` / `refresh` / `session-decision` / `dedupe` / `instructions` / `channels` / `ask-shadow` / `diagnostics` 等），清单以 `tests/` 目录为准 |
 | `scripts/smoke.mjs` | 逻辑/DOM 冒烟：happy-dom 里装一遍 `lib/client.js`，喂假快照渲染面板与两个 chip 并点击；覆盖「+ 新建档位」悬停下拉与预设复制、默认行为卡五个开关（含 `ask_user_question` 等待改写行的秒数输入） |
 | `scripts/gen-known-tools.mjs` | 从 DSH checkout 的 `docs/tool-catalog.md` 生成 `src/host/known-tools.ts`（`DSH_SRC` 可覆盖 checkout 路径） |
 | `scripts/harness.mjs` | 离线激活脚手架：按 loader 方式加载 `lib/client.js`，验 id/槽位注册/样式注入/inject face |
@@ -86,9 +89,14 @@ Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 - **代码注释规范**：类/函数级注释写「职责 + 为什么这么设计」；行内只写这一处代码读不出的单点约束和取舍；不写逐行翻译、不写「从哪拆来的/以前怎样」这类过程记录。注释过时比没有更糟——读到与代码矛盾的注释当场以代码为准修或删。行内注释同样用中文。
 - 单点约束写进注释，跨文件规则写进本文档（或模块文档）并互留锚点，同一约束不双份维护。
 - 本目录已是 git 仓库（origin 指向 GitHub）；提交时机是「阶段成果自验通过」时，而不是改完就提。不要自行 push（发版纪律见本文「发版」）。
-- **开关与默认值一律挂在档位（`ContextProfile`）下，不做全局配置**：面板编辑的是档位草稿，Host 按会话所属档位解析（`profileOf(agent)`）；顶层 state 只保留 `lastUsedId`（无工作区时的兜底）、`lastUsedByWorkspace`（每工作区默认档位）、`sessions` / 顶层 `baseline` 兜底这些结构。档位是用户唯一可见的配置面，全局开关既没有归属、也无法按会话区分。唯一例外是 `tool_search`：它是延迟加载机制的基础设施，由 `planFor` 自动注入/隐藏，不做档位开关（见 Host 文档）。
-- **同规则双端双份**：档位解析（`effectiveState` 与三态落地）在 Host（`src/host/tools.ts`）与 Client（`src/client/state/resolve.ts`）各一份，改一侧必改另一侧；面板显示的四态必须与 Host 实际落地一致。
+
+## 默认行为与跨模块契约
+
+- **开关与默认值一律挂在档位（`ContextProfile`）下，不做全局配置**：面板编辑的是档位草稿，Host 按会话所属档位解析；顶层 state 只保留 `lastUsedId`（无工作区时的兜底）、`lastUsedByWorkspace`（每工作区默认档位）、`sessions` / 顶层 `baseline` 兜底这些结构。档位是用户唯一可见的配置面，全局开关既没有归属、也无法按会话区分。唯一例外是 `tool_search`：它是延迟加载机制的基础设施，由 `planFor` 自动注入/隐藏，不做档位开关（见 Host 文档）。
+- **同规则双端双份**：档位解析与三态落地在 Host（`src/host/tools.ts`）与 Client（`src/client/state/resolve.ts`）各一份，改一侧必改另一侧；面板显示的四态必须与 Host 实际落地一致。
 - **切换档位会重建整个工具表与前缀缓存**：面向用户的确认话术写在菜单里，改这段行为时同步它。
+- **新会话 hero 行的行级排布归 `dsh-remote-web-ui`**：本插件只用槽位 `order` 落位，不写 `.heroOptions` 或父层样式——多个插件各改一层会互相踩，胜负还取决于样式注入顺序。
+- **界面外观以 `docs/dsh-web-ui.md` 为准**：它是仓库根 `_docs/dsh-web-ui.md` 的同步副本，改设计语言先改根文档、再同步回本地副本，不要只改一侧。
 
 ## 添加或修改功能的标准流程
 
@@ -123,25 +131,18 @@ Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 - `system (empty)` = 人设段为空、附加规则全关、其它 system 段也全关/全空；非空看字符数与预览。
 - `user time-context` 出现 = 时间采样没被过滤；`agent-instructions` 出现 = 工作区指令没被过滤。两者同时出现/缺失可以区分「配置没生效」和「某条通道的过滤器顺序不对」。
 - `request/header tools=0` = 工具全被隐藏，说明档位确实应用到了该会话。
-- 会话文件是**多帧 zstd**（每次追加新起一帧），Node 的 `zstdDecompressSync` / `createZstdDecompress` 只解第一帧；脚本按 `28 b5 2f fd` 切帧后逐帧解压。别被「解出来只有 200 字节的 session 头」骗成日志为空。
+- 会话文件是**多帧 zstd**（每次追加新起一帧），Node 的 `zstdDecompressSync` / `createZstdDecompress` 只解第一帧；按 magic `28 b5 2f fd` 切帧后逐帧解压。别被「解出来只有 200 字节的 session 头」骗成日志为空。
 
 ## 已知待优化
 
 - UI 文案硬编码中文，没走 Client locale 服务；`locale/*.json` 只有包级标题。
-- 段/上下文的自动发现依赖一次干跑装配：当前没出现、也没被关掉的空条件段不占行（要提前配置只能先让它在会话里出现一次）。
-- 自动发现清单的 kind 开关是档位级；关闭 `subagent-settled` / `compact-checkpoint` / `runtime-context` 这类运行期消息会让对应插件收不到自己的通知，只在明确知道作用时关。
-- 系统段开关是档位级，只作用于根会话；附加规则也按档位，子代理沿 `parentSession` 跟随所属根会话的档位；解析不到根档位时用顶层 `baseline` 兜底。
-- 系统段顺序由宿主 `order` 固定，面板只能包含/排除，不能改先后。
-- 工作区指令不能按文件名过滤：宿主把同一批 AGENTS.md/CLAUDE.md 拼成一条 `<system-reminder>`；档位的 `channels.workspaceInstructions` 只能整组关，`dedupeReadInstructions` 只按「已完整 read 且内容摘要一致」跳过重复项，不改变注入集合。要排除某类文件名只能在部署级配 `instructionFileCandidates` / `maxBytes`。
-- 新建下拉的模板是当前插件版本的 `defaults`；复制结果在面板草稿里是 `custom-*`，保存前不写 state。
-- fork 的来源是**按日志内容认的**：宿主 fork 不写 `parentSession`（会话头只有 `isSeeded`），插件用「继承前缀指纹」（前 `inheritedEventCount` 个事件的 `seq|type|time`）先在活会话里找，再按最新优先回读最多 6 条已结束会话（600ms 预算）。来源日志已被清理/迁移失败、或超出回查范围时认不出来，该 fork 记「不处理」，需要在 chip 上手动选一次。
-- 工具来源只能回溯「本插件装载后」的注册：装载前就注册、又不在官方目录/入口产物里的工具显示「未识别」；官方静态表随 checkout 生成，宿主升级后要重跑 `pnpm gen-known-tools`。
+- 用户可见的限制（fork 认不出来源、自动发现的边界、kind 与段开关按档位生效、工作区指令只能整组关、新建下拉的模板来源）以 `README.md`「已知限制」为权威，本文不复述；机制成因见 `src/host/AGENTS.md`。
 
 ## 文档目录
 
 | 文档 | 角色 | 何时读 |
 |---|---|---|
-| `README.md` | 用户向说明 | 介绍档位模型、三态落地、数据格式与接口 |
+| `README.md` | 用户向说明 | 查用户可见的档位字段、三态落地、数据格式与接口时 |
 | `src/host/AGENTS.md` | Host 模块文档 | 改 Host 机制、排查宿主侧不生效时 |
 | `src/client/AGENTS.md` | Client 模块文档 | 改面板/chip/样式、走 UI 流程时 |
 | `docs/dsh-web-ui.md` | 知识笔记 + 事实速查（根 `_docs/dsh-web-ui.md` 的同步副本） | 改 UI、抄 DSH 样式、选槽位、查 token 与几何时 |
@@ -155,6 +156,8 @@ Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 - **模块拆分**：模块局部内容（该模块的设计要点、坑库、流程、组件表）**出现即写进对应模块文档**，不等根文档膨胀；根只留所有任务都需要的内容。判据是「不动这个模块的任务，踩到这条会不会受伤」：会→根，不会→模块文档。模块按知识域归组，不与目录一一对应；本文件顶部索引表与模块文档双向一致（加/删/改名同步改行），索引表后保留「范围之外=无模块文档」的兜底声明。
 - **构建常驻、发版只留纪律**：构建/安装/热重载/真机验证是每次改码都要用的，**留根**；发版是低频且只在用户要求时走，本仓库只留「何时发、怎么记版本、不自行 push」三条纪律。
 - **README 与 AGENTS 分工**：README 面向使用者（能力、怎么开、数据格式、接口）；根 AGENTS 面向开发（跨模块约定、构建与安装、危险区、诊断入口）；模块文档面向单模块改造；docs 面向按步骤执行的低频操作。新机制先写对应模块文档；只有使用者会直接接触的行为、配置或接口才写 README，且 README 不展开内部判据（如 `deriveMessages` 的 surface 语义）。
+- **文档体系与指针纪律**：本仓没有活计划，任务目标与进度不进文档（若临时建，验收后归档下放并删除，不留历史任务书）。载体分工按上一条；任何载体改名/删除/归档时 grep 全仓清理指向它的指针，活文档不指向临时任务文档，「模块索引」与「文档目录」的行都写「何时读」而不是「需要时」。
+- **用户要求记录时**（「记下这点」「以后不要再犯 X」）：按判据落位，先查重、优先并入既有条目；❌ 类内容拒记并说明替代落点；落位后回告改了哪份文件、哪一条。
 - **质量自检**：改完过「新会话 5 分钟测试」——只读文档能否 (a) 完成构建与安装 (b) 找到改动落点对应的文档 (c) 说出全局危险区 (d) 知道怎么验证。再抽查 3 个反引号锚点能 grep 命中、3 个文档指针目标存在；已拆分时检查索引表每行指向存在的文件、每个模块文档都在索引里、所有任务都需要的警告仍在根。
 - **拿不准**：先核实（读代码、查 DSH 源码、问用户），核实后仍无依据才不记。
 - **代码注释规范**是「约定」节的组成部分，维护本文档时不得丢失或削弱。

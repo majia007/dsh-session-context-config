@@ -35,6 +35,7 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
   injectedFirst: false,                                     // 可选：注入消息排到用户消息之前（默认保持宿主顺序）
   dedupeSkillToolResults: false,                            // 可选：skill 工具结果去重（默认宿主原样）
   dedupeReadInstructions: false,                            // 可选：跳过已完整 read 过的同内容 AGENTS.md 再注入（默认宿主原样）
+  askUserTimeout: -1,                                       // 可选：改写 ask_user_question 的等待；-1 = 不设期限，N = N 秒后返回 pending，缺省/删除 = 不介入（宿主原样）
   summaries: { mcp: '…' }                                   // 兼容保留：面板不再编辑，Host 仍按它生成延迟占位摘要
 }
 ```
@@ -268,7 +269,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 - 两种形态都走本插件的同名工具，卡片都带调用 id：断线重连后还是同一张卡（草稿保留）、没有通道时提交会报错而不是静默丢失、工具调用行也能重新打开面板。
 - **开关关闭**：不介入，保持宿主默认行为；秒数框随之禁用（不在接管状态时秒数不生效）。
 
-该档位把 `ask_user_question` 设为「延迟」时本项不改写：延迟占位优先，工具照旧在 `tool_search` 之后再调用。
+该档位把 `ask_user_question` 设为「延迟」时，改写与占位**合并成一份注册**：描述仍是「【延迟】摘要 + 骨架参数」（延迟省下的说明文本不会被还原），执行与输出换成改写版，经 `tool_search` 加载后照常按设定的等待时间执行。
 
 安全阀：插件在注册遮蔽之前先读取**宿主官方定义**，把参数结构（参数名/类型/required，忽略说明文本）与内置基线比对。结构不一致（上游改了调用契约）时整项自动停用——控件禁用并显示提示，不会按旧参数强行改写。工具名与参数 schema 始终来自官方定义，只替换执行逻辑。校验通过时面板不显示状态行；没有活会话、或当前档位把该工具延迟加载时只给一句中性提示，不禁用控件。
 
