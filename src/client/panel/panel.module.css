@@ -700,6 +700,15 @@
   margin: 4px -8px 0;
 }
 
+/* 装载自检:致命诊断常驻页顶,不再等「工具目录为空」才显示。 */
+.diagList {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .hint {
   margin: 4px 0 0;
   font-size: var(--cp-fs-12, 12px);

@@ -15,6 +15,7 @@ import { ChannelCard, DefaultBehaviorCard, ObservedMessagesCard, SectionHeading,
 import { DEFAULT_BASELINE, draftOf, type PanelDraft } from './draft.ts'
 import { stateTag, toolRow } from './group-cards.ts'
 import { ProfileTabs } from './ProfileTabs.ts'
+import { fatalDiagnostics } from '../state/diagnostics.ts'
 import { PreviewDialog } from './PreviewDialog.ts'
 import { useStuck } from './sticky.ts'
 import styles from './panel.module.css'
@@ -408,6 +409,8 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
   const modeNames = presetNames(snapshot, previewMode ?? snapshot.defaultPreset) ?? presetNames(snapshot, snapshot.defaultPreset)
   const s = statsFor(profile, tools, modeNames)
   const catalogDiagnostic = tools.length === 0 ? firstDiagnostic(snapshot.diagnostics) : null
+  // 注册失败不能只藏在诊断数组里:工具目录非空时也要在页顶挂出来。
+  const fatalNotes = fatalDiagnostics(snapshot.diagnostics)
 
   const perMode = snapshot.presets.map((preset) => ({
     id: preset.id,
@@ -505,6 +508,19 @@ export function ConfigPanel(props: { closePanel?: () => void }): ReactElement {
     h(
       'div',
       { className: styles.scroll, ref: setScrollEl },
+      fatalNotes.length > 0
+        ? h(
+            'section',
+            { className: styles.card, 'data-kind': 'diagnostics' },
+            h('h2', { className: styles.cardTitle }, '装载自检'),
+            h('p', { className: styles.hint }, '宿主拒绝了下面这些注册，相关工具或档位行为不会生效；修复后点「重新读取」。'),
+            h(
+              'ul',
+              { className: styles.diagList },
+              ...fatalNotes.map((note, index) => h('li', { key: index, className: styles.error }, note)),
+            ),
+          )
+        : null,
       h(
         'div',
         {
