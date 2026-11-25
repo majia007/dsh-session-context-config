@@ -142,15 +142,16 @@ body {
 - **`[data-slot="<key>"]` 是唯一稳定结构锚点**（外层 `display:contents`），CSS Module 类名带哈希、不可当契约。
 - 宿主 `Slots.listSubTree` 有 input 校验 bug（无论传什么都报 `"input" must be an object`），查槽位结构直接读宿主源码（`packages/client/ui-renderer/src/client/scoped-slots.tsx`）。
 
-### 3.1 覆盖宿主给插件层加的外边距
+### 3.1 新会话 hero 行的插件选项：不要自己选父层
 
-`.heroOptions` 的 `margin-left:auto` 会把整块插件选项推到右端。由于我们只能从自己的 CSS 里选到它，用锚点反向选中父层：
+宿主把插件选项包在 `.heroOptions`（`margin-left:auto`）里推到行尾。**本插件不再反选这一层**：行级排布由 `dsh-remote-web-ui` 独占（摊平 `.heroOptions` 为 `display:contents` + CSS 区号）；多个插件各改一次会互相踩，胜负还取决于样式注入顺序。
 
-```css
-/* menu.module.css 里唯一一条全局规则，别改成 :has(> .cp-seat-*)：
-   直接父元素是 display:contents 的锚点，不是 .heroOptions。 */
-div:has(> [data-slot="conversation.hero.options"]) { margin-left: 0 }
-```
+其它插件的义务只有两条：
+
+- **槽位 `order` 管块内先后**（步长 10 留空；并列号 = 装载序，不可依赖）：0–9 入口类、10–19 只读状态标记（本插件 10、工作组 chip 11）、20–29 其它、30+ 预留。
+- **CSS `order` 只在确需换区时用**：只改自己的根元素，双类名 + 预留区号（10–19 / 30–39），如 `.myEntry.myEntry { order: 10 }`——双类名压过 owner 的默认规则，不依赖样式注入顺序。
+
+owner 的默认区：工作区 chip（宿主默认 0）→ 前置区（10）→ 模式选择器（20）→ 后置默认区（30，槽内所有条目）；负区 −10 在工作区 chip 左侧，目前由工作组 chip 占用（最左只有一个位置，别的插件不要占）。owner 不在时没有摊平，选项回到宿主默认位置。
 
 ### 3.2 浮层怎么放
 

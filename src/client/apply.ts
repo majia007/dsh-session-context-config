@@ -87,8 +87,10 @@ export function apply(ctx: ClientContext): void {
     ),
   )
 
+  // 新会话行的行级排布（摊平 .heroOptions + 区号）由 dsh-remote-web-ui 独占，本插件只占
+  // 槽位 order 的「只读状态标记」段（10–19；工作组 chip 排在 11）。
   ctx.slots.inject('conversation.hero.options', () =>
-    ctx.slots.register({ name: 'conversation.hero.options', id: 'session-context-config', order: 20, inject: (sessionId: unknown) => ({ sessionId: sessionIdFrom(sessionId) }) }, (props: unknown) => h(HeroChip, { ...(props as object) })),
+    ctx.slots.register({ name: 'conversation.hero.options', id: 'session-context-config', order: 10, inject: (sessionId: unknown) => ({ sessionId: sessionIdFrom(sessionId) }) }, (props: unknown) => h(HeroChip, { ...(props as object) })),
   )
 
   // 会话头部:和「模式」标签同槽(那个静态标签 order -10),排在它右侧;

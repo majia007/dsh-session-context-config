@@ -71,10 +71,10 @@
 > 根因：宿主用 CSS Modules 构建，类名逐版本变化。
 > 正解：只依赖**设计 token**（`--dsw-*`）和**槽位锚点** `[data-slot="<slot key>"]`；控件几何按源码数值重写成自己的类。细节见 `docs/dsh-web-ui.md`。
 
-> ⚠️ **新会话行的插件选项被推到行尾**
-> 症状：注册在 `conversation.hero.options` 的控件总是贴右端，`margin-right:auto` 之类怎么调都没用。
-> 根因：宿主把该槽包在 `.heroOptions` 里并给了 `margin-left:auto`。
-> 正解：用槽位锚点选中「装着该槽的那一层」再覆盖——`client.js` 里的 `div:has(> [data-slot="conversation.hero.options"]){margin-left:0}`。注意锚点自身是 `display:contents`，对它设 margin 无效。
+> ⚠️ **新会话行的插件选项位置：不要自己选父层**
+> 症状：注册在 `conversation.hero.options` 的控件位置不对，`margin-right:auto` 或给父层设 `margin-left:0` 怎么调都会连累同槽其它插件。
+> 根因：宿主把该槽包在 `.heroOptions`（`margin-left:auto`）里；任何插件去改这层或给整块定 order，都会改变别人的位置，而且胜负取决于样式注入顺序。
+> 正解：行级排布由 `dsh-remote-web-ui` 独占（摊平 `.heroOptions` + CSS 区号）；本插件只用槽位 `order: 10` 落在「只读状态标记」段，不再写 `.heroOptions`/父层的样式。完整契约见本包 `docs/dsh-web-ui.md` 3.1。
 
 - **弹层定位必须先量后放**：内容高度渲染后才知道，`useLayoutEffect` 里量完再 setState，且**同值必须 bail**（返回上一个 state），否则每轮渲染都 set 新对象 → 死循环。
 - **Client 端的槽位检查工具用不了**：本版本 `cordis_inspect` 的 Client `Slots.listSubTree` 无论传什么 input 都报 `"input" must be an object`。要查槽位结构直接读宿主源码（路径表见 `docs/dsh-web-ui.md`）。

@@ -340,9 +340,6 @@
   line-height: calc(22px + var(--cp-font-boost, 0px));
 }
 
-/* 新会话行把插件选项推到行尾(宿主 .heroOptions 带 margin-left:auto)。
-   槽位的 data-slot 锚点是宿主的稳定寻址面(display:contents,不参与布局),
-   用它选中“装着 conversation.hero.options 的那一层”,只挪本插件这一列。 */
-div:has(> [data-slot="conversation.hero.options"]) {
-  margin-left: 0;
-}
+/* 新会话行的行级排布（把 .heroOptions 摊平 + 区号）由 dsh-remote-web-ui 独占；本插件只靠
+   槽位 order 落在默认区，不再自己选「装着 conversation.hero.options 的那一层」，
+   否则多个插件各选一次父层就会互相踩（见根 _docs/slot-mount-points.md 的 hero 行契约）。 */
