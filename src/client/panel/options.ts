@@ -194,11 +194,10 @@ export const SECTION_OPTIONS: SectionOption[] = [
   { name: 'mcp-resource-servers', label: 'MCP 资源服务器', desc: 'MCP 资源服务器清单；出现时生效。', group: 'conditional', order: 3100 },
 ]
 
-/** 动态段(如 mcp:<server>)的兜底元数据:原始 name 至少保证面板能列出来并开关。 */
+/** 动态段的兜底元数据:原始 name 至少保证面板能列出来并开关。
+ *  `mcp:<server>` / `mcp:<server>:tools` 不在这里:它们跟随对应 MCP server 的状态自动
+ *  隐藏/恢复(Host `hiddenCompanionSection`),面板不列、不单独配置,见 cards.ts 的过滤。 */
 export function inferSectionOption(name: string): SectionOption {
-  if (name.startsWith('mcp:')) {
-    return { name, label: `MCP：${name.slice(4)}`, desc: 'MCP 服务器指令；由该 server 提供。', group: 'conditional' }
-  }
   if (name.startsWith('tool:')) {
     const tool = name.slice(5)
     return { name, label: `${tool} 工具引导`, desc: '工具使用引导；只影响提示词文本。', group: 'tool' }

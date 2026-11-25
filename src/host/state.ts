@@ -5,7 +5,7 @@
  * 面板与装配只面对结构完整的状态,不必各自防御。
  */
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { normalizeBaseline, type BaselineFlags } from '../baseline.ts'
 import {
   DEFAULT_PROFILES,
@@ -27,6 +27,8 @@ import {
 export interface PluginState {
   version: number
   lastUsedId: string
+  /** 工作区键(规范化 cwd) -> 该工作区最近选择的档位;新会话按它取默认档位。 */
+  lastUsedByWorkspace: Record<string, string>
   profiles: ContextProfile[]
   sessions: Record<string, string>
   baseline: BaselineFlags
@@ -53,6 +55,7 @@ export function defaultState(): PluginState {
   return {
     version: VERSION,
     lastUsedId: 'none',
+    lastUsedByWorkspace: {},
     profiles: JSON.parse(JSON.stringify(DEFAULT_PROFILES)),
     sessions: {},
     baseline: normalizeBaseline(undefined),
@@ -70,6 +73,44 @@ export function recordSession(state: PluginState, sessionId: string, profileId: 
   const ids = Object.keys(state.sessions)
   const excess = ids.length - SESSIONS_LIMIT
   if (excess > 0) for (const id of ids.slice(0, excess)) delete state.sessions[id]
+}
+
+/** 工作区映射的有界保留条数(与 sessions 同一套「最近写入在最前」的淘汰方式)。 */
+export const WORKSPACES_LIMIT = 200
+
+/**
+ * 工作区键:会话头 cwd 规范化后的绝对路径。
+ * Windows 大小写不敏感(`D:\Work` 与 `d:\work` 是同一目录),统一小写;其余平台保持原样。
+ * 拿不到 cwd 时返回 null。
+ */
+export function workspaceKey(cwd: unknown): string | null {
+  if (typeof cwd !== 'string' || cwd.trim().length === 0) return null
+  const absolute = resolve(cwd)
+  return process.platform === 'win32' ? absolute.toLowerCase() : absolute
+}
+
+/**
+ * 该工作区新建会话要用的档位。
+ * 有工作区记录就用记录;没有则「不处理」——**不回退 lastUsedId**:那是别的工作区
+ * (或旧版本)的选择,带过来正是「在 zen 选的 chat 跟到新工作区」那个问题。
+ * 拿不到 cwd 时才用 lastUsedId 兜底(宿主没有会话头时的旧行为)。
+ */
+export function lastUsedFor(state: PluginState, cwd: unknown): string {
+  const key = workspaceKey(cwd)
+  if (key === null) return state.lastUsedId
+  return state.lastUsedByWorkspace[key] ?? 'none'
+}
+
+/** 记录「该工作区最近一次选择的档位」,并同步全局 lastUsedId(无 cwd 场景的兜底)。 */
+export function recordLastUsed(state: PluginState, cwd: unknown, profileId: string): void {
+  state.lastUsedId = profileId
+  const key = workspaceKey(cwd)
+  if (key === null) return
+  delete state.lastUsedByWorkspace[key]
+  state.lastUsedByWorkspace[key] = profileId
+  const keys = Object.keys(state.lastUsedByWorkspace)
+  const overflow = keys.length - WORKSPACES_LIMIT
+  if (overflow > 0) for (const id of keys.slice(0, overflow)) delete state.lastUsedByWorkspace[id]
 }
 
 const GROUP_STATES = new Set([ON, DEFER, OFF, FORCE])
@@ -98,12 +139,13 @@ function normalizeContexts(input: unknown): Record<string, boolean> {
 }
 
 /** 只存 false:缺省=包含,与 contexts 同一套「默认值不落盘」规则。
- *  deployment:persona-* 与 tool:* 都不进通配表:人设走专用开关,tool:* 强绑定工具的
- *  启用状态(工具隐藏时自动隐藏其引导,不做单独配置),旧状态残留在这里剪掉。 */
+ *  deployment:persona-*、tool:* 与 mcp:<server> 都不进通配表:人设走专用开关;
+ *  tool:* 强绑定工具的启用状态、mcp:<server> 强绑定对应 server 的启用状态(来源隐藏时
+ *  自动隐藏配套注入,不做单独配置),旧状态残留在这里剪掉。 */
 function normalizeSections(input: unknown): Record<string, boolean> {
   const out = normalizeContexts(input)
   for (const name of Object.keys(out)) {
-    if (name.startsWith('tool:') || name.startsWith('deployment:persona-')) delete out[name]
+    if (name.startsWith('tool:') || name.startsWith('mcp:') || name.startsWith('deployment:persona-')) delete out[name]
   }
   return out
 }
@@ -263,7 +305,7 @@ function normalizeProfile(raw: unknown, index: number, legacyEnvironmentFactsOff
  */
 export function normalizeState(raw: unknown): PluginState {
   const base = defaultState()
-  const record = raw as { version?: unknown; profiles?: unknown; sessions?: unknown; lastUsedId?: unknown; baseline?: unknown } | null | undefined
+  const record = raw as { version?: unknown; profiles?: unknown; sessions?: unknown; lastUsedId?: unknown; lastUsedByWorkspace?: unknown; baseline?: unknown } | null | undefined
   if (!record || (record.version !== 2 && record.version !== 3 && record.version !== VERSION)) return base
   // 旧的全局「环境事实」开关迁到每个档位的 contexts;旧顶层 baseline 复制进每个
   // 缺失 baseline 的档位(结构迁移,值不变);新状态不再有 baseline.environmentFacts。
@@ -293,9 +335,23 @@ export function normalizeState(raw: unknown): PluginState {
   const lastUsedId = record.lastUsedId === 'none' || unique.some((p) => p.id === record.lastUsedId)
     ? record.lastUsedId as string
     : 'none'
+  // 工作区映射只保留有效档位;旧状态没有该字段时为空(新会话按「不处理」起步)。
+  const lastUsedByWorkspace: Record<string, string> = {}
+  const rawWorkspaces = record.lastUsedByWorkspace
+  if (rawWorkspaces && typeof rawWorkspaces === 'object') {
+    for (const [key, value] of Object.entries(rawWorkspaces as Record<string, unknown>)) {
+      if (typeof key !== 'string' || !key || key === '__proto__') continue
+      if (typeof value !== 'string') continue
+      if (value !== 'none' && !unique.some((profile) => profile.id === value)) continue
+      lastUsedByWorkspace[key] = value
+    }
+  }
+  const workspaceKeys = Object.keys(lastUsedByWorkspace)
+  for (const key of workspaceKeys.slice(0, Math.max(0, workspaceKeys.length - WORKSPACES_LIMIT))) delete lastUsedByWorkspace[key]
   return {
     version: VERSION,
     lastUsedId,
+    lastUsedByWorkspace,
     profiles: unique,
     sessions,
     // 顶层 baseline 只保留给子代理解析不到根档位时的兜底;面板按档位编辑。

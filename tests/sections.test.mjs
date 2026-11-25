@@ -89,7 +89,7 @@ test('v2 状态迁移:mode 映射 override,sections 默认空,inCompletePrompt �
   assert.equal(Object.hasOwn(migrated.baseline, 'inCompletePrompt'), false)
 })
 
-test('v3 状态只保留普通段的 sections=false;工具引导段与人设槽位不进通配表', () => {
+test('v3 状态只保留普通段的 sections=false;工具引导段、MCP 服务器段与人设槽位不进通配表', () => {
   const current = normalizeState({
     version: 3,
     profiles: [{
@@ -97,13 +97,14 @@ test('v3 状态只保留普通段的 sections=false;工具引导段与人设槽�
       sections: {
         'tool:read': false,
         'tool:write': true,
+        'mcp:zcode-media': false,
         'deployment:persona-suffix': false,
         'harness:source': false,
         'harness:identity': 'off',
       },
     }],
   })
-  // tool:* 强绑定工具状态,不接受单独配置;旧状态里的残留读入时剪掉。
+  // tool:* 与 mcp:<server> 强绑定来源状态,不接受单独配置;旧状态里的残留读入时剪掉。
   assert.deepEqual(current.profiles[0].sections, { 'harness:source': false })
 })
 
@@ -172,10 +173,13 @@ test('装配过滤:关掉的段被移除,人设/附加规则受保护,sccFullSec
         'harness:identity': false,
         'deployment:persona-prefix': false,
         'session-context-config:contract': false,
+        // 旧状态里手动关过的 MCP 服务器段:读入即剪掉,是否注入只看 server 状态。
+        'mcp:demo': false,
       },
       channels: {},
       groups: {},
-      servers: {},
+      // demo server 被隐藏 → 它的指令段自动移除;other server 未配置 → 段保留。
+      servers: { demo: 'off' },
       // 工具引导不单独配置:read 工具隐藏后 tool:read 由 hiddenToolGuide 自动移除。
       tools: { read: 'off' },
       summaries: {},
@@ -206,16 +210,20 @@ test('装配过滤:关掉的段被移除,人设/附加规则受保护,sccFullSec
         { name: 'session-context-config:contract', text: 'contract' },
         { name: 'tool:read', text: 'read' },
         { name: 'tool:write', text: 'write' },
+        { name: 'mcp:demo', text: 'demo instructions' },
+        { name: 'mcp:other', text: 'other instructions' },
       ],
       contexts: [{ name: 'working-directory:current', text: 'cwd' }],
     }
     const filtered = await hook.listener(assembly, { agent }, async () => assembly)
     // deployment:persona-prefix 的 false 在归一化时被剪掉(人设走专用开关);
-    // tool:read 因为 read 工具本身被隐藏而自动移除,tool:write 仍保留。
+    // tool:read 因为 read 工具本身被隐藏而自动移除,tool:write 仍保留;
+    // mcp:demo 因为该 server 在档位里关闭而移除,mcp:other(未配置=开启)保留。
     assert.deepEqual(filtered.sections.map((section) => section.name), [
       'deployment:persona-prefix',
       'session-context-config:contract',
       'tool:write',
+      'mcp:other',
     ])
     assert.deepEqual(filtered.contexts, assembly.contexts)
 

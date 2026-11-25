@@ -113,6 +113,8 @@ const snapshot = {
     { name: 'tool:read', chars: 150, text: 'read 工具引导正文' },
     { name: 'tool:write', chars: 100, text: 'write 工具引导正文' },
     { name: 'tool:subagent', chars: 400, text: 'subagent 工具引导正文' },
+    // MCP 服务器指令段:强绑定对应 server 的启用状态,面板不列、不单独配置。
+    { name: 'mcp:zcode-media', chars: 82, text: 'MCP 服务器指令正文' },
     { name: 'ui:deliverable-file-references', chars: 900, text: '文件展示与链接规则正文' },
     { name: 'harness:source', chars: 240, text: 'DSH 源码 checkout 说明正文' },
     { name: 'app:web-surface', chars: 900, text: 'Web GUI 说明正文' },
@@ -369,7 +371,11 @@ await click(suffixRow()?.querySelector('.cp-segmentLabel'))
 check('不再区分人设/宿主/工具小区域', systemCard?.querySelector('.cp-groupLabel') === null)
 check('段列表不再包滚动容器', systemCard?.querySelector('.cp-sectionList') === null)
 const orderNames = segmentRows().map((row) => row.querySelector('.cp-codeChip')?.textContent).filter(Boolean)
-check('工具引导段不出现在可配置列表（强绑定工具状态）', orderNames.every((name) => !name.startsWith('tool:')))
+check(
+  '工具引导段与 MCP 服务器指令段不出现在可配置列表（强绑定来源状态）',
+  orderNames.every((name) => !name.startsWith('tool:') && !name.startsWith('mcp:')),
+  orderNames.filter((name) => name.startsWith('tool:') || name.startsWith('mcp:')).join('/'),
+)
 const expectedOrder = [
   'harness:identity',
   'deployment:persona-prefix',

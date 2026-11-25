@@ -8,8 +8,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { SESSIONS_LIMIT } from '../src/host/constants.ts'
-import { defaultState, normalizeState, recordSession } from '../src/host/state.ts'
-import { effectiveState, groupOf, hiddenToolGuide, placehold, serverOf, skeleton, summaryFor } from '../src/host/tools.ts'
+import { defaultState, lastUsedFor, normalizeState, recordLastUsed, recordSession, WORKSPACES_LIMIT, workspaceKey } from '../src/host/state.ts'
+import { effectiveServerState, effectiveState, groupOf, hiddenCompanionSection, hiddenToolGuide, mcpSectionServer, placehold, serverOf, skeleton, summaryFor } from '../src/host/tools.ts'
 import { TOOL_GUIDE_GROUPS, TOOL_GUIDE_MEMBERS } from '../src/tool-guides.ts'
 import { apply, inject, name } from '../src/index.ts'
 
@@ -100,6 +100,37 @@ test('工具引导强绑定：组/工具隐藏时自动隐藏，复合段看成�
   assert.equal(hiddenToolGuide(terminalOff, 'harness:identity'), false)
 })
 
+test('MCP 服务器指令强绑定 server 状态：隐藏时裁段，延迟不算隐藏，组规则同工具层', () => {
+  const base = { groups: {}, servers: {}, tools: {}, sections: {} }
+  // 段名解析:两种形态都归到同一个 server;非 MCP 服务器段返回 null。
+  assert.equal(mcpSectionServer('mcp:zcode-media'), 'zcode-media')
+  assert.equal(mcpSectionServer('mcp:zcode-media:tools'), 'zcode-media')
+  assert.equal(mcpSectionServer('mcp-resource-servers'), null)
+  assert.equal(mcpSectionServer('harness:identity'), null)
+
+  // server 关闭 → 该 server 的指令与工具目录段都不注入。
+  assert.equal(hiddenCompanionSection({ ...base, servers: { demo: 'off' } }, 'mcp:demo'), true)
+  assert.equal(hiddenCompanionSection({ ...base, servers: { demo: 'off' } }, 'mcp:demo:tools'), true)
+  // 只影响自己的 server。
+  assert.equal(hiddenCompanionSection({ ...base, servers: { demo: 'off' } }, 'mcp:other'), false)
+  // 延迟只改工具的加载方式,指令是使用说明,照常注入(与 tool:* 的 defer 处理一致)。
+  assert.equal(hiddenCompanionSection({ ...base, servers: { demo: 'defer' } }, 'mcp:demo'), false)
+  // 组关闭连带所有 server;组关闭压过 server 强制开启,与 effectiveState 的层级顺序一致。
+  assert.equal(hiddenCompanionSection({ ...base, groups: { mcp: 'off' } }, 'mcp:demo'), true)
+  assert.equal(hiddenCompanionSection({ ...base, groups: { mcp: 'off' }, servers: { demo: 'force' } }, 'mcp:demo'), true)
+  // 组强制开启压过 server 关闭。
+  assert.equal(hiddenCompanionSection({ ...base, groups: { mcp: 'force' }, servers: { demo: 'off' } }, 'mcp:demo'), false)
+  // server 层终态本身。
+  assert.equal(effectiveServerState({ ...base, servers: { demo: 'force' } }, 'demo'), 'on')
+  assert.equal(effectiveServerState({ ...base, servers: { demo: 'defer' } }, 'demo'), 'defer')
+  assert.equal(effectiveServerState({ ...base, groups: { mcp: 'off' } }, 'demo'), 'off')
+  assert.equal(effectiveServerState(base, 'demo'), 'on')
+  // tool:* 规则不受影响,普通段永远保留,没有档位时不裁段。
+  assert.equal(hiddenCompanionSection({ ...base, groups: { terminal: 'off' } }, 'tool:pwsh'), true)
+  assert.equal(hiddenCompanionSection(base, 'harness:identity'), false)
+  assert.equal(hiddenCompanionSection(null, 'mcp:demo'), false)
+})
+
 test('延迟占位：保留每个参数的名称与类型，只剥说明与默认值', () => {
   const schema = {
     type: 'object',
@@ -142,6 +173,7 @@ test('占位定义带延迟标记，参数保留类型', () => {
 test('状态归一化：版本不符整份作废，重复 id 去掉，坏引用回落', () => {
   const base = defaultState()
   assert.equal(base.lastUsedId, 'none')
+  assert.deepEqual(base.lastUsedByWorkspace, {})
   assert.equal(base.profiles.length, 5)
 
   assert.deepEqual(normalizeState({ version: 1, profiles: [{ id: 'x' }] }), base)
@@ -191,6 +223,51 @@ test('状态归一化：版本不符整份作废，重复 id 去掉，坏引用�
     profiles: [{ id: 'a', tools: { tool_search: 'off', read: 'off' } }],
   }).profiles[0]
   assert.deepEqual(cleaned.tools, { read: 'off' })
+})
+
+test('工作区默认档位：按会话 cwd 记录/读取，不回落其它工作区的 lastUsedId', () => {
+  const state = defaultState()
+  assert.deepEqual(state.lastUsedByWorkspace, {})
+  recordLastUsed(state, 'D:/work/zen', 'full')
+  assert.equal(lastUsedFor(state, 'D:/work/zen'), 'full')
+  assert.equal(state.lastUsedId, 'full')
+  // 同一路径的不同写法归一到一个键(Windows 分隔符/大小写都不敏感)。
+  if (process.platform === 'win32') {
+    assert.equal(workspaceKey('D:/work/zen'), workspaceKey('D:\\WORK\\zen'))
+    assert.equal(lastUsedFor(state, 'D:\\WORK\\zen'), 'full')
+  }
+  // 没有记录的工作区按「不处理」,不把别的工作区的选择带过来。
+  assert.equal(lastUsedFor(state, 'D:/work/other'), 'none')
+  // 拿不到 cwd 时才回落全局 lastUsedId(旧行为),key 相关函数也都不炸。
+  assert.equal(lastUsedFor(state, undefined), 'full')
+  assert.equal(lastUsedFor(state, ''), 'full')
+  assert.equal(workspaceKey(''), null)
+})
+
+test('状态归一化：工作区默认档位只留有效引用，超出上限淘汰最旧', () => {
+  const normalized = normalizeState({
+    version: 4,
+    profiles: [{ id: 'a', name: 'A' }],
+    lastUsedByWorkspace: {
+      [workspaceKey('D:/work/a')]: 'a',
+      [workspaceKey('D:/work/b')]: 'ghost',
+      '': 'a',
+      [workspaceKey('D:/work/c')]: 'none',
+    },
+  })
+  assert.deepEqual(normalized.lastUsedByWorkspace, {
+    [workspaceKey('D:/work/a')]: 'a',
+    [workspaceKey('D:/work/c')]: 'none',
+  })
+  // 旧状态没有该字段:空映射(新会话按「不处理」起步),不拿 lastUsedId 冒充每工作区记录。
+  assert.deepEqual(normalizeState({ version: 4, profiles: [{ id: 'a' }] }).lastUsedByWorkspace, {})
+  // 有界:超出上限的最旧条目读入时淘汰。
+  const many = {}
+  for (let index = 0; index < WORKSPACES_LIMIT + 2; index += 1) many[`D:/work/${index}`] = 'a'
+  const bounded = normalizeState({ version: 4, profiles: [{ id: 'a' }], lastUsedByWorkspace: many })
+  assert.equal(Object.keys(bounded.lastUsedByWorkspace).length, WORKSPACES_LIMIT)
+  assert.equal(bounded.lastUsedByWorkspace['D:/work/0'], undefined)
+  assert.equal(bounded.lastUsedByWorkspace['D:/work/1'], undefined)
 })
 
 test('sessions 有界保留：重复写入移到最新端，超限淘汰最旧', () => {

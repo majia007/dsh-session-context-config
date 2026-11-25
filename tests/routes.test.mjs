@@ -11,7 +11,7 @@ import test from 'node:test'
 
 import { createInjectedMessages } from '../src/host/injected.ts'
 import { createRoutes } from '../src/host/routes.ts'
-import { defaultState } from '../src/host/state.ts'
+import { defaultState, workspaceKey } from '../src/host/state.ts'
 
 const MESSAGES = [
   { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '人类输入' }] },
@@ -27,7 +27,7 @@ function harness() {
   const agent = {
     id: 's1',
     sessionId: 's1',
-    session: { id: 's1', header: {}, deriveMessages: () => MESSAGES },
+    session: { id: 's1', header: { cwd: 'D:/work/a' }, deriveMessages: () => MESSAGES },
     ctx: null,
   }
   const state = defaultState()
@@ -66,6 +66,7 @@ function harness() {
     isRootAgent: () => true,
     sessionOf: (value) => value?.session ?? null,
     sessionIdOf: () => 's1',
+    cwdOf: (value) => value?.session?.header?.cwd ?? null,
     isBlank: () => false,
     visibleSchemas: () => [
       { name: 'read' },
@@ -80,6 +81,7 @@ function harness() {
     applied: new Map([['s1', { profileId: 'full' }]]),
     loadedNamesOf: () => new Set(),
     profileById: (id) => state.profiles.find((profile) => profile.id === id) ?? null,
+    applyTo: () => {},
   }
   const injected = createInjectedMessages()
   // 进程内观察到的、已被通道开关过滤掉的消息也要出现在清单里;按档位分桶。
@@ -203,6 +205,7 @@ test('snapshot:其他注入消息按档位分组,不混入并行会话', async (
     kit: {
       isRootAgent: () => true,
       sessionOf: (value) => value?.session ?? null,
+      cwdOf: (value) => value?.session?.header?.cwd ?? null,
       sessionIdOf: (value) => value?.sessionId ?? null,
       isBlank: () => true,
       visibleSchemas: () => [],
@@ -250,6 +253,7 @@ test('snapshot:多个根会话的段/上下文取并集,空影子不覆盖另一
     kit: {
       isRootAgent: () => true,
       sessionOf: (value) => value?.session ?? null,
+      cwdOf: (value) => value?.session?.header?.cwd ?? null,
       sessionIdOf: (value) => value?.sessionId ?? null,
       isBlank: () => true,
       visibleSchemas: () => [],
@@ -312,4 +316,35 @@ test('snapshot:live 用 applied 区分「套了档位」与「只是有记录」
   const recordedOnly = (await routes.snapshot()).live[0]
   assert.equal(recordedOnly.profileId, 'full', '记录仍在:它说明用户选过什么')
   assert.equal(recordedOnly.applied, false, '没有 applied 条目 = 实际上没套')
+})
+
+test('切换档位按会话工作区记住默认档位', async () => {
+  const { routes, state } = harness()
+  const request = {
+    method: 'POST',
+    url: 'http://127.0.0.1:29697/session-context-config/api/session',
+    headers: { host: '127.0.0.1:29697', 'content-type': 'application/json' },
+    handlers: new Map(),
+    on(event, listener) {
+      const list = this.handlers.get(event) ?? []
+      list.push(listener)
+      this.handlers.set(event, list)
+    },
+  }
+  const response = {
+    status: 0,
+    body: '',
+    writeHead(status) { this.status = status },
+    end(body) { this.body = String(body ?? '') },
+  }
+  const pending = routes.handleSession(request, response)
+  const body = Buffer.from(JSON.stringify({ sessionId: 's1', profileId: 'lean' }))
+  for (const listener of request.handlers.get('data') ?? []) listener(body)
+  for (const listener of request.handlers.get('end') ?? []) listener()
+  await pending
+  assert.equal(response.status, 200)
+  // 该会话所在工作区(cwd)的默认档位被记住;全局 lastUsedId 只作无 cwd 时的兜底。
+  assert.equal(state.lastUsedByWorkspace[workspaceKey('D:/work/a')], 'lean')
+  assert.equal(state.lastUsedId, 'lean')
+  assert.equal(state.sessions.s1, 'lean')
 })

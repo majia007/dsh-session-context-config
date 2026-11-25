@@ -168,23 +168,23 @@ function baselineRows(profile: Profile, patchBaseline: (key: string, value: bool
 function orderedSections(sections: SectionEntry[], disabled: Set<string>): SectionOption[] {
   const index = new Map(sections.map((section, position) => [section.name, position]))
   const options = new Map<string, SectionOption>()
-  // tool:* 工具引导段强绑定工具的启用状态,由 Host hiddenToolGuide 自动隐藏/显示,
-  // 面板不列、不单独配置;工具目录才是它的唯一控制面。
-  const isToolGuide = (name: string): boolean => name.startsWith('tool:')
+  // 配套段强绑定其来源的启用状态,由 Host hiddenCompanionSection 自动隐藏/显示,
+  // 面板不列、不单独配置:tool:* 看工具/组终态,mcp:<server> 看该 server 的终态。
+  const isCompanionSection = (name: string): boolean => name.startsWith('tool:') || name.startsWith('mcp:')
   // 静态目录只用来补已知段的文案/顺序:当前既不出现、也没被关掉的段不展示,
-  // 免得条件段(计划/团队/MCP)和未安装工具把列表塞满"当前未出现"。
+  // 免得条件段(计划/团队)和未安装工具把列表塞满"当前未出现"。
   for (const option of SECTION_OPTIONS) {
-    if (BASELINE_NAMES.has(option.name) || isToolGuide(option.name)) continue
+    if (BASELINE_NAMES.has(option.name) || isCompanionSection(option.name)) continue
     const always = option.persona !== undefined
     if (!always && !index.has(option.name) && !disabled.has(option.name)) continue
     options.set(option.name, option)
   }
   for (const section of sections) {
-    if (BASELINE_NAMES.has(section.name) || isToolGuide(section.name) || options.has(section.name)) continue
+    if (BASELINE_NAMES.has(section.name) || isCompanionSection(section.name) || options.has(section.name)) continue
     options.set(section.name, inferSectionOption(section.name))
   }
   for (const name of disabled) {
-    if (BASELINE_NAMES.has(name) || isToolGuide(name) || options.has(name)) continue
+    if (BASELINE_NAMES.has(name) || isCompanionSection(name) || options.has(name)) continue
     options.set(name, inferSectionOption(name))
   }
   const present = [...options.values()]

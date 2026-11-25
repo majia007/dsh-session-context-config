@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { apply } from '../src/index.ts'
+import { workspaceKey } from '../src/host/state.ts'
 
 /**
  * 等条件成立再断言:persistSoon 的 400ms 防抖在负载下可能远超固定 sleep
@@ -185,6 +186,7 @@ function withHome(config, run) {
   writeFileSync(join(home, 'session-context-config.json'), JSON.stringify({
     version: 3,
     lastUsedId: config.lastUsedId,
+    lastUsedByWorkspace: config.lastUsedByWorkspace ?? {},
     profiles: config.profiles,
     sessions: config.sessions ?? {},
     baseline: { contract: false, cardReceipt: false, untrustedFiles: false },
@@ -221,7 +223,7 @@ function forkAgent(sessionId, host, options = {}) {
 
 const FULL = () => [profile('full', { devtools: 'defer' })]
 
-test('空白新会话按 lastUsedId 套用并记录', async () => {
+test('拿不到会话工作区时按 lastUsedId 兜底套用并记录', async () => {
   await withHome({ lastUsedId: 'full', profiles: FULL() }, async (home) => {
     const host = fakeHost()
     host.state.definitions = [tool('plugin_manager'), tool('read')]
@@ -234,6 +236,33 @@ test('空白新会话按 lastUsedId 套用并记录', async () => {
     assert.deepEqual(child.registerCalls.map((definition) => definition.name), ['plugin_manager'])
     assert.match(child.registerCalls[0].description, /^【延迟】/)
     await waitFor(() => recordedSessions(home)['s-new'] === 'full')
+  })
+})
+
+test('空白新会话按会话 cwd 取工作区档位,不回落其它工作区的 lastUsedId', async () => {
+  const zenCwd = 'D:/work/zen'
+  const otherCwd = 'D:/work/other'
+  await withHome({
+    lastUsedId: 'chat',
+    lastUsedByWorkspace: { [workspaceKey(zenCwd)]: 'full' },
+    profiles: [profile('chat', {}), profile('full', { devtools: 'defer' })],
+  }, async (home) => {
+    const host = fakeHost()
+    host.state.definitions = [tool('plugin_manager'), tool('read')]
+    apply(host.ctx)
+
+    const zen = fakeAgent('s-zen', host, { header: { cwd: zenCwd } })
+    const other = fakeAgent('s-other', host, { header: { cwd: otherCwd } })
+    host.ctx.agents.list = () => [zen.agent, other.agent]
+    await listenerOf(host)({ agent: zen.agent })
+    await listenerOf(host)({ agent: other.agent })
+
+    // zen 有工作区记录 full(devtools 延迟):会给它注册延迟占位。
+    assert.deepEqual(zen.registerCalls.map((definition) => definition.name), ['plugin_manager'])
+    // other 没有记录:按「不处理」,不沿用 lastUsedId 的 chat——否则就从 zen 带过来了。
+    assert.equal(other.registerCalls.length, 0)
+    await waitFor(() => recordedSessions(home)['s-zen'] === 'full')
+    await waitFor(() => recordedSessions(home)['s-other'] === 'none')
   })
 })
 

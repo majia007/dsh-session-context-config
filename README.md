@@ -41,7 +41,7 @@ dsh plugin --profile <profile> add @jia-tools/dsh-session-context-config
 
 `contexts` 的键是宿主实际注册的运行时上下文名，缺省=注入，只存 `false`。面板从当前会话的装配结果动态列出（`/api/state` 的 `contexts`）：当前工作目录、沙箱/文件策略、审批策略、根代理身份、子代理委派深度、环境事实、DSH 源码 checkout、DSH Web GUI 地址都会自动出现；新版本或第三方插件新增的上下文，即使没有内置中文名，也会按原始 name 自动补一行。旧版本读入时一次性迁移：`runtimeContext:false` → 所有可选上下文 `false`，`workingDirectory:false` → 当前工作目录 `false`，`baseline.environmentFacts:false` → 每个旧档位的环境事实 `false`；迁移后都按档位单独调整。
 
-`sections` 的键是宿主/插件实际注册的 system 段名，缺省=包含，只存 `false`。面板从当前会话的装配结果动态列出（`/api/state` 的 `sections`），未知新段按原始 name 显示；人设两个槽位与附加规则段由专用开关控制。**工具引导段（`tool:*`）不进这张表**——它强绑定工具的启用状态，由 Host 自动隐藏/显示（复合段看成员），面板不提供单独开关；旧状态里的 `tool:*` 键读入时剪掉。
+`sections` 的键是宿主/插件实际注册的 system 段名，缺省=包含，只存 `false`。面板从当前会话的装配结果动态列出（`/api/state` 的 `sections`），未知新段按原始 name 显示；人设两个槽位与附加规则段由专用开关控制。**配套段不进这张表**——`tool:*` 强绑定工具的启用状态、`mcp:<server>`（及 `mcp:<server>:tools`）强绑定对应 MCP server 的启用状态，都由 Host 自动隐藏/显示，面板不提供单独开关；旧状态里的这类键读入时剪掉。
 
 组、server、工具三层共用同一套四态，**位置即优先级：开启(1) → 关闭(2) → 延迟(3) → 默认(4)**，数字小的压过数字大的；同号时靠上的层（组 > server > 工具）优先，但同号结果相同，不产生差异。判定顺序：
 
@@ -112,17 +112,18 @@ server = 关闭       → 关闭
 - **两个独立的人设槽位**：`deployment:persona-prefix`（order 0，固定身份声明之后、所有第一方指导之前，"你是谁"——角色、语气、能力边界与工作方式；改它会破坏前缀缓存）与 `deployment:persona-suffix`（order 10200，所有第一方指导之后、提示词最末，"收尾叮嘱"——环境提醒、输出格式、最后一条硬约束；改它不影响前面可复用的前缀）。两者各自一条开关 + 一条「覆盖部署文本」+ 文本域：关掉 = 不发送该槽位；不覆盖 = 沿用部署 `personaPrefix` / `personaSuffix`；覆盖且文本非空 = 替换该槽位；覆盖且为空 = 不发送该槽位。覆盖文本支持 `{{model}}` 与 `{{provider}}` 占位符（与部署模板同名），注入时按当前 step 的模型选择展开，所以人设不必写死模型名；不认识的占位符原样保留。
 - 其余各段在同一个列表里按**实际装配顺序**排列（不再分「宿主固定段 / 工具使用引导」小区域）：`harness:identity`（-1000，最前）、人设前缀（0）、`context:file-reference`、`harness:source`、`app:web-surface`、人设后缘（10200）等，逐段开关。
 - **工具引导段（`tool:*`）不在这里配置**：它们强绑定工具状态——工具或组隐藏时 Host 自动从装配里移除，工具恢复（开启/延迟）时自动回来。复合段（`tool:jobs` / `tool:goal` / `tool:schedule` / `tool:session-query`）看成员工具，至少一个成员不是隐藏才保留。面板不列这些行，避免出现「段开关和工具开关打架」。
-- **条件段**：MCP 服务器指令（`mcp:<server>`）、MCP 资源服务器、PTC 模式（`tools:ptc-only` / `tools:sdk`）、计划模式（`plan:policy`）、团队协作（`team:policy`）、浏览器 / Computer Use 等，出现时才在列表里生效；未识别的新段按原始 name 自动列入。新版本/第三方插件注册段不需要改本插件即可出现。
+- **MCP 服务器指令段（`mcp:<server>` / `mcp:<server>:tools`）不在这里配置**：它们跟随下面「工具目录」里 MCP 组与对应 server 的状态——server 隐藏（或 MCP 组关闭）时 Host 自动从装配里移除，server 恢复（开启/延迟）时自动回来。延迟只改工具的加载方式，服务器指令是使用说明，照常注入（与 `tool:*` 的延迟处理一致）。面板不列这些行。
+- **条件段**：MCP 资源服务器、PTC 模式（`tools:ptc-only` / `tools:sdk`）、计划模式（`plan:policy`）、团队协作（`team:policy`）、浏览器 / Computer Use 等，出现时才在列表里生效；未识别的新段按原始 name 自动列入。新版本/第三方插件注册段不需要改本插件即可出现。
 - **悬停看正文**：普通段、两个人设槽位与「覆盖部署文本」行都带 `title`，内容是该段当前实际注入的文本（模板变量已按本次装配渲染）；关闭的段也会给出关闭前的文本，便于确认关掉的是什么。上下文行同样如此（空文本显示「当前未出现」）。
 - **附加规则**：行为契约 / 卡片回执 / 不可信下载 / 自定义文本 4 项，按当前档位的 `profile.baseline` 开关（子代理跟随所属根会话的档位），用「本插件附加 · 本档位」小标题与分割线分隔，固定排在列表最后（提示词 order 20000+，是所有宿主段之后）；三段固定文本在面板里悬停可见注入全文（保留换行）。
 
-被关掉但当前装配里没有出现的已知段仍会列出来（否则条件段关掉后就找不到重新开启的入口），但 `meta` 会标成「已关闭 · 当前未出现」，tooltip 说明可能是条件未触发或提供它的插件/预设未装载。实现：在已有的 `system-prompt/assemble` 瀑布里按 `profile.sections` 过滤 `assembly.sections`（与过滤 contexts 同一处），同时按工具的生效状态裁掉 `tool:*` 引导段（`hiddenToolGuide`：组/工具隐藏即隐藏，复合段看成员）。`refreshContext` 不会重跑 sections，所以不需要像 contexts 那样注册影子段。**该瀑布按 agent scope 过滤派发，监听器必须带 `global: true`**（否则真机上收不到事件，单测直接调 listener 发现不了）。`sccFullSections` 是面板列目录用的私有旁路，返回未过滤的完整段名单，不影响请求路径；面板目录会再剔除 `tool:*`（它们不单独配置）。段顺序由宿主 `order` 固定，本面板只控制是否包含。
+被关掉但当前装配里没有出现的已知段仍会列出来（否则条件段关掉后就找不到重新开启的入口），但 `meta` 会标成「已关闭 · 当前未出现」，tooltip 说明可能是条件未触发或提供它的插件/预设未装载。实现：在已有的 `system-prompt/assemble` 瀑布里按 `profile.sections` 过滤 `assembly.sections`（与过滤 contexts 同一处），同时按来源的生效状态裁掉配套段（`hiddenCompanionSection`：`tool:*` 看工具/组终态、复合段看成员；`mcp:<server>` / `mcp:<server>:tools` 看该 server 的终态）。`refreshContext` 不会重跑 sections，所以不需要像 contexts 那样注册影子段。**该瀑布按 agent scope 过滤派发，监听器必须带 `global: true`**（否则真机上收不到事件，单测直接调 listener 发现不了）。`sccFullSections` 是面板列目录用的私有旁路，返回未过滤的完整段名单，不影响请求路径；面板目录会再剔除 `tool:*` 与 `mcp:<server>`（它们不单独配置）。段顺序由宿主 `order` 固定，本面板只控制是否包含。
 
 ## 注入内容的自动发现
 
 面板不维护「段 / 上下文 / 注入消息」的全量名单，每次 `/api/state` 现算：
 
-1. 对每种 live agent preset 挑一个限制最少的根会话干跑一次 `systemPrompt.assemble({ ..., sccFullSections: true })`（最多 8 份），按 name 取并集（空影子被另一档位的非空正文覆盖）。`sections` 与 `contexts` 来自宿主和所有已装载插件（含第三方）的注册面，模板变量按各自装配渲染；空段不列、`tool:*` 不列（强绑定工具状态，不单独配置），空上下文保留（面板显示「当前未出现」）。
+1. 对每种 live agent preset 挑一个限制最少的根会话干跑一次 `systemPrompt.assemble({ ..., sccFullSections: true })`（最多 8 份），按 name 取并集（空影子被另一档位的非空正文覆盖）。`sections` 与 `contexts` 来自宿主和所有已装载插件（含第三方）的注册面，模板变量按各自装配渲染；空段不列、`tool:*` 与 `mcp:<server>` 不列（强绑定工具/server 状态，不单独配置），空上下文保留（面板显示「当前未出现」）。
 2. 从 live 根会话的历史消息聚合 user 角色、非人类输入的 `source.kind`（工作区指令/时间采样/技能目录/计划模式等）；**按档位分组**：每个档位只统计使用了该档位的会话，同 kind 的次数在组内相加，并行会话的 kind 不串档。组内再合并 `agent/pre-step` 运行时观察到的消息（被通道关掉、没落盘的消息也能看见，且同样按档位归属）。
 3. 工具目录枚举全部 preset 组合里的工具，第三方工具随目录出现。
 
@@ -143,7 +144,7 @@ server = 关闭       → 关闭
 
 ## 生效边界
 
-- **新会话**：`agent/created` 时按会话记录或“上次用过的档位”应用，结果记进会话表。
+- **新会话**：`agent/created` 时按**该会话所在工作区**的最近选择应用（工作区 = 会话头 `cwd` 规范化后的绝对路径；同一目录大小写/分隔符不同算一个工作区），结果记进会话表。工作区没有记录时按「不处理」起步，不沿用其它工作区的选择；在 chip 上给某个会话切档位，记住的是该会话所属工作区的默认档位。拿不到 `cwd` 时才回落全局 `lastUsedId`。
 - **fork 出来的会话**：**继承来源会话的档位**。宿主的 fork 只拷事件前缀、不写来源 id，插件按「继承前缀」的日志指纹认来源（前 `inheritedEventCount` 个事件的 `seq|type|time`）：先找还开着的会话，再按最新优先回读最多 6 条已结束会话（600ms 预算）；来源本身记为「不处理」时 fork 也不处理。
 - **认不出来源时**（不是 fork、来源日志不可读、或来源自己没记录）：显式记成「不处理」，chip 显示「不处理」、弹层首行写「未套位 · 工具按模式原样注入」、每个工具标「原样」；在 chip 上点一个档位确认即生效（工具表整体替换，前缀缓存从第一个变化的 schema 处重建）。
 - **已开始的会话不自动跟随配置改动**：改档位配置不影响它；只有在 chip 上确认切换时才重算。
@@ -174,7 +175,7 @@ server = 关闭       → 关闭
 `prompt` / `sections` / `contexts` 分别覆盖 system 消息内的人设段、其它 system 段与 runtime-context 快照：
 
 - `prompt.prefix` / `prompt.suffix` 分别控制两个部署人设槽位，各自 `enabled/override/text`：`enabled = false` → 该槽位不发送；开启且 `override = false` → 沿用部署 `personaPrefix` / `personaSuffix`；`override = true` → 用 `text` 替换该槽位（空文本 = 不发送该槽位）。两个槽位互不影响。`text` 里的 `{{model}}` / `{{provider}}` 在注入时按当前模型展开，等效于部署模板的同名变量；其它 `{{…}}` 原样保留，不做严格插值（写错的花括号不会让装配失败）。
-- `sections` 按段名过滤 system 消息：identity、宿主/插件段、checkout/Web 说明、MCP/PTC/计划模式等都可逐段关闭。人设两个槽位与附加规则段受保护，分别走专用开关；**工具引导段（`tool:*`）不落 `sections`**，强绑定工具的启用状态（工具隐藏则引导隐藏），面板不提供单独开关。段顺序由宿主 `order` 固定。
+- `sections` 按段名过滤 system 消息：identity、宿主/插件段、checkout/Web 说明、MCP/PTC/计划模式等都可逐段关闭。人设两个槽位与附加规则段受保护，分别走专用开关；**配套段不落 `sections`**——`tool:*` 强绑定工具的启用状态（工具隐藏则引导隐藏）、`mcp:<server>` 强绑定对应 MCP server 的启用状态（server 隐藏则指令不注入），面板都不提供单独开关。段顺序由宿主 `order` 固定。
 - `contexts` 把运行时上下文逐个开关：当前工作目录、沙箱/文件策略、审批策略、根代理身份、子代理委派深度、环境事实、DSH 源码 checkout、DSH Web GUI 地址；装配里出现的新 name 会自动补行。缺省=注入，只记录关掉的项。
 - 关掉的上下文在 agent 作用域注册同名非 required 空上下文遮住 required 标志，再由最外层 `system-prompt/assemble` 按名字删除；这样 `refreshContext` 不会把 required 段（如当前工作目录）补回来。关闭当前工作目录后，模型需要自己跑 `pwd` 确认目录。
 
@@ -281,6 +282,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 {
   "version": 4,
   "lastUsedId": "none",
+  "lastUsedByWorkspace": { "<规范化工作区路径>": "lean" },
   "profiles": [{ "id": "lean", "baseline": { "contract": true, "..." : "..." }, "...": "..." }],
   "sessions": { "<sessionId>": "lean" },
   "baseline": { "contract": true, "cardReceipt": true, "untrustedFiles": true, "custom": false, "customText": "" }
@@ -289,7 +291,9 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 `profiles[].baseline` 是档位级附加规则。顶层 `baseline` 只保留为**兜底**：子代理沿 `parentSession` 找不到根档位时用它；面板不再编辑顶层值。旧状态只有顶层 `baseline` 的，加载时复制到每个缺 `baseline` 的档位（只做结构迁移，不替换值）。
 
-`sessions` 是**一次性恢复记录**：写入后用于重开旧会话时恢复档位；`none` 表示“不处理”。映射有界保留最近 500 条，更旧的会话重开时回落 `lastUsedId`。
+`sessions` 是**一次性恢复记录**：写入后用于重开旧会话时恢复档位；`none` 表示“不处理”。映射有界保留最近 500 条；被淘汰的会话重开时不再自动套档位（非新会话且无记录 → 显式「不处理」，由用户在 chip 上重新选择）。
+
+`lastUsedByWorkspace` 是**每个工作区的默认档位**：键是会话头 `cwd` 规范化后的绝对路径（Windows 统一小写，分隔符差异归一），值是档位 id 或 `none`。空白新会话按它取默认档位，一个工作区的选择不影响其它工作区；没有记录的工作区按「不处理」起步，在该工作区任一会话的 chip 上选一次档位即记住。映射有界保留最近 200 条。顶层 `lastUsedId` 只保留为**拿不到 cwd 时的兜底**（以及旧状态兼容）。
 
 `profiles` 是**用户配置**；`DEFAULT_PROFILES` 是插件自带的通用模板，只用于首次安装与新建下拉。两者是分开的：更新插件、重新安装 bundle、甚至升级包版本，都不会改写 `profiles`；v2/v3 旧状态迁移只做结构转换，不替换任何档位的名称、组、提示词、开关或 `baseline`，也不会把 `chat` / `pi` 自动注入旧状态。要使用 Chat/PI 模板，请在配置页「+ 新建档位」的悬停下拉里选。
 
@@ -320,7 +324,7 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 | 加载 | `tool_search` 自身完整注入（不延迟）；加载只返回定义，会话内 tools 数组不变 |
 | 缓存 | 加载只追加历史，不重建前缀 |
 | 上下文逐项开关 | 只关 `harness:source` 时，`contexts`/`refreshedContexts` 无该段、其余仍在；关 `working-directory:current` 时两者都无 cwd；环境事实开启时 180 字符（真机） |
-| system 段逐项开关 | 单测 + 冒烟：关 `harness:identity` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单；`tool:*` 随工具/组隐藏自动移除，不出现在可配置列表 |
+| system 段逐项开关 | 单测 + 冒烟：关 `harness:identity` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单；`tool:*` 随工具/组、`mcp:<server>` 随对应 server 隐藏自动移除，都不出现在可配置列表 |
 | 配置页结构 | 冒烟：按消息六张卡（默认行为/系统提示词/快照/工作区指令/时间采样/其他注入消息）；默认行为卡五条 `role="switch"`；人设 checkbox + 输入框；快照已知 8 项 + 动态发现项；两条通道各一行 checkbox + 说明；自动清单每行 checkbox 可按 kind 关闭；各行 `title` 给出注入正文 |
 | 新建档位下拉 | 真机 + 冒烟：悬停列出 full/lean/minimal/chat/pi；选中 Pi 复制为 `custom-*`，面板显示默认工具（不含 `tool_search`，它由插件自动管理）、MCP 工具延迟；保存前状态文件与 `lastUsedId` 不变 |
 | 通道过滤顺序 | 会话 `session-f6a33b8a…` 真机实证：Chat 档 channels 全 off、tools=0、system 为空，但仍漏一条 `time-context` user 消息。根因是 preset 的 `prepend` 监听器晚于全局过滤器注册、反包住过滤器；修复为 `agent/created` 时按 agent 再注册（回归 `tests/channels.test.mjs`） |

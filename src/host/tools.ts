@@ -53,6 +53,48 @@ export function effectiveState(profile: ContextProfile, toolName: string): strin
 }
 
 /**
+ * server 层的终态:配套段(服务器指令)跟随它,判定顺序与工具层一致。
+ *
+ * 组 force → 开启;组 off → 关闭;server force/off;组或 server defer → 延迟;否则开启。
+ * 组 off 压过 server force,与 `effectiveState` 的层级顺序相同(工具级 force 只压组,不参与 server 层判定)。
+ */
+export function effectiveServerState(profile: ContextProfile, server: string, group = 'mcp'): string {
+  const groupState = profile.groups[group] ?? ON
+  const serverState = profile.servers[server] ?? ON
+  if (groupState === FORCE) return ON
+  if (groupState === OFF) return OFF
+  if (serverState === FORCE) return ON
+  if (serverState === OFF) return OFF
+  if (groupState === DEFER || serverState === DEFER) return DEFER
+  return ON
+}
+
+/** `mcp:<server>` / `mcp:<server>:tools` 段归属的 server 名;不是 MCP 服务器段时返回 null。 */
+export function mcpSectionServer(sectionName: string): string | null {
+  if (!sectionName.startsWith('mcp:')) return null
+  const rest = sectionName.slice(4)
+  if (!rest) return null
+  return rest.endsWith(':tools') ? rest.slice(0, -':tools'.length) : rest
+}
+
+/**
+ * 配套段是否应随其来源(工具 / MCP server)自动隐藏。
+ *
+ * - `tool:*` 引导段:见 `hiddenToolGuide`;
+ * - `mcp:<server>` / `mcp:<server>:tools` 服务器指令:跟随该 server 在档位里的终态,
+ *   server 隐藏则不注入;server 延迟仍注入——延迟只改工具的加载方式,指令是使用说明,
+ *   与 `tool:*` 的 defer 处理一致。
+ *
+ * 两者都不进 `profile.sections`,面板不列、不单独配置。
+ */
+export function hiddenCompanionSection(profile: ContextProfile | null | undefined, sectionName: string): boolean {
+  if (!profile) return false
+  const server = mcpSectionServer(sectionName)
+  if (server !== null) return effectiveServerState(profile, server) === OFF
+  return hiddenToolGuide(profile, sectionName)
+}
+
+/**
  * 工具引导段是否应随工具一起隐藏。
  *
  * 宿主不少 tool:* 段是无条件静态文本(pwsh/jobs/goal/workflow),工具被隐藏后

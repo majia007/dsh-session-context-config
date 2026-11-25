@@ -3,7 +3,7 @@ import { createCatalog } from './catalog.ts'
 import { fenceRequest } from './connection-fence.ts'
 import { collectInjected, type InjectedChannel, type InjectedMessages } from './injected.ts'
 import { effectiveState, groupOf, serverOf } from './tools.ts'
-import { messageOf, normalizeState, recordSession, statePath, type PluginState } from './state.ts'
+import { lastUsedFor, messageOf, normalizeState, recordLastUsed, recordSession, statePath, type PluginState } from './state.ts'
 import type { StateStore } from './state-store.ts'
 import type { ProfileRuntime } from './profiles.ts'
 import type { SessionKit } from './sessions.ts'
@@ -234,11 +234,11 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         note(`prompt catalog:${kit.sessionIdOf(agent) ?? 'unknown'}`, error)
       }
     }
-    // 段过滤空文本(没内容就没有行);tool:* 不列:它强绑定工具状态,由 Host 自动
-    // 跟随,面板不提供单独开关。上下文保留空文本:被关掉的影子与条件上下文仍要
-    // 占据行位,客户端据 chars/开关显示「已关闭 / 当前未出现」。
+    // 段过滤空文本(没内容就没有行);tool:* 与 mcp:<server> 不列:它们强绑定工具 /
+    // MCP server 状态,由 Host 自动跟随,面板不提供单独开关。上下文保留空文本:
+    // 被关掉的影子与条件上下文仍要占据行位,客户端据 chars/开关显示「已关闭 / 当前未出现」。
     const sectionRows = [...sections.values()]
-      .filter((entry) => entry.chars > 0 && !entry.name.startsWith('tool:'))
+      .filter((entry) => entry.chars > 0 && !entry.name.startsWith('tool:') && !entry.name.startsWith('mcp:'))
     const contextRows = [...contexts.values()]
     // 消息按档位分组:每个档位只看使用它的会话。段的并集仍跨 preset(两者目的不同)。
     const groups = new Map<string, AgentLike[]>()
@@ -292,6 +292,7 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
       // 直接读这份当前插件版本的值,选中后复制成 custom-*。
       defaults: DEFAULT_PROFILES,
       lastUsedId: state.lastUsedId,
+      lastUsedByWorkspace: state.lastUsedByWorkspace,
       sessions: state.sessions,
       baseline: state.baseline,
       presets: catalogValue.presets,
@@ -363,7 +364,8 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         if (!kit.isRootAgent(agent) || !kit.isBlank(agent)) continue
         const sessionId = kit.sessionIdOf(agent)
         if (!sessionId) continue
-        const recorded = store.state.sessions[sessionId] ?? store.state.lastUsedId
+        // 空白会话按所属工作区取默认档位(与 agent/created 同一口径)。
+        const recorded = store.state.sessions[sessionId] ?? lastUsedFor(store.state, kit.cwdOf(agent))
         profiles.applyTo(agent, recorded)
         recordSession(store.state, sessionId, recorded)
       }
@@ -422,9 +424,11 @@ export function createRoutes(deps: RoutesDeps): RoutesRuntime {
         return sendJson(response, 400, { ok: false, error: 'unknown profile' })
       }
       recordSession(store.state, sessionId, profileId)
-      store.state.lastUsedId = profileId
-      store.persistSoon()
       const agent = kit.agentFor(sessionId)
+      // 记住「该会话所在工作区最近选择的档位」:新会话按工作区取默认档位,
+      // 一个工作区的选择不再影响其它工作区。拿不到 cwd 时只更新全局兜底。
+      recordLastUsed(store.state, kit.cwdOf(agent), profileId)
+      store.persistSoon()
       if (agent) profiles.applyTo(agent, profileId)
       sendJson(response, 200, { ok: true, snapshot: await snapshot() })
     } catch (error) {

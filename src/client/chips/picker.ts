@@ -32,7 +32,9 @@ export function usePicker(props: ChipProps, options?: { fallbackBlank?: boolean 
   const recorded = sessionId ? snapshot?.sessions?.[sessionId] ?? null : null
   // 已开始却没有套档位的会话(fork、恢复的历史会话、插件装载前就在跑的会话)必须显式
   // 报「不处理」:回落 lastUsedId 会把「新会话的默认档位」冒充成「本会话的档位」——
-  // 用户看到 chip 写着「完整」,实际一条延迟占位都没有(实测踩过)。
+  // 用户看到 chip 写着「完整」,实际一条延迟占位都没有(实测踩过)。新会话的默认档位
+  // 现在按工作区记在快照的 lastUsedByWorkspace 里,这里的 lastUsedId 只是无工作区
+  // 信息时的兜底;有会话记录(recorded)时一律以记录为准。
   const untouched = live !== null && live.applied === false && !live.blank
   const currentId = recorded ?? (untouched ? NONE : snapshot?.lastUsedId ?? NONE)
   const current = snapshot?.profiles?.find((item) => item.id === currentId) ?? null

@@ -120,6 +120,8 @@ export interface Snapshot {
   /** 当前插件版本内置的默认预设(新建档位模板);旧宿主可能不返回。 */
   defaults?: Profile[]
   lastUsedId: string
+  /** 工作区键 -> 该工作区最近选择的档位;旧 Host 不返回该字段。 */
+  lastUsedByWorkspace?: Record<string, string>
   sessions: Record<string, string>
   baseline: BaselineState
   presets: Array<{ id: string; name: string; tools: CatalogTool[] }>

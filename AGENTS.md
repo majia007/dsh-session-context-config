@@ -86,7 +86,7 @@ Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 - **代码注释规范**：类/函数级注释写「职责 + 为什么这么设计」；行内只写这一处代码读不出的单点约束和取舍；不写逐行翻译、不写「从哪拆来的/以前怎样」这类过程记录。注释过时比没有更糟——读到与代码矛盾的注释当场以代码为准修或删。行内注释同样用中文。
 - 单点约束写进注释，跨文件规则写进本文档（或模块文档）并互留锚点，同一约束不双份维护。
 - 本目录已是 git 仓库（origin 指向 GitHub）；提交时机是「阶段成果自验通过」时，而不是改完就提。不要自行 push（发版纪律见本文「发版」）。
-- **开关与默认值一律挂在档位（`ContextProfile`）下，不做全局配置**：面板编辑的是档位草稿，Host 按会话所属档位解析（`profileOf(agent)`）；顶层 state 只保留 `lastUsedId` / `sessions` / 顶层 `baseline` 兜底这些既有结构。档位是用户唯一可见的配置面，全局开关既没有归属、也无法按会话区分。唯一例外是 `tool_search`：它是延迟加载机制的基础设施，由 `planFor` 自动注入/隐藏，不做档位开关（见 Host 文档）。
+- **开关与默认值一律挂在档位（`ContextProfile`）下，不做全局配置**：面板编辑的是档位草稿，Host 按会话所属档位解析（`profileOf(agent)`）；顶层 state 只保留 `lastUsedId`（无工作区时的兜底）、`lastUsedByWorkspace`（每工作区默认档位）、`sessions` / 顶层 `baseline` 兜底这些结构。档位是用户唯一可见的配置面，全局开关既没有归属、也无法按会话区分。唯一例外是 `tool_search`：它是延迟加载机制的基础设施，由 `planFor` 自动注入/隐藏，不做档位开关（见 Host 文档）。
 - **同规则双端双份**：档位解析（`effectiveState` 与三态落地）在 Host（`src/host/tools.ts`）与 Client（`src/client/state/resolve.ts`）各一份，改一侧必改另一侧；面板显示的四态必须与 Host 实际落地一致。
 - **切换档位会重建整个工具表与前缀缓存**：面向用户的确认话术写在菜单里，改这段行为时同步它。
 
@@ -98,7 +98,7 @@ Host 与 Client 的文件级清单在各模块文档的组件锚点表。
 |---|---|---|---|
 | 档位开关（如五个默认行为开关） | `ContextProfile` 字段 + `DEFAULT_PROFILES` 五个预设 + `normalizeProfile` 默认值 | `contract/types.ts` 的 `Profile` + `allOnProfile` + 对应卡片控件 | README 的档位字段说明 + `tests/defaults.test.mjs` |
 | 运行时上下文 | `CONTEXT_ORDER_NAMES`/`CONTEXT_ORDER_FALLBACK` 常量 + 关闭时的同名空影子与 assemble 过滤 | `CONTEXT_SWITCHES` 的中文名/说明 | — |
-| 系统段 | 无需登记（自动发现）；受保护段走专用开关 | 需要在面板命名时补 `SECTION_OPTIONS` | — |
+| 系统段 | 无需登记（自动发现）；受保护段走专用开关；配套段（`tool:*` / `mcp:<server>`）强绑定来源状态，自动隐藏、不单独配置 | 需要在面板命名时补 `SECTION_OPTIONS`；配套段不列 | — |
 | 工具/组归类 | `constants.ts` 组表 + `known-tools.ts`（重跑 `pnpm gen-known-tools`） | `translations.ts` 中文说明 | `tests/defaults.test.mjs` 的组快照 |
 | 注入消息来源 | 自动发现（`injected.ts`）；无需登记 | 面板按 kind 自动补行 | — |
 

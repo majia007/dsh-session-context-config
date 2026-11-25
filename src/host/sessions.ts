@@ -5,6 +5,8 @@ import type { ToolDefinitionLike } from './tools.ts'
 export interface SessionKit {
   sessionOf(agent: AgentLike | undefined | null): { id?: unknown; header?: Record<string, unknown> } | null
   sessionIdOf(agent: AgentLike | undefined | null): string | null
+  /** 会话工作区(header.cwd,宿主保证是绝对路径);拿不到返回 null。 */
+  cwdOf(agent: AgentLike | undefined | null): string | null
   isBlank(agent: AgentLike | undefined | null): boolean
   isRootAgent(agent: AgentLike | undefined | null): boolean
   visibleSchemas(agent: AgentLike | undefined | null): Array<{ name: string; description?: unknown; parameters?: unknown }>
@@ -37,6 +39,12 @@ export function createSessionKit(ctx: HostContext, note: (source: string, error:
   function sessionIdOf(agent: AgentLike | undefined | null): string | null {
     const id = agent?.sessionId ?? agent?.session?.id ?? agent?.session?.sessionId
     return id != null ? String(id) : null
+  }
+
+  /** 新会话默认档位按工作区分开记,判据就是会话头的 cwd(见 host/state.ts 的 lastUsedFor)。 */
+  function cwdOf(agent: AgentLike | undefined | null): string | null {
+    const cwd = sessionOf(agent)?.header?.cwd
+    return typeof cwd === 'string' && cwd.length > 0 ? cwd : null
   }
 
   function isBlank(agent: AgentLike | undefined | null): boolean {
@@ -121,5 +129,5 @@ export function createSessionKit(ctx: HostContext, note: (source: string, error:
     return null
   }
 
-  return { sessionOf, sessionIdOf, isBlank, isRootAgent, visibleSchemas, definitionsOf, messageTexts, visibleTexts, agentFor }
+  return { sessionOf, sessionIdOf, cwdOf, isBlank, isRootAgent, visibleSchemas, definitionsOf, messageTexts, visibleTexts, agentFor }
 }

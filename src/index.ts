@@ -26,10 +26,10 @@ import { createProfileRuntime } from './host/profiles.ts'
 import { ROUTES, createRoutes } from './host/routes.ts'
 import { createSessionKit } from './host/sessions.ts'
 import { createSourceIndex } from './host/sources.ts'
-import { messageOf, recordSession } from './host/state.ts'
+import { lastUsedFor, messageOf, recordSession } from './host/state.ts'
 import { createStateStore } from './host/state-store.ts'
 import { createTranslationRuntime } from './host/translations.ts'
-import { hiddenToolGuide } from './host/tools.ts'
+import { hiddenCompanionSection } from './host/tools.ts'
 import type { AgentContext, AgentLike, HostContext } from './types.ts'
 
 export const name = 'session-context-config'
@@ -155,8 +155,11 @@ export function apply(ctx: HostContext): void {
         store.persistSoon()
         return
       }
-      profiles.applyTo(agent, store.state.lastUsedId)
-      recordSession(store.state, sessionId, store.state.lastUsedId)
+      // 新会话的默认档位按会话工作区取:该工作区没有记录时按「不处理」起步,
+      // 不回落其它工作区的 lastUsedId(那会把在别的工作区选的档位带过来)。
+      const initial = lastUsedFor(store.state, kit.cwdOf(agent))
+      profiles.applyTo(agent, initial)
+      recordSession(store.state, sessionId, initial)
       store.persistSoon()
     } catch (error) {
       note('agent/created', error)
@@ -220,12 +223,15 @@ export function apply(ctx: HostContext): void {
   }
 
   /** 档位只记录关掉的系统段;缺省=包含。受保护段由人设/附加规则开关单独控制。
-   *  `tool:*` 强绑定工具状态,**不接受** `sections` 单独控制:隐藏逻辑统一由
-   *  host/tools.ts 的 hiddenToolGuide 按工具/组终态推导,状态里的残留也忽略。 */
+   *  `tool:*` 与 `mcp:<server>` 都强绑定其来源状态,**不接受** `sections` 单独控制:
+   *  隐藏逻辑统一由 host/tools.ts 的 hiddenCompanionSection 按工具/组/server 终态推导,
+   *  状态里的残留也忽略。 */
   function disabledSections(profile: ReturnType<typeof profileOf>): Set<string> {
     const disabled = new Set<string>()
     for (const [name, enabled] of Object.entries(profile?.sections ?? {})) {
-      if (enabled === false && !PROTECTED_SECTION_NAMES.has(name) && !name.startsWith('tool:')) disabled.add(name)
+      if (enabled === false && !PROTECTED_SECTION_NAMES.has(name) && !name.startsWith('tool:') && !name.startsWith('mcp:')) {
+        disabled.add(name)
+      }
     }
     return disabled
   }
@@ -429,12 +435,13 @@ export function apply(ctx: HostContext): void {
     const disabledCtx = disabledContexts(profile)
     const disabledSec = disabledSections(profile)
     if (!result) return result
-    // 工具/组隐藏时自动连带其 tool:* 引导段;复合段(jobs/goal/schedule)走别名组。
+    // 来源隐藏时自动连带其配套段:工具/组隐藏 → tool:* 引导段(复合段走别名组),
+    // MCP server 隐藏 → 该 server 的指令段(mcp:<server> / mcp:<server>:tools)。
     const hiddenGuides = new Set<string>()
     if (Array.isArray(result.sections)) {
       for (const entry of result.sections) {
         const name = String(entry?.name ?? '')
-        if (name && hiddenToolGuide(profile, name)) hiddenGuides.add(name)
+        if (name && hiddenCompanionSection(profile, name)) hiddenGuides.add(name)
       }
     }
     if (disabledCtx.size === 0 && disabledSec.size === 0 && hiddenGuides.size === 0) return result
