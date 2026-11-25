@@ -154,6 +154,16 @@ export const ENVIRONMENT_CONTEXT = 'session-context-config:environment'
 export const ENVIRONMENT_CONTEXT_ORDER = 130
 
 /**
+ * 注册者就是本插件的运行时上下文。
+ *
+ * 关掉它们时**不要**在 agent 作用域注册同名空影子:影子是用来遮宿主注册的,而这个名字
+ * 的注册者就是本插件,同作用域再注册一次会被宿主直接拒绝
+ * (`prompt context "…" is already registered in this scope`);它的文本本来就由最外层
+ * system-prompt/assemble 过滤器按名字删掉,效果不依赖影子。
+ */
+export const SELF_REGISTERED_CONTEXTS: ReadonlySet<string> = new Set([ENVIRONMENT_CONTEXT])
+
+/**
  * 根代理身份上下文(tool-subagent-control 全局注册,required):root 名称与
  * send_message / list_agents 的使用提示。面板按普通上下文逐项开关;关掉时同
  * 其它上下文一样注册空影子,让 refreshContext 不会把它补回来。

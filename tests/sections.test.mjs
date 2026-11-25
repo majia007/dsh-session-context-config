@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { apply } from '../src/index.ts'
+import { ENVIRONMENT_CONTEXT } from '../src/host/constants.ts'
 import { normalizeState } from '../src/host/state.ts'
 
 function fakeHost() {
@@ -235,10 +236,19 @@ test('装配过滤:关掉的段被移除,人设/附加规则受保护,sccFullSec
   }
 })
 
-/** 记录 agent 作用域注册了哪些 systemPrompt.section / context。 */
+/**
+ * 记录 agent 作用域注册了哪些 systemPrompt.section / context。
+ *
+ * `context()` 照抄宿主的同名注册行为:同一作用域里第二次注册同名上下文直接抛错
+ * (`prompt context "…" is already registered in this scope`)。不照抄这条,「关掉本插件的
+ * 上下文时又注册一份同名影子」这种必然报错的路径在单测里永远看不见。
+ */
 function recordingAgent() {
   const sections = []
   const contexts = []
+  /** 每次 context() 尝试注册的名字(含被宿主拒掉的那次),用于断言「没有多注册一次」。 */
+  const contextNames = []
+  const registeredContexts = new Set()
   const ctx = {
     on: () => () => {},
     tools: { restrict: () => () => {}, register: () => () => {} },
@@ -248,6 +258,11 @@ function recordingAgent() {
         return () => {}
       },
       context(context) {
+        contextNames.push(context.name)
+        if (registeredContexts.has(context.name)) {
+          throw new Error(`prompt context "${context.name}" is already registered in this scope`)
+        }
+        registeredContexts.add(context.name)
         contexts.push(context)
         return () => {}
       },
@@ -255,7 +270,7 @@ function recordingAgent() {
       getContextOrder: (name) => ({ SUBAGENT_DELEGATION: 120 })[name] ?? 0,
     },
   }
-  return { agent: { id: 's1', sessionId: 's1', session: { id: 's1', header: {} }, ctx }, sections, contexts }
+  return { agent: { id: 's1', sessionId: 's1', session: { id: 's1', header: {} }, ctx }, sections, contexts, contextNames }
 }
 
 async function applyWithProfile(overrides) {
@@ -391,4 +406,13 @@ test('关闭根代理身份上下文:注册同名空影子,order 取 SUBAGENT_DE
   assert.deepEqual(contexts.filter((context) => context.name === 'subagent:identity').map((context) => [context.name, context.text, context.order]), [
     ['subagent:identity', '', 120],
   ])
+})
+
+test('关闭本插件自己的环境事实上下文:不注册同名空影子(同作用域必撞名)', async () => {
+  const { contextNames, contexts } = await applyWithContexts({ [ENVIRONMENT_CONTEXT]: false })
+  // 环境事实由 environment.applyEnvironment 注册在同一个 agent 作用域。再为它注册一份
+  // 同名空影子会被宿主直接拒(prompt context "…" is already registered in this scope),
+  // 而关掉它的效果本来就由最外层 assemble 过滤器按名字删——不需要影子。
+  assert.deepEqual(contextNames.filter((name) => name === ENVIRONMENT_CONTEXT), [ENVIRONMENT_CONTEXT])
+  assert.equal(contexts.filter((context) => context.name === ENVIRONMENT_CONTEXT).length, 1)
 })

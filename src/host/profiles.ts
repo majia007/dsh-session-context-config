@@ -1,4 +1,4 @@
-import { ASK_TOOL_NAME, CONTEXT_ORDER_FALLBACK, CONTEXT_ORDER_NAMES, DEFER, OFF, ON, PERSONA_ORDER_NAME, PERSONA_SECTION, PERSONA_SUFFIX_ORDER_NAME, PERSONA_SUFFIX_SECTION, SEARCH_TOOL_NAME, type ContextProfile } from './constants.ts'
+import { ASK_TOOL_NAME, CONTEXT_ORDER_FALLBACK, CONTEXT_ORDER_NAMES, DEFER, OFF, ON, PERSONA_ORDER_NAME, PERSONA_SECTION, PERSONA_SUFFIX_ORDER_NAME, PERSONA_SUFFIX_SECTION, SEARCH_TOOL_NAME, SELF_REGISTERED_CONTEXTS, type ContextProfile } from './constants.ts'
 import { createAskShadowRuntime, type AskToolStatus } from './ask-shadow.ts'
 import type { StateStore } from './state-store.ts'
 import type { SessionKit } from './sessions.ts'
@@ -241,7 +241,8 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
       if (profile) {
         // ask_user_question 的档位改写:在 agent 作用域注册同名工具遮蔽宿主/preset 那份。
         // 延迟档位已在 deferredShape 里并进占位注册,这里只处理工具被注入的档位。
-        // 参数结构与基线不符时 register 抛错——记诊断并跳过(面板同时会禁用该项)。
+        // 工具在本档位被隐藏、或该会话的工具表里没有它时 register 返回 null(没有可改写的
+        // 对象,静默跳过);参数结构与基线不符才抛错——记诊断并跳过(面板同时会禁用该项)。
         const askTimeout = profile.askUserTimeout
         if (typeof askTimeout === 'number' && !plan.deferred.has(ASK_TOOL_NAME)) {
           try {
@@ -273,6 +274,9 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
         }
         for (const [name, enabled] of Object.entries(profile.contexts ?? {})) {
           if (enabled !== false) continue
+          // 本插件自己注册的上下文(环境事实)没有可遮的宿主注册:同一个作用域再注册同名
+          // 条目会被宿主直接拒,而它的文本本来就由最外层 system-prompt/assemble 按名字删。
+          if (SELF_REGISTERED_CONTEXTS.has(name)) continue
           // 每个被关掉的运行时上下文都在 agent 作用域注册同名非 required 空上下文:
           // required 段(当前工作目录)靠它遮住 required 标志,refreshContext 才不会补回;
           // 可选段靠它保证同样不被补回。真实文本由最外层 system-prompt/assemble 删除。

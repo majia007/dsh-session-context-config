@@ -118,6 +118,22 @@ test('register:结构不匹配时拒绝注册(档位不写遮蔽)', () => {
   assert.equal(changed.shadow.registered.length, 0)
 })
 
+test('register:工具在本会话不可见时返回 null(没有可改写的对象,不抛错、不注册)', () => {
+  // 档位隐藏:宿主 view 对受限名字读作不存在,definitions 里也没有它。
+  const hidden = makeContext()
+  hidden.ctx.tools.get = () => undefined
+  hidden.ctx.tools.definitions = () => []
+  const runtime = createAskShadowRuntime(hidden.ctx, kit, () => {})
+  assert.equal(runtime.register(hidden.agent, 15), null)
+  assert.equal(hidden.shadow.registered.length, 0)
+
+  // 已被本档位注册成延迟占位:两份会在同一作用域撞名,调用方本来就该合并注册。
+  const deferred = makeContext({ definition: { ...officialDefinition(), description: '【延迟】提问（完整参数用 tool_search）' } })
+  const deferredRuntime = createAskShadowRuntime(deferred.ctx, kit, () => {})
+  assert.equal(deferredRuntime.register(deferred.agent, -1), null)
+  assert.equal(deferred.shadow.registered.length, 0)
+})
+
 test('关闭超时(-1):走 ask + wait.callId,返回答案批次', async () => {
   const fake = makeContext()
   const runtime = createAskShadowRuntime(fake.ctx, kit, () => {})

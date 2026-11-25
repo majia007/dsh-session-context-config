@@ -156,11 +156,17 @@ export interface AskShadowRuntime {
   compose(definition: unknown, timeoutSec: number, options?: AskComposeOptions): ToolDefinition<unknown>
   /**
    * 为该 agent 注册遮蔽工具(工具已被注入的档位用)。
-   * @param agent - 目标根会话;拿不到 agent 作用域或参数不兼容时抛错(调用方记诊断)。
+   *
+   * 工具在这个会话里不可见(本档位把它隐藏了、预设根本没挂载它、或已注册成延迟占位)时
+   * 返回 `null`:没有可改写的对象,不是错误——此时注册遮蔽反而会把被隐藏的工具复活成
+   * 可见工具(agent 作用域自己的注册不受 restrict 约束)。
+   *
+   * @param agent - 目标根会话。
    * @param timeoutSec - `-1` 关闭超时;`N>0` N 秒后返回 pending。
-   * @returns 撤销这次注册的 disposer。
+   * @returns 撤销这次注册的 disposer;不需要改写时为 `null`。
+   * @throws 拿到的定义缺 execute/render、参数结构与基线不符、或没有可用的 agent 作用域时抛错(调用方记诊断)。
    */
-  register(agent: AgentLike, timeoutSec: number): () => void
+  register(agent: AgentLike, timeoutSec: number): (() => void) | null
 }
 
 type AskRequest = {
@@ -384,9 +390,14 @@ export function createAskShadowRuntime(ctx: HostContext, kit: SessionKit, note: 
     return shadow as unknown as ToolDefinition<unknown>
   }
 
-  function register(agent: AgentLike, timeoutSec: number): () => void {
+  function register(agent: AgentLike, timeoutSec: number): (() => void) | null {
     const { definition, status: result } = probe(agent)
-    if (definition === undefined) throw new Error(`ask_user_question 改写已停用:${result.message}`)
+    // 看不见这个工具 = 没有可改写的对象:档位把它隐藏了、预设没挂载、或本档位已把它注册成
+    // 延迟占位(那两份会合并注册)。静默跳过——只有「定义在、但不可用」才是异常。
+    if (definition === undefined) {
+      if (result.reason === 'unavailable' || result.reason === 'deferred') return null
+      throw new Error(`ask_user_question 改写已停用:${result.message}`)
+    }
     const agentCtx = agent.ctx
     if (!agentCtx?.tools?.register) throw new Error('agent 没有可用的 tools 作用域')
     try {
