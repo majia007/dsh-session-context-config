@@ -3,7 +3,7 @@ import { createAskShadowRuntime, type AskToolStatus } from './ask-shadow.ts'
 import type { StateStore } from './state-store.ts'
 import type { SessionKit } from './sessions.ts'
 import { effectiveState, placehold, serverOf, summaryFor, groupOf, type ToolDefinitionLike } from './tools.ts'
-import type { AgentLike, HostContext, ToolDefinition } from '../types.ts'
+import type { AgentLike, AgentContext, HostContext, ToolDefinition } from '../types.ts'
 
 /** 一次档位应用的计划:hidden(整体 deny)/ deferred(名→摘要)/ originals(名→完整定义)。 */
 export interface ApplyPlan {
@@ -161,6 +161,44 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
     }
   }
 
+  /**
+   * 延迟工具的注册定义:默认「原定义 + 占位形态」。
+   *
+   * `ask_user_question` 在本档位设了等待改写时换成「占位形态 + 改写执行」:延迟省的只是
+   * 说明文本与参数说明,执行器不占 token,所以两份能合成一份。分开注册会在同一作用域撞名
+   * (占位已经占了那个名字),而跳过改写会让延迟档位里的超时配置永远不生效。
+   */
+  function deferredShape(profile: ContextProfile | null, byName: Map<string, ToolDefinitionLike>, toolName: string, original: ToolDefinitionLike, summary: string): unknown {
+    const fallback = { ...original, ...placehold(original, summary) }
+    const askTimeout = profile?.askUserTimeout
+    if (toolName !== ASK_TOOL_NAME || typeof askTimeout !== 'number') return fallback
+    const official = byName.get(toolName)
+    if (!official) {
+      note('ask shadow', new Error(`${ASK_TOOL_NAME} 的真定义不在当前工具表,延迟占位按原样注册`))
+      return fallback
+    }
+    try {
+      return ask.compose(official, askTimeout, { summary })
+    } catch (error) {
+      note('ask shadow', error)
+      return fallback
+    }
+  }
+
+  /**
+   * 注册一份延迟占位。合并定义被宿主拒绝时退回纯占位——改写可以没有,占位不能丢:
+   * 占位没注册上,该工具就会露出完整定义、丢掉【延迟】标记,连「延迟」本身也失效。
+   */
+  function registerDeferred(agentCtx: AgentContext, profile: ContextProfile | null, byName: Map<string, ToolDefinitionLike>, toolName: string, original: ToolDefinitionLike, summary: string): () => void {
+    try {
+      return agentCtx.tools.register(deferredShape(profile, byName, toolName, original, summary)) as () => void
+    } catch (error) {
+      if (toolName !== ASK_TOOL_NAME) throw error
+      note(`defer:${toolName}`, error)
+      return agentCtx.tools.register({ ...original, ...placehold(original, summary) }) as () => void
+    }
+  }
+
   function applyTo(agent: AgentLike, profileId: string): ApplyPlan {
     const sessionId = kit.sessionIdOf(agent)
     const previousOriginals = sessionId ? applied.get(sessionId)?.plan?.originals : undefined
@@ -193,10 +231,7 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
         try {
           deferred.set(toolName, {
             summary,
-            dispose: agentCtx.tools.register({
-              ...original,
-              ...placehold(original, summary),
-            }) as () => void,
+            dispose: registerDeferred(agentCtx, profile, byName, toolName, original, summary),
           })
         } catch (error) {
           note(`defer:${toolName}`, error)
@@ -205,20 +240,15 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
 
       if (profile) {
         // ask_user_question 的档位改写:在 agent 作用域注册同名工具遮蔽宿主/preset 那份。
+        // 延迟档位已在 deferredShape 里并进占位注册,这里只处理工具被注入的档位。
         // 参数结构与基线不符时 register 抛错——记诊断并跳过(面板同时会禁用该项)。
         const askTimeout = profile.askUserTimeout
-        if (typeof askTimeout === 'number') {
-          if (plan.deferred.has(ASK_TOOL_NAME)) {
-            // 该档位把 ask_user_question 设为延迟:上面已注册的占位就在同一层,
-            // 再注册同名遮蔽会撞名;占位本身不承载等待改写,所以延迟优先、跳过。
-            note('ask shadow', new Error(`${ASK_TOOL_NAME} 在该档位被延迟加载,跳过等待改写`))
-          } else {
-            try {
-              const dispose = ask.register(agent, askTimeout)
-              if (typeof dispose === 'function') disposers.push(dispose)
-            } catch (error) {
-              note('ask shadow', error)
-            }
+        if (typeof askTimeout === 'number' && !plan.deferred.has(ASK_TOOL_NAME)) {
+          try {
+            const dispose = ask.register(agent, askTimeout)
+            if (typeof dispose === 'function') disposers.push(dispose)
+          } catch (error) {
+            note('ask shadow', error)
           }
         }
         // 人设两个固定槽位各自独立(prefix order 0 / suffix order 10200):
@@ -352,10 +382,7 @@ export function createProfileRuntime(ctx: HostContext, store: StateStore, kit: S
         try {
           entry.deferred.set(toolName, {
             summary,
-            dispose: agentCtx.tools.register({
-              ...original,
-              ...placehold(original, summary),
-            }) as () => void,
+            dispose: registerDeferred(agentCtx, profile, byName, toolName, original, summary),
           })
         } catch (error) {
           note(`defer:${toolName}`, error)

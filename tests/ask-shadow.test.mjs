@@ -10,54 +10,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { ASK_PARAMETER_EXPECTED, createAskShadowRuntime, parameterStructure } from '../src/host/ask-shadow.ts'
-
-/**
- * 宿主 `@deepseek-ai/dsh-tool-ask-user` legacy 定义编译后的参数结构:
- * `defineTool` 把书写形态的 `required: true` 编译成父节点的 `required: [...]` 数组,
- * 这里抄的是会话记录 `request/header` 里实际发给模型的 schema(只保留结构相关字段)。
- */
-const OFFICIAL_PARAMETERS = {
-  type: 'object',
-  properties: {
-    questions: {
-      type: 'array',
-      description: 'Questions to ask the user before continuing.',
-      items: {
-        type: 'object',
-        additionalProperties: true,
-        properties: {
-          id: { type: 'string', description: 'Stable id for this question; echoed in the answer.' },
-          question: { type: 'string', description: 'The specific question to ask the user.' },
-          header: { type: 'string', description: 'Optional short heading.' },
-          options: {
-            type: 'array',
-            description: 'Optional choices to show the user.',
-            items: {
-              type: 'object',
-              additionalProperties: true,
-              properties: {
-                label: { type: 'string', description: 'Short user-facing option label.' },
-                description: { type: 'string', description: 'One sentence explaining the tradeoff.' },
-              },
-              required: ['label'],
-            },
-          },
-          multi_select: { type: 'boolean', description: 'Whether the user may select more than one option.' },
-        },
-        required: ['id', 'question'],
-      },
-    },
-  },
-  required: ['questions'],
-}
-
-const officialDefinition = (parameters = OFFICIAL_PARAMETERS) => ({
-  name: 'ask_user_question',
-  description: 'Ask the user a concise question.',
-  parameters,
-  output: { schema: { type: 'object', properties: {} }, render: () => [{ type: 'text', text: '{}' }] },
-  execute: async () => ({ answers: [] }),
-})
+import { OFFICIAL_PARAMETERS, officialDefinition } from './fixtures/ask-tool.mjs'
+import { assertHostOutputSchema } from './host-schema.mjs'
 
 const kit = { isRootAgent: () => true, sessionIdOf: () => 'session-1' }
 
@@ -214,4 +168,70 @@ test('按秒等待(N):窗口内回答 → 返回答案批次', async () => {
     { agent: fake.agent, callId: 'call-3' },
   )
   assert.deepEqual(value, { answers: [{ id: 'scope', selected: ['B'], custom: '补充' }] })
+})
+
+test('compose:延迟形态 = 【延迟】摘要 + 骨架参数,执行仍是改写', async () => {
+  const fake = makeContext()
+  const runtime = createAskShadowRuntime(fake.ctx, kit, () => {})
+  const merged = runtime.compose(officialDefinition(), -1, { summary: '向用户提问' })
+  assert.equal(merged.description, '【延迟】向用户提问（完整参数用 tool_search）')
+  // 参数只留骨架:名称与类型在,说明文本没了,必填集合保留。
+  const questions = merged.parameters.properties.questions
+  assert.equal(questions.type, 'array')
+  assert.equal(questions.description, undefined)
+  assert.equal(questions.items.properties.id.description, undefined)
+  assert.equal(questions.items.properties.multi_select.type, 'boolean')
+  assert.deepEqual(merged.parameters.required, ['questions'])
+  // 输出是改写的两种形态,执行走 ask + wait.callId(与工具已注入的档位同一份实现)。
+  assert.equal(merged.output.schema.oneOf.length, 2)
+  const value = await merged.execute(
+    { questions: [{ id: 'scope', question: '要哪个?' }] },
+    { agent: fake.agent, callId: 'call-9' },
+  )
+  assert.deepEqual(value, { answers: [{ id: 'scope', selected: ['A'] }] })
+  assert.deepEqual(fake.calls.ask[0].wait, { callId: 'call-9' })
+  // compose 只组装,不注册。
+  assert.equal(fake.shadow.registered.length, 0)
+})
+
+test('compose:延迟形态按秒等待,到点返回 pending', async () => {
+  const fake = makeContext()
+  const runtime = createAskShadowRuntime(fake.ctx, kit, () => {})
+  const merged = runtime.compose(officialDefinition(), 20, { summary: '提问' })
+  const value = await merged.execute(
+    { questions: [{ id: 'scope', question: '要哪个?' }] },
+    { agent: fake.agent, callId: 'call-10' },
+  )
+  assert.equal(fake.calls.askTimed[0].timeoutMs, 20_000)
+  assert.equal(value.pending, true)
+})
+
+test('compose:结构不符或没有 userQuestions 时抛错(调用方降级成纯占位)', () => {
+  const changed = makeContext({ definition: officialDefinition({ type: 'object', properties: {} }) })
+  const runtime = createAskShadowRuntime(changed.ctx, kit, () => {})
+  assert.throws(
+    () => runtime.compose(officialDefinition({ type: 'object', properties: {} }), -1, { summary: 'x' }),
+    /已停用/,
+  )
+
+  const noService = makeContext()
+  noService.ctx.get = () => undefined
+  const bare = createAskShadowRuntime(noService.ctx, kit, () => {})
+  assert.throws(() => bare.compose(officialDefinition(), -1), /userQuestions/)
+})
+
+test('compose:输出 schema 必须是注册表方言(required 只能是父节点数组)', () => {
+  const fake = makeContext()
+  const runtime = createAskShadowRuntime(fake.ctx, kit, () => {})
+  const schema = runtime.compose(officialDefinition(), -1, { summary: 'x' }).output.schema
+  assert.equal(schema.oneOf.length, 2)
+
+  // 属性节点上的 required 布尔会被宿主 tools.register 直接拒掉,整个定义连同占位一起消失;
+  // 共享镜像(`tests/host-schema.mjs`)照抄宿主的方言,这里直接用它兜底。
+  assertHostOutputSchema(schema, 'compose output')
+
+  // 两个分支的必填集合都写在对象上。
+  assert.deepEqual(schema.oneOf[0].required, ['answers'])
+  assert.deepEqual(schema.oneOf[1].required.slice().sort(), ['callId', 'message', 'pending'])
+  assert.deepEqual(schema.oneOf[0].properties.answers.items.required, ['id', 'selected'])
 })

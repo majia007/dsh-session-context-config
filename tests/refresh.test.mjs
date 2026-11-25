@@ -15,6 +15,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { apply } from '../src/index.ts'
+import { officialDefinition } from './fixtures/ask-tool.mjs'
+import { assertHostOutputSchema } from './host-schema.mjs'
 
 const tick = (ms = 360) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -32,7 +34,7 @@ function tool(name) {
  * 关键:`definitions()` 要把 agent 作用域的注册叠回工具表——真机 host 的 view() 就是这样
  * (本作用域影子遮住同名全局工具)。少了这一层,「占位背后的实现是否还在」根本测不出来。
  */
-function fakeHost() {
+function fakeHost(services = {}) {
   const events = new Map()
   const rootRegistrations = []
   /** definitions = 继承层(全局)注册;shadows = agent 作用域里的影子注册(延迟占位)。 */
@@ -43,6 +45,7 @@ function fakeHost() {
     events,
     ctx: {
       get(name) {
+        if (services[name] !== undefined) return services[name]
         if (name === 'sessions') return { get: () => null }
         return undefined
       },
@@ -104,6 +107,10 @@ function fakeAgent(sessionId, host) {
     },
     tools: {
       register(definition) {
+        // 宿主只在 register 这一步校验 output.schema(`packages/core/tools/src/index.ts` 的
+        // `assertSupportedJsonSchema(output.schema)`);参数 schema 不在此步校验(所以 MCP 工具
+        // 参数里的 pattern / $schema 能注册成功),共享镜像照抄这条范围才不会误伤合法参数。
+        assertHostOutputSchema(definition.output?.schema, definition.name ?? 'tool')
         registerCalls.push(definition)
         const record = { definition, disposed: false }
         live.push(record)
@@ -334,6 +341,45 @@ test('tool_search 自动规则忽略 other 的 off:只要还有其它延迟工�
 
     assert.deepEqual(fake.registerCalls.map((definition) => definition.name), ['mcp__srv__call'])
     assert.equal(fake.restrictCalls.length, 0)
+    assert.equal(host.rootRegistrations.some((definition) => definition.name === 'tool_search'), true)
+  })
+})
+
+test('延迟档位的等待改写:占位与改写只注册一次,执行仍走 askTimed', async () => {
+  const calls = { askTimed: [] }
+  const userQuestions = {
+    ask: async () => ({ answers: [] }),
+    askTimed: async (request, callId, timeoutMs) => {
+      calls.askTimed.push({ request, callId, timeoutMs })
+      return { pending: true, callId }
+    },
+  }
+  await withHome([{ ...profile('defer-ask', 's11', { interaction: 'defer' }), askUserTimeout: 15 }], async () => {
+    const host = fakeHost({ userQuestions })
+    host.state.definitions = [officialDefinition(), tool('read')]
+    apply(host.ctx)
+
+    const fake = fakeAgent('s11', host)
+    host.ctx.agents.roots = () => [fake.agent]
+    host.ctx.agents.list = () => [fake.agent]
+    await host.events.get('agent/created')?.[0]?.listener({ agent: fake.agent })
+
+    // 延迟占位与等待改写只能有一份注册(分开注册会在同一作用域撞名)。
+    const registered = fake.registerCalls.filter((definition) => definition.name === 'ask_user_question')
+    assert.equal(registered.length, 1)
+    const merged = registered[0]
+    // 形状仍是占位:【延迟】摘要 + 骨架参数(延迟省的 token 没有被还原)。
+    assert.match(merged.description, /^【延迟】/)
+    assert.equal(merged.parameters.properties.questions.description, undefined)
+    assert.equal(merged.parameters.properties.questions.items.properties.id.description, undefined)
+    // 执行是改写版:到点返回 pending,不等宿主自己的等待策略。
+    const value = await merged.execute(
+      { questions: [{ id: 'scope', question: '要哪个?' }] },
+      { agent: fake.agent, callId: 'call-1' },
+    )
+    assert.equal(value.pending, true)
+    assert.deepEqual(calls.askTimed.map((call) => [call.callId, call.timeoutMs]), [['call-1', 15_000]])
+    // 有延迟工具 → tool_search 照常注入。
     assert.equal(host.rootRegistrations.some((definition) => definition.name === 'tool_search'), true)
   })
 })

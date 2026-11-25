@@ -14,7 +14,7 @@
  * 只替换 `execute` / `output` / `description`,name 与 parameters 始终来自官方定义。
  */
 import { ASK_TOOL_NAME } from './constants.ts'
-import { DEFERRED_DESCRIPTION_PREFIX, skeleton } from './tools.ts'
+import { DEFERRED_DESCRIPTION_PREFIX, placehold, skeleton, type ToolDefinitionLike } from './tools.ts'
 import type { AgentLike, HostContext, ToolDefinition } from '../types.ts'
 import type { SessionKit } from './sessions.ts'
 
@@ -119,6 +119,12 @@ interface AskDefinition {
   execute(args: Record<string, unknown> | undefined, exec: ToolExecContextLike): Promise<unknown>
 }
 
+/** 宿主的 userQuestions 服务面(可选服务;缺失时整项不可改写)。 */
+interface UserQuestionsService {
+  ask(request: unknown): Promise<unknown>
+  askTimed?(request: unknown, callId: unknown, timeoutMs: number): Promise<unknown>
+}
+
 /** 工具执行上下文的最小面(宿主 ToolRunContext 的子集)。 */
 interface ToolExecContextLike {
   agent?: AgentLike | null
@@ -126,12 +132,30 @@ interface ToolExecContextLike {
   callId?: unknown
 }
 
-/** 改写运行时:状态查询 + 按 agent 注册/撤销。 */
+/** 组装选项:延迟档位要保留占位形态(摘要 + 骨架参数),只换执行分支。 */
+export interface AskComposeOptions {
+  /** 有值时按延迟占位注册:描述写成「【延迟】摘要」、参数只留骨架;执行与输出仍是改写版。 */
+  summary?: string
+}
+
+/** 改写运行时:状态查询、定义组装与按 agent 注册/撤销。 */
 export interface AskShadowRuntime {
   /** 当前能否改写(取一份官方定义校验参数结构);面板据此禁用控件。 */
   status(): AskToolStatus
   /**
-   * 为该 agent 注册遮蔽工具(B 档位值)。
+   * 组装一份可直接注册的定义(不做注册)。
+   *
+   * 延迟档位下同一作用域只能注册一次同名工具,而延迟省的是说明文本与参数说明(执行器不占
+   * token),所以两份合成一份:占位形态 + 改写执行。工具被注入的档位用官方完整形态。
+   *
+   * @param definition - 官方完整定义(注册表里的那份;延迟档位取工具表里的真定义)。
+   * @param timeoutSec - `-1` 关闭超时;`N>0` N 秒后返回 pending。
+   * @param options - 传 `{ summary }` 走占位形态;不传就是官方完整形态。
+   * @throws 参数结构与基线不符、或宿主没有 userQuestions 服务时抛错(调用方记诊断并降级)。
+   */
+  compose(definition: unknown, timeoutSec: number, options?: AskComposeOptions): ToolDefinition<unknown>
+  /**
+   * 为该 agent 注册遮蔽工具(工具已被注入的档位用)。
    * @param agent - 目标根会话;拿不到 agent 作用域或参数不兼容时抛错(调用方记诊断)。
    * @param timeoutSec - `-1` 关闭超时;`N>0` N 秒后返回 pending。
    * @returns 撤销这次注册的 disposer。
@@ -176,7 +200,15 @@ function answerResult(result: unknown): { answers: Array<Record<string, unknown>
   }
 }
 
-/** 输出 schema:两种形态(答案批次 / pending),与官方 timed 定义一致。 */
+/**
+ * 输出 schema:两种形态(答案批次 / pending),字段与官方 timed 定义一致。
+ *
+ * ⚠️ 必须是**注册表方言**(`defineTool` 编译后的形态),不是作者书写形态:属性节点上的
+ * `required: true` 布尔会被 `tools.register` 直接拒掉——实测报错
+ * `unsupported JSON schema: schema.oneOf[0].properties.answers.required is not supported on type "array"`,
+ * 后果是整个定义注册失败、连延迟占位一起消失(这个坑吃掉过整个 askUserTimeout 功能)。
+ * 必填一律写成父对象的 `required: [...]` 数组。
+ */
 const OUTPUT_SCHEMA = {
   oneOf: [
     {
@@ -185,27 +217,29 @@ const OUTPUT_SCHEMA = {
       properties: {
         answers: {
           type: 'array',
-          required: true,
           items: {
             type: 'object',
             additionalProperties: false,
             properties: {
-              id: { type: 'string', required: true },
-              selected: { type: 'array', required: true, items: { type: 'string' } },
+              id: { type: 'string' },
+              selected: { type: 'array', items: { type: 'string' } },
               custom: { type: 'string' },
             },
+            required: ['id', 'selected'],
           },
         },
       },
+      required: ['answers'],
     },
     {
       type: 'object',
       additionalProperties: false,
       properties: {
-        pending: { type: 'boolean', enum: [true], required: true },
-        callId: { type: 'string', required: true },
-        message: { type: 'string', required: true },
+        pending: { type: 'boolean', enum: [true] },
+        callId: { type: 'string' },
+        message: { type: 'string' },
       },
+      required: ['pending', 'callId', 'message'],
     },
   ],
 }
@@ -257,13 +291,10 @@ export function createAskShadowRuntime(ctx: HostContext, kit: SessionKit, note: 
     return typeof description === 'string' && description.startsWith(DEFERRED_DESCRIPTION_PREFIX)
   }
 
-  function probe(agent?: AgentLike): { definition?: AskDefinition; status: AskToolStatus } {
-    const found = lookup(agent)
+  /** 官方定义校验:execute/render 齐备 + 参数结构与基线一致(状态查询与组装共用同一份判据)。 */
+  function validate(found: unknown): { definition?: AskDefinition; status: AskToolStatus } {
     if (found === undefined || found === null) {
-      return { status: defineStatus('unavailable', '当前没有可读取的官方 ask_user_question 定义(需要至少一个 live 会话)', null) }
-    }
-    if (isPlaceholder(found)) {
-      return { status: defineStatus('deferred', '该工具在当前档位被延迟加载(占位定义),无法校验官方参数;把「交互」组恢复注入后再试', null) }
+      return { status: defineStatus('missing', '拿不到官方 ask_user_question 定义,本项已停用', null) }
     }
     const definition = found as AskDefinition
     if (typeof definition.execute !== 'function' || typeof definition.output?.render !== 'function') {
@@ -274,6 +305,18 @@ export function createAskShadowRuntime(ctx: HostContext, kit: SessionKit, note: 
       return { status: defineStatus('schema', '宿主 ask_user_question 的参数结构已变化,本项已自动停用(继续按旧参数改写会静默出错)', actual) }
     }
     return { definition, status: defineStatus('ok', '参数结构与基线一致', actual) }
+  }
+
+  function probe(agent?: AgentLike): { definition?: AskDefinition; status: AskToolStatus } {
+    const found = lookup(agent)
+    if (found === undefined || found === null) {
+      return { status: defineStatus('unavailable', '当前没有可读取的官方 ask_user_question 定义(需要至少一个 live 会话)', null) }
+    }
+    if (isPlaceholder(found)) {
+      // 占位形态下看不到官方参数,无法校验;延迟档位现在把改写并进占位注册,所以只是提示。
+      return { status: defineStatus('deferred', '该工具在当前档位被延迟加载(占位定义):本项改写会与占位合并注册,经 tool_search 加载后按设定的等待时间执行', null) }
+    }
+    return validate(found)
   }
 
   function status(): AskToolStatus {
@@ -292,35 +335,36 @@ export function createAskShadowRuntime(ctx: HostContext, kit: SessionKit, note: 
     return result
   }
 
-  function register(agent: AgentLike, timeoutSec: number): () => void {
-    const { definition, status: result } = probe(agent)
-    if (definition === undefined) throw new Error(`ask_user_question 改写已停用:${result.message}`)
-    const agentCtx = agent.ctx
-    if (!agentCtx?.tools?.register) throw new Error('agent 没有可用的 tools 作用域')
-    const userQuestions = (() => {
-      try {
-        return ctx.get('userQuestions') as
-          | {
-            ask(request: unknown): Promise<unknown>
-            askTimed?(request: unknown, callId: unknown, timeoutMs: number): Promise<unknown>
-          }
-          | undefined
-      } catch {
-        return undefined
-      }
-    })()
-    if (userQuestions === undefined) throw new Error('宿主没有 userQuestions 服务,无法注册 ask_user_question 改写')
+  function userQuestionsOf(): UserQuestionsService | undefined {
+    try {
+      return ctx.get('userQuestions') as UserQuestionsService | undefined
+    } catch {
+      return undefined
+    }
+  }
 
+  function compose(definition: unknown, timeoutSec: number, options: AskComposeOptions = {}): ToolDefinition<unknown> {
+    const { definition: official, status: result } = validate(definition)
+    if (official === undefined) throw new Error(`ask_user_question 改写已停用:${result.message}`)
+    const userQuestions = userQuestionsOf()
+    if (userQuestions === undefined) throw new Error('宿主没有 userQuestions 服务,无法注册 ask_user_question 改写')
+    // 延迟档位:描述与参数保持占位形态(延迟省的正是这两块的说明文本),执行与输出换成改写版。
+    const occupy = options.summary === undefined
+      ? undefined
+      : placehold(official as unknown as ToolDefinitionLike, options.summary)
     const shadow: AskDefinition = {
-      ...definition,
-      description: timeoutSec > 0
-        ? `${definition.description} A pending result means the foreground wait expired; the questions remain answerable.`
-        : definition.description,
+      ...official,
+      description: occupy !== undefined
+        ? occupy.description
+        : timeoutSec > 0
+          ? `${official.description} A pending result means the foreground wait expired; the questions remain answerable.`
+          : official.description,
+      parameters: (occupy !== undefined ? occupy.parameters : official.parameters) as Record<string, unknown>,
       output: {
         schema: OUTPUT_SCHEMA,
-        render: (args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      isConcurrencySafe: definition.isConcurrencySafe ?? (() => false),
+      isConcurrencySafe: official.isConcurrencySafe ?? (() => false),
       async execute(args, exec) {
         const request = questionRequest(args, exec)
         if (timeoutSec === -1) {
@@ -337,13 +381,21 @@ export function createAskShadowRuntime(ctx: HostContext, kit: SessionKit, note: 
         return answerResult(timed)
       },
     }
+    return shadow as unknown as ToolDefinition<unknown>
+  }
+
+  function register(agent: AgentLike, timeoutSec: number): () => void {
+    const { definition, status: result } = probe(agent)
+    if (definition === undefined) throw new Error(`ask_user_question 改写已停用:${result.message}`)
+    const agentCtx = agent.ctx
+    if (!agentCtx?.tools?.register) throw new Error('agent 没有可用的 tools 作用域')
     try {
-      return agentCtx.tools.register(shadow as unknown as ToolDefinition<unknown>) as () => void
+      return agentCtx.tools.register(compose(definition, timeoutSec)) as () => void
     } catch (error) {
       note('ask shadow register', error)
       throw error
     }
   }
 
-  return { status, register }
+  return { status, compose, register }
 }

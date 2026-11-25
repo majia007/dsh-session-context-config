@@ -15,6 +15,7 @@ import test from 'node:test'
 
 import { apply } from '../src/index.ts'
 import { workspaceKey } from '../src/host/state.ts'
+import { assertHostOutputSchema } from './host-schema.mjs'
 
 /**
  * 等条件成立再断言:persistSoon 的 400ms 防抖在负载下可能远超固定 sleep
@@ -81,6 +82,7 @@ function fakeHost() {
       },
       tools: {
         register(definition) {
+          assertHostOutputSchema(definition.output?.schema, definition.name ?? 'tool')
           rootRegistrations.push(definition)
           return () => {}
         },
@@ -123,6 +125,7 @@ function fakeAgent(sessionId, host, options = {}) {
     },
     tools: {
       register(definition) {
+        assertHostOutputSchema(definition.output?.schema, definition.name ?? 'tool')
         registerCalls.push(definition)
         const record = { definition, disposed: false }
         live.push(record)
