@@ -315,24 +315,6 @@ channels: { workspaceInstructions: 'off', timeContext: 'off' }  // 只记录 off
 
 全部先过宿主 connection 信任栅栏（Host/Origin/浏览器会话认证，与官方 open-in-app 路由同款；宿主无该服务时回退回环 Host 校验）；POST 只接受 application/json。
 
-## 验证记录（DSH Desktop 0.2.2-rc.1 实测，rc.2 未复测 / profile desktop）
-
-| 项 | 结果 |
-|---|---|
-| 工具并集 | 61 个，12 个分组，MCP 25 个（治理） |
-| 解析 | `lean`：注入 24 · 延迟 25 · 隐藏 12 |
-| 占位 | 装配 50 个工具，其中 25 个占位；12,889 → 5,842 字符（-54.7%） |
-| 加载 | `tool_search` 自身完整注入（不延迟）；加载只返回定义，会话内 tools 数组不变 |
-| 缓存 | 加载只追加历史，不重建前缀 |
-| 上下文逐项开关 | 只关 `harness:source` 时，`contexts`/`refreshedContexts` 无该段、其余仍在；关 `working-directory:current` 时两者都无 cwd；环境事实开启时 180 字符（真机） |
-| system 段逐项开关 | 单测 + 冒烟：关 `harness:identity` 后装配只剩受保护段；`sccFullSections` 旁路返回完整名单；`tool:*` 随工具/组、`mcp:<server>` 随对应 server 隐藏自动移除，都不出现在可配置列表 |
-| 配置页结构 | 冒烟：按消息六张卡（默认行为/系统提示词/快照/工作区指令/时间采样/其他注入消息）；默认行为卡五条 `role="switch"`；人设 checkbox + 输入框；快照已知 8 项 + 动态发现项；两条通道各一行 checkbox + 说明；自动清单每行 checkbox 可按 kind 关闭；各行 `title` 给出注入正文 |
-| 新建档位下拉 | 真机 + 冒烟：悬停列出 full/lean/minimal/chat/pi；选中 Pi 复制为 `custom-*`，面板显示默认工具（不含 `tool_search`，它由插件自动管理）、MCP 工具延迟；保存前状态文件与 `lastUsedId` 不变 |
-| 通道过滤顺序 | 会话 `session-f6a33b8a…` 真机实证：Chat 档 channels 全 off、tools=0、system 为空，但仍漏一条 `time-context` user 消息。根因是 preset 的 `prepend` 监听器晚于全局过滤器注册、反包住过滤器；修复为 `agent/created` 时按 agent 再注册（回归 `tests/channels.test.mjs`） |
-| 客户端 | bundle 已进 boot graph |
-
-未验证：会话头部下拉菜单的像素级核对（与 hero 下拉同一套组件，DOM 已核对）；卡片回执条款只做 1 次行为抽查（`present` 后只回一句确认），交付失败时仍给错误细节由契约文本保证，未单独构造失败场景。
-
 ## 已知限制
 
 - 档位只减不增：不能给会话加工具。
