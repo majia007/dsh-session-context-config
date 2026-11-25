@@ -31,6 +31,10 @@ const SPEC = {
       "source": "_shared/preset/kernel.mjs"
     },
     {
+      "path": "tests/host-schema.mjs",
+      "source": "_shared/test/host-schema.mjs"
+    },
+    {
       "path": "src/host/connection-fence.ts",
       "source": "_shared/fence/connection-fence.ts"
     },
